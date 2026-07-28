@@ -909,17 +909,41 @@ and not GC-versus-not.
 
 **This retires a test that looked like evidence.** A comparison of period between collection and
 non-collection frames gave "with-collection is 77 ms *shorter*", read as ruling out an additive merge. It does
-not: the effect is the A/B split wearing a GC label, and it disappears on conditioning. **The tightened
+not: the effect is the A/B split wearing a GC label, and it largely disappears on conditioning. **"Does not
+bear on the merge" would be slightly too strong** (Gamma, and the correction is theirs): within A the additive
+model still predicts with-collection *longer*, and it is −12.0 ms on medians and −52.6 on means, n = 14 per
+arm. That is a **low-powered null leaning against additive** — untested rather than unrelated, since the sign
+is at least not the one the merge needs. **The tightened
 version of that test was worse** — the tightening criterion is met by 0 of 14 collection frames, so applying
 it to one arm only deleted the 14 non-collection frames nearest the other arm (median 140.5 ms) and widened
 the gap from 77 to 205 ms. **An asymmetric filter anti-correlated with the outcome always widens the gap**,
 and "tightening made the effect larger, so the filter was not doing the work" inverts the check.
 
-**What survives is a presence statement rather than a distribution shift**, which is why it is worth more:
-collections occur in A only, 14 of 28, and in B **never**, 0 of 36. Entanglement stated rather than hidden —
-B also has `TimeUpdate < 0.5 ms` on 0 of 36 and collection frames carry the 3.02 ms slice, so the absence is
-partly downstream of that. B is *defined* on `frame`/`period`; the `TimeUpdate` property is *observed*. It is
-one fact, not two.
+~~**What survives is a presence statement rather than a distribution shift**, which is why it is worth more:
+collections occur in A only, 14 of 28, and in B **never**, 0 of 36.~~ The entanglement flagged here was real
+and **the presence statement does not survive it.** Gamma proposed the deciding query — *A holds 7 frames with
+`TimeUpdate < 0.5 ms`; if none carries a collection then `TimeUpdate` is the predictor and A/B adds nothing
+for GC.* Run: **0 of 7.** Full cross-tab:
+
+| | collections | none | n | period median |
+|---|---|---|---|---|
+| A, `TimeUpdate ≥ 0.5` | **14** | 7 | 21 | 129.6 |
+| A, `TimeUpdate < 0.5` | **0** | 7 | 7 | 138.9 |
+| B, `TimeUpdate ≥ 0.5` | — | — | **0** | — |
+| B, `TimeUpdate < 0.5` | **0** | 36 | 36 | **333.9** |
+
+**Collections require `TimeUpdate ≥ 0.5 ms` — 14 of 14 — and B never has one.** So *"no collections in B"* is
+"no slice in B" restated, and it is **one fact, not two**, exactly as suspected. A collection completes during
+a slice, so this is close to definitional and is not independent evidence about the A/B axis.
+
+**What does survive, and it is now better tested than before.** Holding `TimeUpdate < 0.5` — comparing like
+with like — the frame criterion still separates event size: **A 138.9 ms against B 333.9 ms.** So the axis
+carries real information about *how big the block is*, independent of GC. n = 7 against 36, so the A side is
+thin, but a 195 ms difference in medians is not a sampling accident.
+
+**The B / `TimeUpdate ≥ 0.5` cell is empty**, so the two criteria are nearly nested and cannot be fully
+separated with this data. Stated because it bounds everything above: the A/B axis is established as a split on
+event size and **not** established as independent of the slice.
 
 **So the merge question reduces to whether the A/B criterion means anything**, and
 [the mechanism behind it is withdrawn](#corrected-2026-07-28-delta--the-separation-is-real-the-mechanism-i-attached-to-it-is-not).
