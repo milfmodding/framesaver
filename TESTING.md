@@ -758,21 +758,45 @@ there is no better estimate anywhere in the corpus, because nobody has ever held
 on view stability leaves three adjacent pairs, one of which shows Δ = 2,284 with both windows view-stable,
 which is a view *change between* windows rather than drift within one. n=3, confounded. No number.
 
-So the floor is measured in the run itself:
+So the floor is measured in the run itself — and **the arm 1 ↔ arm 3 comparison is the gate**, not the
+within-arm one:
 
-> **Within an arm, the two windows share position and view — so the Δ between them *is* the held drift.**
-> Between arms, the Δ is drift plus manipulation. **Require the between-arm Δ to be at least 3× the largest
-> within-arm Δ**, and the protocol calibrates its own floor from data taken seconds earlier under the exact
-> conditions of the test.
+> Arm 1 and arm 3 are **the same position and the same view**, separated by an entire arm. So their Δ is a
+> same-view measurement at a *longer* separation than any within-arm pair. **Require the between-arm Δ to
+> be at least 2× the arm 1 ↔ arm 3 Δ.**
 
 | | |
 |---|---|
-| between-arm Δ ≥ **3×** the largest within-arm Δ | the run is readable |
+| between-arm Δ ≥ **2×** the arm 1 ↔ arm 3 Δ | the run is readable |
 | between-arm Δ < that | **void, not negative.** Do not compute the ratio, do not report a null — find a wall with less behind it, or a longer sightline, and run it again |
 
-**Optional and worth it if there is time: three windows per arm rather than two.** Two gives one within-arm
-Δ per arm, which is a noise estimate with no spread of its own; three gives two per arm and six across the
-run. That is nine minutes instead of six, and it is the difference between a noise floor and a guess at one.
+**Why not the within-arm Δ, which was the first version of this.** Within-arm Δ is measured between
+*adjacent* windows while the comparison it gates spans a whole arm. If drift grows with separation at all,
+the within-arm figure understates the noise in the comparison, and **the bias runs toward passing a run
+that should have been voided** — the direction this document spends most of its length closing off. Arm 1 ↔
+arm 3 sits at a *longer* separation than the between-arm comparison, so it is conservative-or-equal under
+any noise process that does not *decrease* with separation. That covers both plausible cases: independent
+noise is flat, slow drift increases. **The gate needs no model of how drift scales**, which is the property
+that matters, since the only scaling data available is from the wrong population.
+
+Being conservative in a known direction is what buys the drop from 3× to 2×. A 3× gate against an inflated
+floor is where a genuinely good run gets thrown away.
+
+> **The roaming drift-vs-separation numbers must not be used to calibrate this, in either direction.**
+> Measured across the corpus, median Δ`drawCalls.avg` by window separation runs **570 / 969 / 1,169 /
+> 1,077 / 796 / 782** at gaps 1–6. It rises to gap 3 and then **falls** — because a roaming player returns
+> to similar ground and the long-gap sample is only long raids. That shape is a property of how someone
+> walks around Streets, which is exactly what holding position removes. It bounds nothing about a held run
+> and the non-monotonicity means it cannot even be extrapolated.
+
+**Three windows per arm rather than two, and it is no longer optional.** The gate now needs arm 1 and arm 3
+each to have a stable mean, and Δ`render` still has to be read against a within-arm spread. Two windows per
+arm gives one Δ per arm — a noise estimate with no spread of its own. Nine minutes instead of six.
+
+**Note the double duty before it bites:** arm 1 ↔ arm 3 now gates the run *and* serves as the replication
+check. That is safe — a run that drifted badly fails both, and both answers are "run it again" — but the
+two failures have different causes, drift versus the runner not re-acquiring the aim point, **and nothing
+in the log separates them.** Do not read a void as a null.
 
 Then Δ`render` is read against the same within-arm spread rather than against zero. **If the arms overlap
 inside their own scatter, the answer is "this swing was too small to resolve"** — a third thing, distinct
