@@ -1355,6 +1355,99 @@ frame duration **changes between adjacent frames** — a stall landing inside th
 across the boundary. Hence 50% on ordinary frames and a handful of large ± pairs at stalls. So the clock fix
 matters **for spike analysis specifically**, and the claim that the misalignment is "universal" was wrong.
 
+---
+
+## `render` decomposed — stage 5, 2026-07-28
+
+`render` is **6.5 ms median in raid on Streets, ~40% of the frame and the largest single block**, and it had
+never been decomposed. FINDINGS wrote it off as *"largely outside what a Harmony mod reaches"* — **a claim
+nobody had tested.** Three questions were answered together, by one config change and no build.
+
+### `render` *is* the `PostLateUpdate` phase, by construction rather than by measurement
+
+The first evidence for this was that `render` (derived as `frame − gameUpdate` from BSG's `GClass1357`
+measurers) equalled our injected `PostLateUpdate` marker at **r = 1.00000, mean |diff| 0.0023 ms across 140
+windows on four maps**. That looked like two independent instruments agreeing.
+
+**It is a tautology, and the correction matters more than the number.**
+[GClass1357.cs:87](../../Src/Assembly-CSharp/Assembly-CSharp/GClass1357.cs) *defines*
+`GameUpdateMeasurer` as `currentFrameTime − RenderMeasurer.LastValue`, so `frame − gameUpdate` recovers
+`RenderMeasurer` algebraically. And `CustomPlayerLoopSystemsInjector` inserts `StartOfPostLateUpdate` as
+**First** and `EndOfFrame` as **Last** subsystem of `PostLateUpdate`, while our `Install()` wraps its markers
+outside that list. **Two brackets around one interval, one subsystem apart — the 0.0023 ms was our own
+instrument overhead, not agreement.**
+
+What survives is stronger than the correlation was: **`render` is the wall-clock duration of the
+`PostLateUpdate` root player-loop system, on the main thread.** No inference, no *n*.
+
+The methodology lesson is recorded separately: **a separate field is not an independent measurement.** The
+first check verified that `gameUpdate` is read from its own BSG measurer — true, and insufficient, because
+the measurer is itself a subtraction. The check stopped one level above the answer, forty lines into the class
+already being cited.
+
+### It contains no GPU sync — three routes, only one of which was load-bearing
+
+| route | verdict |
+|---|---|
+| `TimeUpdate` ≈ 0.004–0.080 ms median on uncapped maps | **incomplete.** Rules out a presentation wait *in `TimeUpdate`*, not one inside `PostLateUpdate` |
+| **PresentMon `CPUWait` p50 0.053 ms, p99 0.144** over 182,845 rows | **load-bearing.** Measured at the API, agnostic to where in the loop a block occurs. `CPUBusy` is 99.6% of `FrameTime`; `GPUWait` p50 is **9.547 ms** — the GPU idles for the CPU |
+| **`PostLateUpdate/PresentAfterDraw` = 0.003 ms** | **closes it directly.** The gap route 2 left, measured rather than argued |
+
+**Positive control for the instrument, which is what makes the null readable:** the obvious failure mode is
+*"`TimeUpdate` always reads ~0 because it cannot see waits"*. It can. **Factory — the one map with an active
+frame cap — is the only map with a meaningful `TimeUpdate`, at 1.998 ms.** The wait appears exactly where it
+should on the only map that has one, which also independently corroborates Factory's median == p75 == 8.33 ms
+as a cap signature rather than a measurement.
+
+### The split, and it is regime-independent
+
+`Expand phase` set to `PostLateUpdate`, `20260728-092354-postlate-gc`:
+
+| child | loading, w2 | **in-raid, w3** |
+|---|---|---|
+| **`FinishFrameRendering`** | 9.857 (**93.9%**) | **5.408 (90.9%)** |
+| `PlayerUpdateCanvases` | 0.244 (2.3%) | 0.241 (4.1%) |
+| `UpdateAllRenderers` | 0.140 | 0.111 |
+| `UpdateAudio` | 0.101 | 0.090 |
+| `PlayerSendFrameComplete` | 0.041 | 0.019 |
+| `UpdateAllSkinnedMeshes` | 0.030 | 0.018 |
+| **`PostLateUpdate` total** | **10.501** | **5.949** |
+
+In-raid context: `frame` 14.73, `gameUpdate` 8.78, `TimeUpdate` 0.229, 8 awake / 15 asleep, p50 13.887 —
+an ordinary Streets window, not an unrepresentative sample.
+
+**`render` is `FinishFrameRendering`** — culling, batching, submission. **The UI hypothesis is dead**, and the
+stronger form of that is not the percentage: `PlayerUpdateCanvases` is **0.244 → 0.241 ms, absolutely constant
+across regimes while everything else halves.** A fixed small cost, not a scaling one.
+
+### What is actually reachable: ~1.4 ms of 6.6
+
+On 38 Streets windows carrying a `gpu.render` block, `corr(render, drawCalls) = +0.717`, and **+0.683 with
+`awakeBots` partialled out** — so submission is not bot count in disguise. But correlation is not share:
+
+> `render = 5.266 + 0.000467 × drawCalls` — **0.47 µs per draw call**, a normal single-threaded D3D11
+> submission cost, consistent with `graphicsMultiThreaded: false`.
+
+Draw calls span **4.1×** across those windows (1,141–4,648) while `render` spans only **5.63–7.81 ms**.
+**79% of Streets render is a constant draw calls do not reach.** Eliminating submission entirely — impossible
+— buys ~1.4 ms of 6.6.
+
+Caveats that must travel with it: n = 38, observational, and **position is not held on the one map where
+[location dominates everything](#methodology-notes)**. `drawCalls` also indexes everything view-dependent, so
+a partial correlation cannot separate submission from any other on-screen cost. **More observational windows
+cannot strengthen this** — it needs a fixed-position A/B that moves draw calls without moving what is drawn.
+
+### Consequence for goal 1
+
+**`render` is reachable main-thread CPU work, and the reachable *portion* is small.** The write-off was wrong
+about the reason and roughly right about the outcome: 91% of the largest block in the frame is Unity's own
+render pipeline, and the part a Harmony mod can influence is the ~1.4 ms of submission it drives.
+
+Combined with the standing measurement that **1 window in 99 reaches 100 fps on Streets**, this is the
+strongest available statement of the ceiling — and it needs no regression, no intercept and no model. Both
+earlier arithmetic bounds offered for it were withdrawn: an intercept is a conditional mean the data goes
+below nine times, and a floor summed from window *averages* cannot bound a *percentile*.
+
 ## Confirmed fixes
 
 ### 1. Cull sleeping bot animators — ~3.3 ms
@@ -2900,8 +2993,10 @@ and must be re-checked before trusting them anywhere else:
 - **Spawn-in**: 191 ms frames with `scripts` at 51.8 ms while bots arrive. `Player.Init`, pool
   instantiation, bundle work. Pool sizes are backend config (`ApplicationConfigClass.Pools`) and
   tunable without code.
-- **Render**: 4.67 ms, still 45% of the frame and the largest single block. Largely outside what a
-  Harmony mod reaches.
+- **Render**: ~~4.67 ms, still 45% of the frame and the largest single block. Largely outside what a
+  Harmony mod reaches.~~ **Decomposed 2026-07-28** — it *is* the `PostLateUpdate` phase, 91%
+  `FinishFrameRendering`, and reachable main-thread CPU work of which only ~1.4 ms is draw-call
+  submission. See "`render` decomposed — stage 5".
 - **`ScriptRunBehaviourLateUpdate`**: 1.64 ms with `playerLate` now only 0.275 of it — ~1.36 ms of
   other MonoBehaviour `LateUpdate` remains unattributed.
 - A magnified optic costs **~6.2 ms** (48 → 37 fps), ~94% of it render. Inherent to rendering a second
@@ -3372,3 +3467,35 @@ Worth keeping — several of these cost real time to learn.
   and that is the sharpest form of the rule: **review caught every defect that was still a proposal and
   caught none of the one already written down as settled.** Text that has been accepted stops being read as a
   claim. Re-audit a specification when the thing it specifies changes, not only when someone questions it.
+
+- **When a cut is adopted, restate every rate in the document under it — not only the one that prompted it.**
+  A magnitude cut of 1 ms was adopted for negative `unaccounted` and not applied to its twin `frame > period`,
+  and the twin then read 29.2% against a control's 15.8% and was reported as an unresolved regression. Under
+  the same cut it is **8.3% against 10.5%** — lower. **A cut applied to one measure and not its twin will
+  always look like the two measures disagreeing**, and the disagreement will be read as a finding about the
+  data rather than about the cut. The same shape one level up: a filter changed on one arm of a comparison to
+  "test robustness" is a different experiment, not a robustness check. **Change it on every arm, and state the
+  drop count per arm.**
+
+- **A general rule is not a countermeasure; a mechanical check is.** Five corrections in one day reproduced
+  the defect they were correcting, and the countermeasure proposed for it — *apply the rule you just derived
+  to the correction itself* — failed within the hour, applied by the person who proposed it. **A correction is
+  written at the moment its author believes they have just understood the error, which is the worst moment to
+  ask them to doubt it.** What worked instead was changing the artifact so the wrong state is unreachable:
+  renaming a config key when its meaning inverted so the persisted value goes inert, emitting `null` rather
+  than `0` where a type has no property, making an unsure frame report nothing rather than a number, reading a
+  log's threshold from its own header instead of taking a parameter. **Prefer the version that needs nobody to
+  remember anything.**
+
+- **A join tolerance that cannot resolve a frame is not a match criterion, and its failure flatters you.**
+  PresentMon rows were matched to spike lines by nearest `CPUStartQPC`, at a median alignment of 8.39 ms
+  against frame periods of 8–16 ms. It lands within tolerance and **on the neighbouring ordinary frame** — and
+  on a stall frame the neighbour is by definition ordinary, so the failure mode reads as *"the GPU was doing
+  ordinary work through the stall"*, which was the published conclusion. Re-derived under interval containment
+  the conclusion held, so nothing downstream moved; the method still had to change. **Match by containment of
+  the timestamp in `[CPUStartQPC, CPUStartQPC + FrameTime)`, never by nearest start.**
+
+  **One claim built on the old join is still outstanding.** The A-population frames (`frame < period/2`) were
+  reported as CPU-side stalls at `CPUBusy` 125–133 ms using a **neighbourhood-max** search over ±300 ms, which
+  on an A frame can select a nearby genuine stall instead. **That figure has not been re-derived under strict
+  containment and should not be relied on until it is.**

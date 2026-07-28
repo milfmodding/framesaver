@@ -1363,3 +1363,63 @@ root for the same purpose** (`Player.cs:28879`), which is better evidence than a
   rewrites it every launch and an mtime rule would fire permanently.
 - **Announce to the file's owner, not to whoever authorised the work.** An authorisation is not an
   announcement. And state **tree state and binary state separately** — they move independently.
+
+---
+
+## 2026-07-28 — Delta handover at context compaction
+
+Delta is the checking role: re-derive others' claims, propose alternative readings, and refuse to let a
+number carry more than it can. Written so the next Delta does not repeat work or re-open settled questions.
+
+### Verified clean — do not re-derive these
+
+Each was re-derived independently from the raw logs and reproduced **exactly**. Re-checking them is waste.
+
+| claim | status |
+|---|---|
+| stage-4 population: 36 collection frames, 22 / 1 / 13 attribution split | exact |
+| `unaccounted / period` bimodality, and the 92.2 / 120.1 mean pauses | exact |
+| Streets pooling: n=99, median 16.51 ms, 47 windows at or below 60 fps | exact |
+| `p50 = 13.25 + 0.402 × awake, r = 0.737` | exact |
+| the cross-instrument invariant `sum(SegGen0) <= Update gen0` | holds, both arms |
+| the 60 s artifact threshold, and the `asyncUpdate / period` rejection | both correct |
+| `endToStart` pairing: `endOfFrameFires` == `startOfFrameFires`, 28,677 each | zero drift |
+
+### Corrections I made that are committed, so they are not open questions
+
+The `render` write-off (it is the `PostLateUpdate` phase, provable from source); the Streets intercept
+(unidentified, and nine windows sit below it); "36 of 36" (true, but the inverse is a coin flip); the A/B
+axis being `frame` vs `period` rather than GC; and — **mine, withdrawn** — the mechanism I attached to
+`frame ≪ period`, and the timing half of the second-family identification.
+
+### Open, and only partly written down
+
+1. **The A population is unresolved.** Beta's split-`Update` mechanism explains it — a stall before
+   `Telemetry.Update()` puts `period` on one line and the `Update` total on the next — and is confirmed by
+   negative-residual lines carrying `Update` at 29–209 ms against an ordinary 4.27. **The time is real and
+   mis-attributed by one line; it is not a phantom.** What is *not* settled is whether the stage-4 residual
+   half is affected. **That check cannot run on existing logs** — see the N+1 limit in
+   [CORPUS.md](analysis/CORPUS.md); the discriminating line is ordinary and below every threshold used.
+2. **The PresentMon `CPUBusy` figure for A frames is not trustworthy** — neighbourhood-max join. Flagged in
+   the methodology notes; not re-derived.
+3. **`frameOverPeriodFrames` reading ~50% is diagnostic, not alarming.** 50.9% of 28,678 frames is a coin
+   flip, which is what two clocks measuring the *same* interval with symmetric sub-ms noise produce — so the
+   unfiltered counter is **evidence the clocks are aligned**. Do not report it as a defect rate. The
+   magnitude fields are still the right fix.
+4. **No window in either 2026-07-28 raid is positionally stable** — distance travelled runs 76–244 m per
+   window. A held-position A/B needs the player to stand still deliberately; it will not happen by chance.
+   `corr(distanceTravelled, p50)` is **−0.306** at n=9: distance is a **comparability filter, not a
+   predictor**, and the negative sign is exactly the kind of number someone will quote backwards.
+
+### The two things I would tell the next Delta
+
+**The role's advantage is structural, not personal.** A reviewer arrives already knowing what the work
+concluded, which is the cheapest possible position from which to check it. Three of this session's catches
+landed inside corrections other agents had written for earlier errors — and three of Delta's own claims were
+caught the same way by them. **Reading a run of catches as a scoreboard is the one thing that would stop this
+working**, because it makes the next reviewer reluctant to look foolish.
+
+**A day with this many defects cost zero runs because all of it was re-analysis against data already on
+disk.** That is an argument for the telemetry investment, not for anyone's carefulness. The moment a check
+costs a raid, the same defect rate is a different project — which is why a registered prediction goes in
+*before* an instrument first runs.
