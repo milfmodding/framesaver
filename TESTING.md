@@ -67,7 +67,9 @@ being written.** `render` is *by construction* the `PostLateUpdate` phase on the
 main-thread CPU work.
 
 **But the reachable *portion* is small.** `render = 5.27 + 0.000467 × drawCalls` on Streets — 0.47 µs per
-draw call, a normal single-threaded D3D11 submission cost, consistent with `graphicsMultiThreaded: false`.
+draw call — a measured slope. ~~consistent with `graphicsMultiThreaded: false`~~ **withdrawn**: SPT's
+launcher passes `-force-gfx-jobs native` on every raid, so the single-threading story is contested and the
+slope stands without it.
 Draw calls span 4.1× across 38 windows (1,141–4,648) while render spans only 5.63–7.81 ms, so **79% of
 Streets render is a constant that draw calls do not reach.** Eliminating submission entirely — impossible —
 buys ~1.4 ms of 6.6. Real, worth having, not a route to 100 fps.

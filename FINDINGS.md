@@ -272,8 +272,21 @@ render_ms = 5.264 + 0.000467 × drawCalls          (0.47 µs per draw call)
 extrapolation: `drawCalls` spans **1,141–4,648** across those windows — 4× — while `render` spans only
 **5.63–7.81 ms**. Eliminating submission entirely, which is impossible, buys **~1.4 ms of 6.6**.
 
-0.47 µs per draw call is a normal single-threaded D3D11 submission cost and `graphicsMultiThreaded` is
-false, so the mechanism is real and correctly sized. It is a fifth of the block, not the block.
+~~*0.47 µs per draw call is a normal single-threaded D3D11 submission cost and `graphicsMultiThreaded` is
+false, so the mechanism is real and correctly sized.*~~ **The corroboration is withdrawn 2026-07-28; the
+number is not.** SPT's launcher passes **`-force-gfx-jobs native`** on every raid's command line
+(`GameStarter.cs:140`), and `boot.config` sets `gfx-enable-native-gfx-jobs=1` independently — so graphics
+jobs are deliberately native on every log in this corpus, and *"submission is single-threaded, as the
+boolean says"* is no longer a story the evidence supports. `SystemInfo.graphicsMultiThreaded` reads
+**false** in `gpuDevice.multiThreaded` across the corpus, which now sits in **tension** with the launcher
+flag rather than confirming anything.
+
+**The slope needs no mechanism.** 0.47 µs per draw call is measured, and *"it is a fifth of the block, not
+the block"* follows from the spans above without any account of *why* submission costs what it does.
+[Protocol B](TESTING.md) is what tests the slope; the threading story was never the evidence
+and should not have been offered as support. **A plausible mechanism attached to a measured number makes
+the number feel better established than it is** — and this one attached to a boolean that BSG never
+branches on, which Beta had already flagged as descriptive rather than behavioural.
 
 **Two numbers to stop quoting until recomputed on a stated population.**
 [The draw-call note below](#gpu-side-telemetry--stage-3-2026-07-27) gives
@@ -697,7 +710,7 @@ n = 38.** The GPU-session subset (n = 22) is given where it differs.
 the model, bot count adds almost nothing. The regression is
 
 > `render = 5.266 + 0.000467 × drawCalls` — **0.47 µs per draw call**, a normal single-threaded D3D11
-> submission cost, consistent with `graphicsMultiThreaded: false`.
+> submission cost. ~~consistent with `graphicsMultiThreaded: false`~~ — **corroboration withdrawn**, the launcher forces `-force-gfx-jobs native`; see the stage-5 note.
 
 **But correlation is not share, and only share decides whether it is a lever.** Draw calls span **4.1×**
 across those windows (1,141–4,648) while `render` spans only **5.63–7.81 ms**. So **79% of Streets render is a
@@ -1440,7 +1453,7 @@ On 38 Streets windows carrying a `gpu.render` block, `corr(render, drawCalls) = 
 `awakeBots` partialled out** — so submission is not bot count in disguise. But correlation is not share:
 
 > `render = 5.266 + 0.000467 × drawCalls` — **0.47 µs per draw call**, a normal single-threaded D3D11
-> submission cost, consistent with `graphicsMultiThreaded: false`.
+> submission cost. ~~consistent with `graphicsMultiThreaded: false`~~ — **corroboration withdrawn**, the launcher forces `-force-gfx-jobs native`; see the stage-5 note.
 
 Draw calls span **4.1×** across those windows (1,141–4,648) while `render` spans only **5.63–7.81 ms**.
 **79% of Streets render is a constant draw calls do not reach.** Eliminating submission entirely — impossible
