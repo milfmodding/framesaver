@@ -104,6 +104,16 @@ phenomenon, or that a negative residual is meaningful. **Recovery: the affected 
 instrument — it tracks how often the `Update`-phase stall occurs, which moves with mod stack and map. The
 worst log in the corpus is `20260726-205307-ai-stack` at 11/35, era A, threshold 100.
 
+> **The limit of that recovery, and it is the reason the defect matters at all.** Self-identification finds
+> the **source** line and never the **destination**. The mechanism moves time from line N to line N+1: N is
+> large and carries the marker, **N+1 is ordinary and carries nothing**. So filtering on `frame > period`
+> leaves a reader holding a set of displaced-*from* lines and believing the corpus is clean, when the lines
+> the time landed *on* are indistinguishable from ordinary frames.
+>
+> Worse, **no magnitude threshold can select the destination**, because the defect makes it ordinary by
+> construction. That is why [nothing needing the frame after a spike is answerable](#what-this-corpus-cannot-answer)
+> anywhere in this corpus, and why the fix is a sampling-boundary change rather than a filter.
+
 **`gpu.vram` reads a string on the first window of each GPU-carrying log.** Initialisation, not failure.
 *Wrong conclusion:* that the `overBudget` regression guard is absent. **Recovery: skip window 0** — the field
 is live in 14 of 15 windows in the most recent log.
@@ -124,11 +134,60 @@ This cannot be recovered by any filter, and it is the single most-cited caveat i
 
 ---
 
+## What this corpus can answer
+
+Stated positively, because a document that is all caveats gets read as "unusable" and this corpus is not.
+
+- **Within-run phase attribution.** The eight top-level phases tile the frame and `sum(phases)` reconciles
+  against `frame` to 0.087 ms mean when clean. Era-C logs with all eight expanded also resolve *inside* a
+  phase.
+- **Where a spike's time went, when it went outside the player loop.** `endToStart` accounts for the
+  165–402 ms family to **±0.72 ms on 12 of 12** — but era C onward only, and only `20260728-*` in practice.
+- **GC coincidence in the forward direction.** `TimeUpdate`-dominant ⇒ a collection is **38 of 38 across four
+  runs**, and it touches neither `unaccounted` nor `frame`, so none of the clock defects reach it.
+- **Relative A/B within one log at fixed threshold and fixed position** — which is what every confirmed fix
+  in FINDINGS rests on.
+- **Bot population.** `awake + asleep` agrees with `agents.live` on **136 of 156** in-raid windows, the
+  disagreements being the teardown artifact and four registration lags. Filter `bots.total > 0`.
+- **`animCulled`, in raid 1 of any log.** Inflation is zero in every single-raid log and confined to raids 2+.
+
+## What this corpus cannot answer
+
+- **Anything requiring the frame *after* a spike.** Structural, not a sampling problem — see the limit note
+  above. Demonstrated: a check for a negative-residual line following each of the thirteen stage-4
+  residual+collection frames returned **0 of 13, because none of the thirteen has a consecutive line at all** —
+  the nearest is 2.9 to 31 seconds away. Reading that as a negative result is the error; the discriminating
+  line was below threshold and never written.
+- **Whether any cross-window comparison is location-confounded.** Position is in no log before `20260728-*`.
+  This is the largest single limitation and it invalidates nothing outright — it means every cross-window
+  number carries an unmeasured term rather than a wrong one.
+- **Rate comparisons across a threshold change.** `spikeEventMs` is 100 for every log except `20260728-*` at
+  30. Spike *counts* and *rates* do not join across that boundary; normalise to `period ≥ 100` first. This
+  caught two agents in one day.
+- **Absolute millisecond figures across maps.** Standing rule, and it now extends to attribution *ratios*:
+  Streets attributes 10 of 11 collection frames to a phase, Customs 13 of 25.
+- **Live set versus heap size.** `GC.GetTotalMemory(false)` reports heap-including-free-blocks, so every
+  heap-scaling regression in the corpus used the wrong column. Nothing here measures the live set.
+- **Per-collection pause cost inside a non-yielding span.** Three estimates have been withdrawn (895, 360,
+  65 ms). The corpus does not contain the measurement.
+
+---
+
 ## Re-deriving the numbers
 
 `analysis/delta-rederive.py` is a dependency-free second implementation of the derivations behind the headline
-findings, written independently of the analysis it checks. It encodes **era-C, 100 ms-threshold** assumptions;
-pass the threshold explicitly before running it against a 30 ms log.
+findings, written independently of the analysis it checks — the concrete answer to *"how do you check a number
+you cannot re-derive by hand"*. Every figure it prints has two implementations behind it.
+
+**What it assumes, stated so a wrong reading is loud rather than plausible.** It hard-codes the **60 s
+artifact cut** (`ARTIFACT_MS`) and the **0.5 ms phase-emit floor** (`PHASE_EMIT_FLOOR`), both era-C facts, and
+it takes **no threshold parameter at all** — it pools every log it finds. That is correct for the era-A/B
+corpus at a uniform 100 ms and **wrong the moment a 30 ms log is in the directory**, which is now true. Until
+a threshold argument is added, its cross-log rates silently mix the two populations — the same defect it was
+written to catch. **Its within-log outputs are unaffected.**
+
+`analysis/ticker-manifest.json` lists the 759 `Assembly-CSharp` types that receive a per-frame Unity message,
+transitively closed over base types — 585 declaring one directly and 174 inheriting without overriding.
 
 `analysis/ticker-manifest.json` lists the 759 `Assembly-CSharp` types that receive a per-frame Unity message,
 transitively closed over base types — 585 declaring one directly and 174 inheriting without overriding.
