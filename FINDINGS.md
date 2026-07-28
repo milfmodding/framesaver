@@ -288,6 +288,46 @@ and should not have been offered as support. **A plausible mechanism attached to
 the number feel better established than it is** — and this one attached to a boolean that BSG never
 branches on, which Beta had already flagged as descriptive rather than behavioural.
 
+#### Resolved 2026-07-28 by Unity's own log — the device is threaded, and `graphicsMultiThreaded` does not mean what its name says
+
+Three layers of inference about graphics threading were settled by two lines that were on disk the whole
+time, in `%LOCALAPPDATA%Low\Battlestate Games\EscapeFromTarkov\Player.log`:
+
+```
+GfxDevice: creating device client; threaded=1; jobified=1
+...
+Skipped command line argument:-force-gfx-jobs
+Skipped command line argument:native
+```
+
+Both present in `Player.log` **and** `Player-prev.log`, so this is not one session.
+
+| claim | status |
+|---|---|
+| The launcher passes `-force-gfx-jobs native` (`GameStarter.cs:140`) | **true** |
+| …therefore native graphics jobs are forced on | **false — Unity reports the argument *skipped*, twice per session** |
+| `boot.config` sets `gfx-enable-gfx-jobs=1` and `gfx-enable-native-gfx-jobs=1` | **true, and it is what actually takes effect** |
+| `gfx-disable-mt-rendering` is absent, therefore MT rendering is on | right conclusion, **inference from absence** — now replaced by a positive reading |
+| `SystemInfo.graphicsMultiThreaded` reads `false`, 5 logs of 5 | **true, and it contradicts the device** |
+
+**The device is created `threaded=1; jobified=1` while the property reads `false`.** So on this build
+`SystemInfo.graphicsMultiThreaded` is not a report of whether rendering is threaded, and no argument built
+on it can stand — which is a stronger reason to have withdrawn it than "the launcher flag contradicts it",
+since the launcher flag turns out to be inert.
+
+**Consequence for the draw-call slope: the mechanism is refuted, not merely unsupported.** *"0.47 µs is a
+normal single-threaded D3D11 submission cost"* asserted single-threaded submission on a device Unity says
+is threaded and jobified. **The slope is unaffected** — it is a measurement, and
+[Protocol B](TESTING.md) is what tests it — but the explanation offered for it was wrong rather than
+merely surplus.
+
+**Method note, because the route matters more than the answer.** This question survived three rounds
+because everyone reasoned from artifacts they could read *about* the game — the launcher source, the
+config file, a `SystemInfo` property — and nobody read **the engine's own account of what it did at
+startup.** `strings` on the launcher bundle returned nothing; the source answered where the flag was
+*sent*; only `Player.log` says whether it was *accepted*. **Prefer the log of the thing that acted over
+any artifact describing what it was told to do.**
+
 **Two numbers to stop quoting until recomputed on a stated population.**
 [The draw-call note below](#gpu-side-telemetry--stage-3-2026-07-27) gives
 `corr(drawCalls, p50) = +0.06` and `corr(awakeBots, drawCalls) = +0.74`. **Neither reproduces on any window
