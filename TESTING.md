@@ -710,14 +710,27 @@ Sequence, for a knob with a baseline and a test value:
 | step | what | duration |
 |---|---|---|
 | 1 | reach the spot, settle on the aim point, **stop moving** | — |
-| 2 | **arm 1**, knob at baseline | **4 min** |
+| 2 | **arm 1**, knob at baseline | **5 min** |
 | 3 | open F12, change the knob, close it — **without moving the feet** | ~15 s |
-| 4 | **arm 2**, knob at test value | **4 min** |
+| 4 | **arm 2**, knob at test value | **5 min** |
 | 5 | revert the knob the same way | ~15 s |
-| 6 | **arm 3**, back at baseline | **4 min** |
+| 6 | **arm 3**, back at baseline | **5 min** |
 
-Windows are 60 s, so three minutes gives three windows per arm and you **discard the first one of each**.
-Two reasons, and both are silent if ignored:
+**Five minutes here where Protocol B has four, and the extra minute buys back the discard.** Windows are
+60 s, so you **discard the first window of each arm** — and that discard is not a duplicate of the
+containment arithmetic, it is how you *identify* the window containment excludes. `cfg` is stamped when
+the line is written, so the straddling window is labelled with the **new** arm and nothing else
+distinguishes it. Positional rule, because no field marks it.
+
+Four-minute arms then leave **two** usable windows in the worst case — the near-aligned case, where there
+is barely a straddler and the discard removes a nearly clean window — and two is what this document
+already declares insufficient twenty lines below. **Five-minute arms guarantee three after the discard.**
+
+Arm 1 has no preceding knob change and does not strictly need the extra minute. It gets it anyway:
+**a procedure with per-arm durations is a procedure someone executes wrong at minute eleven.**
+
+So Protocol A is **fifteen minutes** plus the two changes; Protocol B stays at twelve. Two reasons for the
+discard, both silent if ignored:
 
 - **A knob changed mid-window lands in a window that reports the new value on a line whose frames are
   mostly from the old arm.** `cfg` is stamped when the line is written. The contaminated window is
@@ -725,7 +738,7 @@ Two reasons, and both are silent if ignored:
 - **The F12 overlay is a large IMGUI draw**, so the window you open it in has extra render and UI cost that
   belongs to neither arm.
 
-Arm 3 is not optional. It is the only thing that separates a knob effect from a drift over twelve minutes —
+Arm 3 is not optional. It is the only thing that separates a knob effect from a drift over a quarter of an hour —
 heat, a bot wave arriving, the collector's heap growing. If arm 3 does not return to arm 1, **the run
 measured time, not the knob**, whatever arm 2 showed.
 
@@ -733,7 +746,7 @@ measured time, not the knob**, whatever arm 2 showed.
 
 The render decomposition rests on `render = 5.266 + 0.000467 × drawCalls` fitted across 38 windows in which
 **both the position and the view were changing**. That is an observational slope and the caveat travels
-with it. This replaces it with an intervention, at the same spot, in five minutes:
+with it. This replaces it with an intervention, at the same spot, in twelve minutes:
 
 | step | what | duration |
 |---|---|---|
@@ -815,8 +828,11 @@ when you start standing still. So an arm beginning at an arbitrary offset into a
 | **4 min** | **3** | 4 |
 
 Three minutes was written as "three windows per arm" and guarantees only two. **Four minutes guarantees
-three**, which is what the gate and the spread both assume. Protocol B is therefore **twelve minutes**, and
-Protocol A the same plus the two knob changes.
+three**, which is what the gate and the spread both assume, so **Protocol B is twelve minutes**.
+
+**Protocol A needs five-minute arms rather than four**, because it discards the first window of each arm to
+remove the one the knob change straddles — and four minutes minus that discard is two again. Fifteen
+minutes plus the changes. The reasoning is with its own step table above.
 
 **The straddling windows are not a loss that needs managing — they are self-excluding.** A window spanning
 the turn contains *both* views, so its `drawCalls.max ÷ .avg` blows past 1.15 and the view-held criterion
@@ -867,7 +883,7 @@ upper bound on what one position can swing, not an expectation, because it aggre
 
 **Arm 3 is a replication, not a formality, and it is a stronger control than `bots.awake`.** Both protocols
 already end by returning to the starting condition, so the comparison is free — and if arm 3 does not
-reproduce arm 1, something drifted over the twelve minutes whatever the bot count says. Heat, a wave
+reproduce arm 1, something drifted over the whole run whatever the bot count says. Heat, a wave
 arriving, the heap growing. **A result that survives arm 1 vs arm 2 but fails arm 1 vs arm 3 measured
 time, not the variable**, and no other criterion here can see that.
 

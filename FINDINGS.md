@@ -3541,7 +3541,16 @@ Worth keeping — several of these cost real time to learn.
   floors and pass criteria while the one number a person actually executes — how long to stand still —
   went unexamined, because it was in the first draft and nothing since had reason to touch it.
   **Attention follows the diff.** The countermeasure is not a rule but a pass: read the artifact end to
-  end as a *user* rather than as a reviewer, once, after the last change.
+  end as a *user* rather than as a reviewer, once, after the last change — **and in execution order, not
+  file order.** Alpha's sharpening, and it is the operative half: the pass found a stale sentence sitting
+  directly beneath the corrected table it contradicted, and that sentence only reveals itself as wrong
+  once you have already read and accepted the table above it. A reviewer scanning the file would take
+  them in either order and notice nothing.
+- **Text that looks live and is not.** The stale sentence beside the corrected table is the same failure
+  as the orphaned `Expand phase` key beside the live one, the dead `proc` field, the any-phase marker
+  guard and the validator's false pass. In both document cases **the correct value was present in the same
+  file, a few lines away** — so proximity is not the protection it looks like, and a reader resolves the
+  contradiction in whichever direction they were already leaning.
 - **Do not write "never" about something that has an artifact.** *"The pre-fix magnitude distribution can
   never be collected"* survived about an hour: three pre-latch builds carry the fields and are attributable
   to commits whose trees were checked. A durable wrong statement in the *closing* direction is worse than
