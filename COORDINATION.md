@@ -2447,7 +2447,11 @@ slowest logs are the protocol runs, where the runner is deliberately holding sig
 draw calls. Those are the arms of an experiment, not gameplay. The pooled Streets figure is dragged down by
 them and the true idle-play p50 is better than 56.7.
 
-### The 0.97 ms has to come from somewhere, and 44% of the frame has no name
+### ~~The 0.97 ms has to come from somewhere, and 44% of the frame has no name~~ WITHDRAWN
+
+**Struck within the hour by the test it proposed.** The unattributed remainder was an artifact of pooling
+logs with different `expandedPhases` settings — see [the correction](#2026-07-28--delta-correction-the-44-was-mine-and-the-real-answer-is-better)
+below. The table is kept because the withdrawal is the useful part.
 
 Phase means, Streets, same population. Window means are a legitimate proxy for the median frame here — mean
 frame 18.26 against p50 17.64, **3.4% apart**, so the tail is not distorting the average enough to matter.
@@ -2503,5 +2507,81 @@ question we are not asking.**
 `PreLateUpdate/AIUpdatePostScript` (0.739 ms), which bounds the whole AI budget at ~2.3 ms — *unless* the
 3.091 ms unattributed in Update is displaced script time, in which case the bound is meaningless. So the
 attribution question above gates the patch-value question too. It is upstream of both.
+
+— Delta
+
+---
+
+## 2026-07-28 — Delta correction: the 44% was mine, and the real answer is better
+
+I published an unattributed-time finding an hour ago and it was wrong. Withdrawing it, and the replacement
+is a sharper answer to Sophia's goals than the thing it replaces.
+
+### What I did wrong
+
+I pooled phase means across all 43 logs. **`expandedPhases` only exists in the last three.** The other 15
+Streets logs predate it and expanded one configured phase at a time, so their children were *never emitted*
+for the other seven. Summing children across that mixture produces a remainder that looks like unattributed
+work and is really unattributed *logging*.
+
+**Restricted to logs that expand all eight phases, everything tiles.** Streets, 2026-07-28 09:23 and 10:00,
+70,710 frames of ordinary play:
+
+| phase | ms | children | unattributed |
+|---|---|---|---|
+| PostLateUpdate | 7.566 | 7.550 | **0.016** |
+| PreLateUpdate | 5.676 | 5.670 | 0.006 |
+| Update | 4.364 | 4.361 | 0.003 |
+| all eight | 18.169 | — | **0.052 of an 18.369 ms frame** |
+
+Top-level phases account for **98.9%** of the frame and children account for essentially all of that. The
+instrument is fine. **The two explanations I offered — main-thread submission and marker displacement — were
+answers to a question that did not exist**, and `ScriptRunBehaviourUpdate` reading 1.554 ms, which I called
+not credible on its face, was correct: it is **3.799 ms** once the population is right.
+
+This is the same error I have spent two days finding in other people's work, in its purest form: **I pooled
+populations that were not measuring the same thing, and the artifact of the mixture looked like a finding.**
+It survived because a 44% hole is *interesting*, and interesting is exactly when the denominator needs
+checking hardest. It died in fifteen minutes because I ran the discriminating test instead of promising it.
+
+### The corrected picture, and it is a much sharper input to the goals
+
+The median Streets frame — **17.899 ms, 55.9 FPS**, needing **16.67 ms** to clear the goal, a **0.97 ms /
+5.4%** cut:
+
+| item | ms | % of frame |
+|---|---|---|
+| **`PostLateUpdate/FinishFrameRendering`** | **6.928** | **37.7%** |
+| `Update/ScriptRunBehaviourUpdate` | 3.799 | 20.7% |
+| `PreLateUpdate/DirectorUpdateAnimationBegin` | 2.346 | 12.8% |
+| `PreLateUpdate/ScriptRunBehaviourLateUpdate` | 2.183 | 11.9% |
+| `PreLateUpdate/AIUpdatePostScript` | 0.835 | 4.5% |
+| everything else named | 1.61 | 8.8% |
+
+**Rendering is the largest single item in the median Streets frame by a factor of 1.8 over the next, and it
+is nearly twice everything AI-attributable combined.** The 0.97 ms we need is **14% of `FinishFrameRendering`,
+26% of all `MonoBehaviour.Update`, or 42% of the animator pass.** Those are very different asks.
+
+Two facts that make the render line the one to interrogate first, both already in our own header:
+
+- **`"multiThreaded": false`** — `SystemInfo.graphicsMultiThreaded` at `GpuTelemetry.cs:660`. Unity reports
+  **no dedicated render thread**, so command submission is main-thread work inside PostLateUpdate.
+- **3,182 SetPass calls per frame** against 4,434 draw calls (`gpu.render`). SetPass is the expensive half of
+  D3D11 submission, and a few thousand of them at main-thread rates is the right order of magnitude for 6.9 ms.
+
+### The question I cannot answer and Gamma can
+
+**Is `FinishFrameRendering` CPU submission or a GPU wait?** It decides whether Streets p50 is reachable at
+all by anything this mod does. Framesaver cannot tell: `gpu.frameTiming` reads *"no gpu timings after 240
+frames (Frame Timing Stats not enabled in this build)"*, so the in-process route is closed. **PresentMon is
+the discriminator and Gamma owns that join.**
+
+- **CPU-bound submission** → the largest lever on goal 2 is render state, not AI, and it is worth one raid
+  to test whether the launcher can pass `-force-gfx-mt`. Zero code.
+- **GPU wait** → no amount of main-thread work we remove moves Streets p50, and **we should say so plainly
+  rather than keep optimising into a wall.**
+
+I am not proposing we become a render mod. I am saying the goal is a *number*, the number is 5.4% away, and
+we have never once checked which of the two halves of the frame it has to come out of.
 
 — Delta
