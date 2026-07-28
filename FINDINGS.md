@@ -3220,14 +3220,33 @@ predictions are about.
 > | 4–5, `negResidual*` | **moot.** Post-latch the count is 0 by construction, so there is no distribution to have a mean of |
 > | **the confirming conjunction** | **cannot be evaluated.** It needs row 5 |
 >
-> **So the split-`Update` account will not be confirmed or refuted by magnitude, and the pre-fix magnitude
-> distribution can never be collected** — the fix removes the thing it would have measured. Stated here
-> rather than discovered afterwards, because the tempting move later is to read tonight's `frameOverPeriod`
-> magnitudes as though they spoke to the residual account. They do not; they are a different counter.
+> **So the split-`Update` account will not be confirmed or refuted by magnitude on tonight's log.** Stated
+> here rather than discovered afterwards, because the tempting move later is to read tonight's
+> `frameOverPeriod` magnitudes as though they spoke to the residual account. They do not; they are a
+> different counter.
 >
-> **This is not worth a raid to recover.** The account is better tested by registration 2's A-family table,
-> which compares *shape* against the existing corpus rather than magnitude against a baseline that was
-> never taken. Recording the loss is worth more than spending a run on it.
+> ~~*The pre-fix magnitude distribution can never be collected — the fix removes the thing it would have
+> measured.*~~ **False, and corrected by Alpha the same hour it was written.** Three pre-latch artifacts
+> carry both magnitude fields, and unlike `403b1aeb` each is attributable to a commit whose *committed
+> tree* contains exactly the expected code — verified by reading the source at each stamp, not the binary:
+>
+> | artifact | stamp | `WorstMs` / `SumMs` | latch |
+> |---|---|---|---|
+> | `85db183d` | `87d0d77` | present | absent |
+> | `85742532` | `25ae53f` | present | absent |
+> | `59b50d6c` | `301c69f` | present | absent |
+>
+> **Recovery path: deploy the `85db183d` artifact, or rebuild from `87d0d77`, and fly one raid.** Ten
+> minutes of setup. One caveat that does not block it — none of the three carries `clockResidualFrames`, so
+> *rates* off such a run are confounded exactly as the amendment above describes. **The conditional means
+> are not**, and those are the registered load-bearing quantity.
+>
+> **Deferred, not impossible.** Not worth a raid *now*: it costs a run Sophia has to fly, it tests a
+> mechanism item 4 has already fixed, and registration 2's A-family comparison tests the same account
+> against the existing corpus at zero raid cost. But **"can never be collected" closes a door that is
+> open**, and a future reader declining to attempt something because a document called it impossible is the
+> same failure as [the `frame > period` entry that read "no build-related
+> trend"](analysis/CORPUS.md) — recorded that morning, corrected that afternoon.
 
 | field | predicted | why |
 |---|---|---|
@@ -3513,6 +3532,21 @@ result, and it is the one a reader eager for a clean story will expect.
 ## Methodology notes
 
 Worth keeping — several of these cost real time to learn.
+
+- **A document amended five times needs a read-through, and nothing prompts one.** Every review this
+  project ran followed the diff: each round scrutinised what had just changed and nothing else. That is
+  how the registration tables accumulated three denominator errors — all introduced by amendment, none
+  present originally, and none changing a *prediction* while all three changed a **computation** by anyone
+  applying the table literally. It is also how a protocol went through five revisions of its gates,
+  floors and pass criteria while the one number a person actually executes — how long to stand still —
+  went unexamined, because it was in the first draft and nothing since had reason to touch it.
+  **Attention follows the diff.** The countermeasure is not a rule but a pass: read the artifact end to
+  end as a *user* rather than as a reviewer, once, after the last change.
+- **Do not write "never" about something that has an artifact.** *"The pre-fix magnitude distribution can
+  never be collected"* survived about an hour: three pre-latch builds carry the fields and are attributable
+  to commits whose trees were checked. A durable wrong statement in the *closing* direction is worse than
+  one in the open direction, because it retires a question instead of inviting a re-check — this document
+  has already produced two, and both were caught by someone else rather than by the author.
 
 - **Unity's deep profiler systematically misleads here.** It instruments every managed call, inflating
   managed-call-heavy code (a recursive graph search) while Unity-native work (animation, culling,
