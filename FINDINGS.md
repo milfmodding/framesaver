@@ -1018,11 +1018,22 @@ The thirteen are still collections — raid 2 runs one collection per 2,629 fram
 twenty-five frames is enriched by three orders of magnitude. **The defect is not correctness, it is that
 "36 of 36" reads as "the residual bucket is accounted for", and half of it is not.**
 
-**The twelve are the open second family, not a new one.** Nine of twelve sit at `raidElapsed` 1.1–82.7 s with
-`TimeUpdate` absent on all twelve — which is [stage 1's description](#timeupdate--a-spike-family-that-is-not-ours--wrong-it-is-garbage-collection)
-of it verbatim: *"150–350 ms spikes confined to the first minute or two of a raid, with `TimeUpdate` at zero."*
-Two independent signatures identifying the same population four days apart. **The remaining three sit at 430.1,
-431.0 and 721.7 s and that framing does not cover them** — call it out rather than round it off.
+**The twelve are the open second family, not a new one.** `TimeUpdate` is absent on all twelve, which is the
+surviving half of [stage 1's description](#timeupdate--a-spike-family-that-is-not-ours--wrong-it-is-garbage-collection)
+— *"…with `TimeUpdate` at zero"*. Two independent signatures identifying the same population four days apart.
+
+~~Nine of twelve sit at `raidElapsed` 1.1–82.7 s, which is stage 1's "confined to the first minute or two"
+verbatim. The remaining three sit at 430.1, 431.0 and 721.7 s and that framing does not cover them.~~
+**The timing half is withdrawn 2026-07-28 along with the stage-1 phrasing it was agreeing with.** Nine of
+twelve was already only 75%; pooled across the corpus under the threshold and magnitude normalisations the
+family is **49 frames with 22 inside the first 120 s — 45%** — and `raidElapsed` runs to **742 s**. So the
+timing was never a signature, and it looked like one because a 12-frame sample from one raid happened to
+cluster. **`TimeUpdate` absence is the signature; when it occurs is not.**
+
+Worth recording as its own small lesson: I cited the timing agreement as *"two independent signatures"*
+alongside the `TimeUpdate` one. It was one signature and one coincidence, and the tell was available at the
+time — I called out the three late frames as *"not covered by that framing"* in the same sentence, which is a
+75% hit rate being reported as a match.
 
 PresentMon says they are real and CPU-side, joined by containment: `CPUBusy` median **203.2 ms**, `GPUBusy`
 median 6.50 against a capture p50 of 6.19, `asyncUpdate` 0.001 and `drained` 0 on every one. So the largest
