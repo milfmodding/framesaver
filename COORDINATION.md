@@ -2416,3 +2416,92 @@ into my commit; a BOM added to a file bound for a public repo; a backtick in a c
 and left a stray file in the tree. Three of the four were caught by looking at output I had no reason to
 expect to be interesting — a grep run alongside, a `git diff`, a `git status`. **The role's advantage is
 structural and it does not transfer to your own work.** Budget for that.
+
+---
+
+## 2026-07-28 — Delta: where we actually stand against the three goals
+
+Sophia restated the release gate as three numbers, so I measured us against them before anything else. This
+is a scoreboard, not a finding — every figure below is pooled over the whole corpus and confounded by map
+position, bot count and build. **It is accurate enough to decide what to work on and not accurate enough to
+quote.**
+
+### The scoreboard
+
+Frame-weighted over every in-raid window in all 43 logs, from `framePct` — the instrument already emits the
+top-line metric, which is worth saying because I assumed it did not and checked.
+
+| map | frames | p50 ms | **p50 FPS** | goal | gap | p95 | p99 | p999 |
+|---|---|---|---|---|---|---|---|---|
+| Streets | 513,045 | 17.64 | **56.7** | 60 | **−3.3** | 23.10 | 27.62 | 85.12 |
+| Customs | 153,178 | 9.97 | **100.3** | 100 | **+0.3** | 14.21 | 17.73 | 51.81 |
+| Interchange | 42,881 | 9.82 | **101.9** | 100 | **+1.9** | 13.63 | 17.45 | 28.65 |
+| Factory | 79,792 | 7.49 | **133.5** | 100 | **+33.5** | 9.00 | 11.68 | 35.09 |
+
+**Two of the three goals are already met, and the third is 0.97 ms away.** Streets needs 17.64 → 16.67 ms.
+That is a smaller number than most single line items in the frame, which makes the target credible and makes
+*which* millisecond we go after the whole question.
+
+**Do not read the per-log Streets series as a trend.** It runs 74.4 FPS down to 43.4 across two days, and the
+slowest logs are the protocol runs, where the runner is deliberately holding sightlines chosen to maximise
+draw calls. Those are the arms of an experiment, not gameplay. The pooled Streets figure is dragged down by
+them and the true idle-play p50 is better than 56.7.
+
+### The 0.97 ms has to come from somewhere, and 44% of the frame has no name
+
+Phase means, Streets, same population. Window means are a legitimate proxy for the median frame here — mean
+frame 18.26 against p50 17.64, **3.4% apart**, so the tail is not distorting the average enough to matter.
+
+| top-level phase | ms | named children | **unattributed** | % of frame |
+|---|---|---|---|---|
+| PostLateUpdate | 6.885 | 2.319 | **4.566** | 25.0% |
+| Update | 4.827 | 1.735 | **3.091** | 16.9% |
+| PreLateUpdate | 5.775 | 5.769 | 0.006 | 0.0% |
+| everything else | 0.587 | 0.197 | 0.390 | 2.1% |
+
+**PreLateUpdate is the control and it is why this is a finding rather than a known limitation.** The same
+instrument on the same lines tiles that phase to its children within **0.006 ms** — six microseconds over
+513,045 frames. So the profiler demonstrably *can* account for a phase completely. It does not do so for the
+two largest ones, and **8.05 ms of the 18.26 ms median Streets frame is unnamed.**
+
+Two explanations, and they need opposite responses:
+
+1. **Real work in subsystems we never wrapped** — most likely main-thread render submission. The header
+   reads `"multiThreaded": false` (`SystemInfo.graphicsMultiThreaded`, `GpuTelemetry.cs:660`), meaning Unity
+   has **no dedicated render thread**, so command submission runs on the main thread inside PostLateUpdate.
+   That is consistent in size with Protocol B's own slope: 0.000467 ms/draw call fitted, ×1.56–2.25, against
+   Streets draw calls in the thousands, lands squarely on 4.6 ms.
+2. **Marker displacement** — the game rewrites a phase at raid load and our child markers are lost while the
+   parent's survives, so the child's time falls into the parent's remainder. `MarkersPresent()` and the
+   reinstall cadence are already known to interact badly, and `Update/ScriptRunBehaviourUpdate` reading
+   **1.554 ms for every `MonoBehaviour.Update` in Tarkov** is not credible on its face. That is the shape
+   this explanation predicts.
+
+**They are distinguishable and it is cheap:** explanation 2 predicts the unattributed fraction *changes at a
+reinstall*, and 1 predicts it is flat across the raid and scales with draw calls. One existing log answers it
+with no new build and no new raid. I will run it.
+
+### Goal alignment of what is currently on the board
+
+Called as Sophia asked, including where the answer flatters work I have spent the last day attacking.
+
+| work | goal it serves | honest standing |
+|---|---|---|
+| **Protocol B draw-call slope** | **1 and 2 — p50, directly** | The most goal-relevant thing anyone is doing. It is measuring the scaling of the largest phase in the median frame. It has been framed as instrument characterisation; it is not |
+| boundary latch, `endToLatch`, spike attribution | 3 | Legitimate. Streets p999 is 85 ms, so ~1 frame in 1,000 is a visible hitch. But it is **goal 3 only** and it has had most of two days |
+| `presetBatch` PR | 3 | Real (9.0× on one callback) and its **frequency is deliberately unquantified**, so its contribution to goal 3 is unknown in size. That was the right call for the PR and it is a gap for the goal |
+| Protocol A GC-slice trade | 3 | Correctly dropped — p = 0.115 / 0.074 per event |
+| `RemoveUsedBotProfilePatch` | none | Settled inert. Closed |
+| stand-by / brain slicing / animator patches | 1 and 2 | The mod's actual product. **Nobody has measured what they are worth in p50 ms**, on any map, since the goals were stated |
+
+**The gap I would flag hardest:** the last row. Framesaver ships patches whose entire purpose is goals 1 and 2,
+and the corpus contains no on/off comparison of them against `framePct.p50`. Every arm we have run for two
+days has varied telemetry design or GC knobs, not the patches. **We are extremely well instrumented for a
+question we are not asking.**
+
+**And a caveat on my own scoreboard:** AI work lives in `Update/ScriptRunBehaviourUpdate` (1.554 ms) and
+`PreLateUpdate/AIUpdatePostScript` (0.739 ms), which bounds the whole AI budget at ~2.3 ms — *unless* the
+3.091 ms unattributed in Update is displaced script time, in which case the bound is meaningless. So the
+attribution question above gates the patch-value question too. It is upstream of both.
+
+— Delta
