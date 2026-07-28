@@ -2940,11 +2940,19 @@ Worth keeping — several of these cost real time to learn.
   sampler itself** against the known replicate spread before trusting a trace.
 
   **Generalised 2026-07-28 on a second instance, which is what makes it a rule rather than a story about a
-  sampler.** Expanding every player-loop phase adds ~140–200 timer reads per frame, and those reads are
-  charged **inside the top-level phase totals they report** — so `render` gains 3.5–5 µs across the expansion
-  boundary, a real and reproducible increase that is entirely the instrument. Different instrument, same
-  property: the sampler's cost would have *lengthened the span it measured*; the profiler's lands *inside the
-  number it produces*. Both biased toward the effect being hunted.
+  sampler.** Expanding every player-loop phase charges the profiler's own timer reads **inside the top-level
+  phase totals they report** — so `render` gains across the expansion boundary, a real and reproducible
+  increase that is entirely the instrument. Different instrument, same property: the sampler's cost would have
+  *lengthened the span it measured*; the profiler's lands *inside the number it produces*. Both biased toward
+  the effect being hunted.
+
+  **The first version of this paragraph understated that cost by 3×, in the direction the paragraph warns
+  about.** It said "~140–200 reads, 3.5–5 µs", extrapolated from one expanded phase. The `Install()` line then
+  reported **145 slots**, and each slot's Begin and End each read `Stopwatch.GetTimestamp()` *and*
+  `GC.CollectionCount(0)` — so **580 reads per frame, ~14.5 µs, 0.088% of a 16.5 ms frame.** Still negligible,
+  and three times what was written into a note about instruments understating themselves. **Estimating an
+  instrument's cost is subject to the same bias as the measurement it perturbs**; the `Install()` count was
+  available for free and neither estimate waited for it.
 
   > Before trusting an instrument, ask **where its own cost is charged.** If the answer is "inside the number
   > it produces", the bias has a direction — and the direction is usually toward the effect being looked for.
@@ -3114,6 +3122,26 @@ Worth keeping — several of these cost real time to learn.
   **So the thing worth keeping is not any individual catch: it is that nobody defended a number once it was
   checked.** That is what made a day with this many defects cost zero runs, and it is the only part of the
   practice that has to survive contact with being wrong in public.
+
+  **Addendum, 2026-07-28: a name match is not a code-path match, and the counterexample was in this
+  document's own opening.** Fixing the census's missing weapon took three source reads and all three were
+  wrong. Beta merged two lines that each contained the words being looked for. Then Gamma proposed rooting the
+  census on `HandsControllerClass`, citing line 718 where `BaseSoundPlayer` is fetched from the controller's
+  own `gameObject` — true of that class, which **our bots never instantiate.** `HandsControllerClass` is the
+  `ObservedPlayerView` path; SPT bots are `LocalPlayer` and use `Player.AbstractHandsController`.
+
+  **The verification and the citation were about different classes with similar names.** Checking
+  *"is `AbstractHandsController` a `MonoBehaviour`?"* — yes — and then quoting a line from
+  `HandsControllerClass` felt like one check because the names blur. The proposed root was also
+  `player.gameObject` by another route, since the controller is `AddComponent`'d onto the player, so it would
+  have enumerated the subtree already covered, grown the census by the controller's own components, and
+  **looked like a fix.**
+
+  **[The architectural cause](#the-architectural-cause) section states the distinction that would have caught
+  it** — bots are `LocalPlayer` where live EFT uses `ObservedPlayerView`. It is arguably this investigation's
+  most load-bearing structural fact, and it did not fire when the two representations' class names appeared
+  side by side. **A document knowing something is not the same as it being applied**, which is the same
+  distance as a label knowing a qualifier and a reader dropping it.
 
   **And the honest reason it was cheap is the corpus, not the care** (Delta, 2026-07-28). Every catch above
   landed on data already on disk — fifteen ndjson logs and three PresentMon captures, re-derived as many times
