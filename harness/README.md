@@ -96,3 +96,40 @@ A server left running headless after a crashed harness is the thing this is for.
 If the harness itself is killed hard enough to skip `finally`, check for a stray
 `SPT.Server` before the next run — the pre-flight check will also refuse to
 start while one is up.
+
+## The precondition gate
+
+`harness/registrations.json` holds registered predictions whose stated
+dependencies the harness checks. **A raid does not start while one is
+unresolved.**
+
+This exists because of one specific failure. A registration in FINDINGS.md said
+of itself:
+
+> *"If item 4 also latches `endToStart` at the boundary, the alignment changes
+> and this needs re-deriving **before** the raid, not after. Beta owns that
+> decision and has been asked."*
+
+Item 4 shipped. The raid ran. It was not re-derived, and a 324 ms disagreement
+arrived looking exactly like the refutation of a headline. **Nobody forgot** —
+the precondition was written, assigned, and readable. It failed because nothing
+in the path from registration to GO had to look at it.
+
+**The default is the design, not the gate.** `precondition` is `unresolved`
+unless someone says otherwise, and a *missing* field counts as unresolved too.
+Silence blocks rather than passes. Any scheme that needs someone to declare a
+dependency in a structured field fails the same way the rules that failed on
+2026-07-28 did — staging by path, announcing the file, checking the diff — each
+precise, each requiring an act nobody was forced to take.
+
+Resolving is explicit and attributed: set `precondition` to `resolved` and fill
+`resolvedBy`. **Resolved by nobody is not resolved** and blocks as well. A false
+block costs a line of typing; a false pass costs a raid.
+
+### What it does not cover, stated in its own output
+
+Most registrations are prose in FINDINGS.md and this gate cannot see them. It
+prints how many `Registered` mentions exist there against how many are
+structured here, and warns that the difference is unchecked — because a check
+that appears to cover more than it does is the failure family the whole gate
+came out of.

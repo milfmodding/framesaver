@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "Registered predictions whose preconditions the harness checks before GO.",
+    "",
+    "Gamma's design, and the default is the whole point: `precondition` is",
+    "`unresolved` unless someone says otherwise, and a missing field counts as",
+    "unresolved too. Silence blocks rather than passes. Any scheme that needs",
+    "someone to *declare* a dependency fails the same way the ones that failed",
+    "on 2026-07-28 did - staging by path, announcing the file, checking the",
+    "diff - because declaring is the step that gets skipped.",
+    "",
+    "Resolving one is an explicit act with a name on it: set `precondition` to",
+    "`resolved`, and fill `resolvedBy` and `resolvedNote`. A false block costs",
+    "a line of typing; a false pass costs a raid.",
+    "",
+    "This file cannot cover registrations that live only as prose in",
+    "FINDINGS.md. The gate counts those and says how many it did not check,",
+    "because a check that appears to cover more than it does is the failure",
+    "family this whole exercise came out of."
+  ],
+  "registrations": [
+    {
+      "id": "endtostart-identity",
+      "claim": "unaccounted[N] ~= endToStart[N] - TimeUpdate[N+1] - Initialization[N+1]",
+      "source": "FINDINGS.md, 'Registered form'",
+      "precondition": "resolved",
+      "preconditionWas": "Depends on whether item 4 also latches endToStart at the frame boundary. If it does, the alignment changes and this needs re-deriving BEFORE the raid.",
+      "resolvedBy": "Delta, 2026-07-28",
+      "resolvedNote": "Not re-derived before the raid - the precondition failed, which is why this gate exists. Resolved after the fact: all three registered outcome rows fail and the answer is a fourth, the two fields moving one line apart relative to each other. 22/22 at a 0.0% coincidence baseline post-latch, 12/15 at 0.7% pre-latch."
+    }
+  ]
+}

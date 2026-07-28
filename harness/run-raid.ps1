@@ -65,6 +65,7 @@ $ProfileDir  = Join-Path $ServerDir 'user\profiles'
 $HttpConfig  = Join-Path $ServerDir 'SPT_Data\configs\http.json'
 $ArgsFile    = Join-Path $HarnessDir 'launch-args.json'
 $GoFile      = Join-Path $HarnessDir 'GO'
+$RegFile     = Join-Path $HarnessDir 'registrations.json'
 
 $Provenance  = Join-Path $RepoDir 'analysis\build-provenance.py'
 $LatchCheck  = Join-Path $RepoDir 'analysis\check-boundary-latch.py'
@@ -223,6 +224,65 @@ function Show-MismatchCase {
     }
 }
 
+function Test-Registrations {
+    <#
+      Refuse GO while a registered prediction's precondition is unresolved.
+
+      On 2026-07-28 a registration stated its own dependency - "if item 4 also
+      latches endToStart at the boundary, this needs re-deriving BEFORE the
+      raid" - assigned it, and the raid ran anyway. Nobody forgot. Nothing in
+      the path from registration to GO had to look at it.
+
+      So the default does the work, not the gate: unresolved unless stated, and
+      a missing field is unresolved too. Silence blocks rather than passes.
+    #>
+    if (-not (Test-Path -LiteralPath $RegFile)) {
+        Warn "no $([IO.Path]::GetFileName($RegFile)) - no preconditions checked"
+        return
+    }
+
+    $doc = Get-Content -Raw -LiteralPath $RegFile | ConvertFrom-Json
+    $regs = @($doc.registrations)
+    if ($regs.Count -eq 0) { Note 'no registrations on file'; return }
+
+    foreach ($r in $regs) {
+        # Read the property defensively: absent and 'unresolved' must behave
+        # identically, or the default stops being the design.
+        $state = 'unresolved'
+        if ($r.PSObject.Properties.Name -contains 'precondition' -and $r.precondition) {
+            $state = [string] $r.precondition
+        }
+        if ($state -eq 'resolved') {
+            $who = 'unattributed'
+            if ($r.PSObject.Properties.Name -contains 'resolvedBy' -and $r.resolvedBy) { $who = $r.resolvedBy }
+            if ($who -eq 'unattributed') {
+                # Resolved by nobody is not resolved. The name is the act.
+                Bad "registration '$($r.id)': resolved with no resolvedBy"
+            }
+            else { Ok "registration '$($r.id)': precondition resolved ($who)" }
+        }
+        else {
+            Bad "registration '$($r.id)': precondition $state"
+            if ($r.PSObject.Properties.Name -contains 'preconditionWas' -and $r.preconditionWas) {
+                Note "  $($r.preconditionWas)"
+            }
+            Note '  resolve it and name yourself, or this raid tests a prediction'
+            Note '  whose stated dependency nobody has checked.'
+        }
+    }
+
+    # Gamma's caveat, and the reason this is not just the gate: registrations
+    # written as prose are invisible to the loop above. Count them and say so,
+    # rather than reporting a clean pass over a population this cannot see.
+    $findings = Join-Path $RepoDir 'FINDINGS.md'
+    if (Test-Path -LiteralPath $findings) {
+        $prose = @(Select-String -LiteralPath $findings -Pattern 'Registered' -AllMatches)
+        $known = @($regs | ForEach-Object { $_.id }).Count
+        Note "$($prose.Count) 'Registered' mentions in FINDINGS.md; $known structured here"
+        Warn 'prose registrations are NOT checked by this gate - only the structured ones'
+    }
+}
+
 function Invoke-PreFlight {
     Head 'pre-flight'
 
@@ -286,6 +346,8 @@ function Invoke-PreFlight {
             if ($line) { Note ($line.Line.Trim()) } else { Warn "config key missing: $key" }
         }
     }
+
+    Test-Registrations
 
     $backend = Get-BackendUrl
     Ok "backend $backend"
