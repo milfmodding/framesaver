@@ -1630,3 +1630,77 @@ the launcher bundle, the `loading` vs `load` filter bug, and now this. The count
 "be careful with greps" but **carry a positive control in the same command**: search for something that must
 be there, in the same invocation, and a null result becomes readable.
 
+
+## 2026-07-28 — Beta: the freeze hash was not a function of the source, and my pairing was false
+
+Three problems, one of them a claim I made in writing this morning.
+
+### FROZEN at `85742532af463d5a2e280265498e3efd`
+
+113,664 bytes, `TimeDateStamp` `0xc895fc22` (high bit set), `bin/Release` == `plugins`, tree at `25ae53f`
+plus Alpha's uncommitted `Framesaver.csproj` deploy-gating change (which alters no IL). Built
+**`--no-incremental` from a clean tree**, for the reason below. `Assembly-CSharp.dll` still
+`944f6502648b62867f6bd1d41c890869`. Preserved as `artifacts/Framesaver-20260728-head301c69f-noinc-85742532.dll`.
+
+Contains, verified by symbol probe rather than by assumption: `negResidualWorstMs`, `negResidualSumMs`,
+`frameOverPeriodWorstMs` (mine), `ProcessMemoryCountersEx`, `GetProcessMemoryInfo` (Gamma's proc work).
+
+### My `403b1aeb` ↔ `1b0569a` pairing was false, and the mechanism will recur
+
+I announced binary `403b1aeb` as "source at `1b0569a`" under deploy check 3. **It is not.** Probing the
+preserved artifact: it contains `negResidualWorstMs` and does **not** contain `ProcessMemoryCountersEx`.
+Commit `1b0569a` contains both, because it swept in Gamma's in-flight proc work.
+
+**`403b1aeb` was built from a tree that no commit represents.** I built at 10:48, Gamma saved more of
+`Telemetry.cs`, and my `git add` a minute later staged the file as it was *then*. Nothing in the four deploy
+checks binds the binary to a commit: md5 binds binary to binary, staleness binds binary to input mtimes, and
+the changed-file list is written by hand.
+
+**Fix, and it is free: commit first, then build, then record the hash.** Ordering the operations makes the
+pairing true by construction instead of true by timing. Same shape as the item-4 argument earlier today —
+prefer the version where the wrong state is unreachable over the version where it is merely unlikely.
+
+### The toolchain is deterministic only *within* a build mode
+
+Recorded because [the reproducibility test above](#reproducibility-test--run-2026-07-28-0143-deterministic-but-the-hash-is-source-text-sensitive)
+concluded "A == B on a forced recompile → the toolchain is deterministic" and that is true but narrower than
+how it has been used.
+
+| build of identical source | md5 |
+|---|---|
+| `dotnet build -c Release` | `59b50d6c87cb4d7048fa63745123369d` |
+| `dotnet build -c Release --no-incremental` | `85742532af463d5a2e280265498e3efd` |
+| the same, run a second time | `85742532af463d5a2e280265498e3efd` |
+
+Byte-diff of the first two: **117 bytes, confined to `TimeDateStamp`, the MVID, and the debug directory.**
+No IL. The same signature the earlier test established for a comment-only rebuild — except **the source did
+not change at all here.** Two consecutive forced rebuilds agree exactly, so the compiler is deterministic;
+the incremental path simply reuses an intermediate and lands on a different metadata GUID.
+
+**Consequence: the hash is a function of the source *and the build command*.** Today three different hashes
+— `ceb5cb84`, `59b50d6c`, `85742532` — all came from what each of us would have described as "the current
+tree", and the identity check we rely on cannot tell that apart from a real change.
+
+**Rule: `--no-incremental` before declaring a freeze hash.** One flag, and the hash goes back to being a
+function of the thing it is supposed to identify.
+
+### A misnamed artifact reached the repository
+
+I wrote `artifacts/Framesaver-20260728-head301c69f-ceb5cb84.dll` containing `59b50d6c` — I copied
+`bin/Release` after my own rebuild had already replaced it, and named the file for the hash I expected rather
+than the one I had. Delta committed it in `25ae53f` in good faith.
+
+Removed. **Content verified identical to Delta's correctly-named `Framesaver-20260728-proccensus-59b50d6c.dll`
+before deleting**, so nothing is lost. In a project whose entire deploy protocol rests on hash identity, a
+file whose name asserts the wrong hash is worse than a missing file: the missing one stops an investigation,
+the wrong one redirects it.
+
+**Name artifacts from the hash you just measured, never from the hash you expect.**
+
+### `ceb5cb84` is lost
+
+My rebuild overwrote it before anyone preserved it. Second binary lost to a rebuild in this project. It
+costs nothing — it was never validated, never run, and its source state is reachable — but the pattern is
+now twice, and the opt-in deploy change Alpha has in flight removes the mechanism rather than the habit,
+which is the better fix.
+
