@@ -305,10 +305,34 @@ Both present in `Player.log` **and** `Player-prev.log`, so this is not one sessi
 | claim | status |
 |---|---|
 | The launcher passes `-force-gfx-jobs native` (`GameStarter.cs:140`) | **true** |
-| …therefore native graphics jobs are forced on | **false — Unity reports the argument *skipped*, twice per session** |
-| `boot.config` sets `gfx-enable-gfx-jobs=1` and `gfx-enable-native-gfx-jobs=1` | **true, and it is what actually takes effect** |
+| ~~*…therefore the flag is inert — Unity reports it skipped*~~ | **withdrawn, see below. That list is not Unity's.** |
+| `boot.config` sets `gfx-enable-gfx-jobs=1` and `gfx-enable-native-gfx-jobs=1` | **true** |
 | `gfx-disable-mt-rendering` is absent, therefore MT rendering is on | right conclusion, **inference from absence** — now replaced by a positive reading |
+| **The device was created `threaded=1; jobified=1`** | **true, twice, and it is the only line any of this needs** |
 | `SystemInfo.graphicsMultiThreaded` reads `false`, 5 logs of 5 | **true, and it contradicts the device** |
+
+##### The `Skipped` list is BSG's argument parser, not Unity's — and the next two lines prove it
+
+Alpha caught that `-token` and `-config` are **absent** from the skipped list, which they should have
+headed if the list meant *"arguments the engine ignored"*. The two lines immediately following settle
+what it actually is:
+
+```
+Skipped command line argument:F:\SPT\SPT4.0.13\EscapeFromTarkov.exe
+Skipped command line argument:-force-gfx-jobs
+Skipped command line argument:native
+key:token value:6a669deaf628a77d4cf450f7
+key:config value:{'BackendUrl':'https://127.0.0.1:6969','MatchingVersion':'live','Version':'live'}
+```
+
+**It is BSG's own `key=value` parser walking `argv`.** It skips what is not a `key=value` pair — `argv[0]`,
+the flag, and its operand — then reports the two it parsed. `-token` and `-config` are missing from the
+skipped list *because they were consumed*. The entries also appear at line 443, **433 lines after the
+device was created**, so they cannot be engine startup parsing at all.
+
+**So this log says nothing about whether Unity honoured `-force-gfx-jobs native`, and it does not need
+to.** `threaded=1; jobified=1` is a direct statement of what was created. Whether that came from the flag
+or from `boot.config` is unresolved and immaterial — **build on the device line, not on the flag's fate.**
 
 **The device is created `threaded=1; jobified=1` while the property reads `false`.** So on this build
 `SystemInfo.graphicsMultiThreaded` is not a report of whether rendering is threaded, and no argument built
@@ -325,8 +349,22 @@ merely surplus.
 because everyone reasoned from artifacts they could read *about* the game — the launcher source, the
 config file, a `SystemInfo` property — and nobody read **the engine's own account of what it did at
 startup.** `strings` on the launcher bundle returned nothing; the source answered where the flag was
-*sent*; only `Player.log` says whether it was *accepted*. **Prefer the log of the thing that acted over
-any artifact describing what it was told to do.**
+*sent*; `Player.log` is the only artifact that reports what was *created*. **Prefer the log of the thing
+that acted over any artifact describing what it was told to do.**
+
+**And the companion clause, which cost a correction to learn: a log is the account of the thing that acted
+only once you know which thing wrote the line.** `Skipped command line argument` reads as the engine's
+verdict on an engine flag. It is BSG's config parser, and the proof was two lines below it. Having reached
+for the right artifact, the error moved to attributing the wrong component inside it — **so identify the
+writer before trusting the label.** The tell was available without any reasoning about parsers: the
+entries sit 433 lines after device creation.
+
+There is a worse version of this in the same document, which is why the clause is worth its space:
+[`gcSliceApplied` versus `gcRuntime`](#the-gc-knob-ab--ready-to-run-no-build-required) is the identical
+rule — *"the header's `gcRuntime` is stamped once at plugin load and will keep reporting 3 ms however the
+knob is set"* — recorded for one instrument and not generalised to any other. **A rule held for one
+instrument and not transferred is the failure, not the missing rule**, and this is the third instance
+today after `null, never 0` and *"a check that fires on the normal case is a check nobody reads"*.
 
 **Two numbers to stop quoting until recomputed on a stated population.**
 [The draw-call note below](#gpu-side-telemetry--stage-3-2026-07-27) gives
