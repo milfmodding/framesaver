@@ -1810,3 +1810,41 @@ redirection mangling a binary, and this. Mine happened while auditing someone el
 fails returns the same thing as a tool that succeeds against an absent target, and nothing in the output
 distinguishes them. Only a query you already know the answer to does. **Run the control in the same
 invocation as the search**, so a null can never be read without it.
+
+## 2026-07-28 — Beta: `ProfileBuild.Depth` can latch, and the counter then reads zero forever
+
+Found answering a question from Delta about whether `profileBuild.profiles` carries the same class of defect
+as the `Sleeping` cross-raid leak. **It does not carry that one** — `ProfileBuild.ResetWindow()` zeroes
+`Profiles` and is called from `Telemetry.ResetWindow()`, so it cannot accumulate across raids.
+
+**It carries a worse one.** `ProfileBuildPatches.cs`:
+
+```csharp
+Prefix:   if (ProfileBuild.Depth++ == 0) { _start = Stopwatch.GetTimestamp(); }
+Postfix:  if (--ProfileBuild.Depth > 0) { return; }
+          ProfileBuild.Depth = 0; ProfileBuild.TotalMs += ...; ProfileBuild.Profiles++;
+```
+
+`ResetWindow()` resets `TotalMs`, `InventoryMs` and `Profiles`. **It does not reset `Depth`.** A Harmony
+postfix does not run when the original throws — that needs a finalizer — so **one throwing `Profile`
+constructor leaves `Depth` at 1 permanently.** Every later construction then looks nested, the postfix
+returns early, and `profiles` and `totalMs` stop incrementing for the life of the process while reading 0.
+
+**Why it outranks most of the queue:** FINDINGS leans on `profileBuild.profiles` as ground truth in a
+corollary that explicitly tells readers *not* to use response size as a proxy. A counter that fails to **zero**
+rather than to a wrong number makes that corollary's replacement exactly as unreliable as the thing it
+replaces, and nothing in the output distinguishes the two. Same family as Alpha's `MarkersPresent()` finding
+and the `endToStart` pairing guard: **silence and success must not look identical.**
+
+Not observed. Reachable, and undetectable from the data if it happens.
+
+**Do not fix it with the obvious one-liner until the thread question is settled.** Resetting `Depth` in
+`ResetWindow()` bounds the damage to one window, which is strictly better than a permanent latch. But `Depth`
+is a non-atomic static `int++`, so the fix is only safe if `Profile` constructors run on the main thread.
+
+Evidence that they do, short of proof: the async drain resumes callbacks **inline on the main thread** — that
+is the premise the whole drain instrumentation rests on — and `profileBuild` time lands inside raid-init
+segments, which it could not do from a worker thread. Strong, and not yet a measurement. If ctors are ever
+off-thread, `Depth` is *already* racy and a window-boundary reset trades a permanent latch for an
+intermittent miscount, which is a worse trade than it looks.
+
