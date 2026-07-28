@@ -81,10 +81,47 @@ function Bad    { param($m) Write-Host "   FAIL $m" -ForegroundColor Red; $scrip
 # ------------------------------------------------------------- pre-flight ----
 
 function Get-BackendUrl {
+    <#
+      Host and port come from http.json, which is the current truth. The
+      SCHEME does not appear there at all, and an earlier version of this
+      script assumed http:// - wrong. The launcher's ClientConfig defaults to
+      https, and the game's own Player.log records
+      https://127.0.0.1:6969 for a real launcher-driven session.
+
+      That would have failed at connect and cost a launch. It was caught by
+      reading the engine's record of what it was actually given rather than
+      deriving it from config, which is the rule that keeps earning its keep
+      today: prefer the log of the thing that acted.
+    #>
     $http = Get-Content -Raw -LiteralPath $HttpConfig | ConvertFrom-Json
     # backendIp/backendPort are what the client is told to talk to; ip/port are
     # what the server binds. They are normally the same and need not be.
-    "http://{0}:{1}" -f $http.backendIp, $http.backendPort
+    $url = "https://{0}:{1}" -f $http.backendIp, $http.backendPort
+
+    # If the game has ever been launched here, compare against what it was
+    # handed. A disagreement is worth seeing rather than silently resolving.
+    $observed = Get-ObservedBackendUrl
+    if ($observed -and $observed -ne $url) {
+        Warn "http.json implies $url but the last real launch used $observed"
+        Note 'using the observed value - the game is the authority on what worked'
+        $url = $observed
+    }
+    $url
+}
+
+function Get-ObservedBackendUrl {
+    # The last `key:config value:{...}` line in Player.log is BSG's own parser
+    # echoing what it was passed. Single-quoted JSON, so this reads the field
+    # directly rather than trying to deserialise it.
+    $logs = @("$env:LOCALAPPDATA" + 'Low\Battlestate Games\EscapeFromTarkov\Player.log',
+              "$env:LOCALAPPDATA" + 'Low\Battlestate Games\EscapeFromTarkov\Player-prev.log')
+    foreach ($p in $logs) {
+        if (-not (Test-Path -LiteralPath $p)) { continue }
+        $m = Select-String -LiteralPath $p -Pattern "key:config value:.*'BackendUrl'\s*:\s*'([^']+)'" |
+             Select-Object -Last 1
+        if ($m) { return $m.Matches[0].Groups[1].Value }
+    }
+    $null
 }
 
 function Get-Token {
@@ -270,24 +307,41 @@ function Start-SptServer {
 function Wait-ServerReady {
     param($Proc, [int] $TimeoutSec = 180)
 
-    # Poll for a real response rather than sleeping. A fixed sleep is right
+    # Poll for a real signal rather than sleeping. A fixed sleep is right
     # exactly once and silently wrong on either side of that.
-    $url = (Get-BackendUrl) + '/launcher/server/version'
-    $sw  = [Diagnostics.Stopwatch]::StartNew()
+    #
+    # A TCP connect rather than an HTTP request, deliberately: SPT serves over
+    # Kestrel HTTPS with a self-signed certificate, and Invoke-WebRequest in
+    # Windows PowerShell rejects that by default - so an HTTPS probe would keep
+    # failing against a perfectly healthy server and report "not ready" forever.
+    # A check that reports the wrong thing is worse than no check.
+    #
+    # What this establishes is narrower than "the server works": the port is
+    # accepting connections. That is the precondition the client needs, and it
+    # is honest about being only that.
+    $http = Get-Content -Raw -LiteralPath $HttpConfig | ConvertFrom-Json
+    $bindHost = $http.ip
+    $bindPort = [int] $http.port
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+
     while ($sw.Elapsed.TotalSeconds -lt $TimeoutSec) {
         if ($Proc.HasExited) {
             throw "server exited during startup with code $($Proc.ExitCode)"
         }
+        $client = New-Object Net.Sockets.TcpClient
         try {
-            $r = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3
-            if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) {
-                Ok ("ready after {0:n1}s" -f $sw.Elapsed.TotalSeconds)
+            $iar = $client.BeginConnect($bindHost, $bindPort, $null, $null)
+            if ($iar.AsyncWaitHandle.WaitOne(1000) -and $client.Connected) {
+                $client.EndConnect($iar)
+                Ok ("listening on {0}:{1} after {2:n1}s" -f $bindHost, $bindPort, $sw.Elapsed.TotalSeconds)
                 return
             }
         }
-        catch { Start-Sleep -Milliseconds 500 }
+        catch { }
+        finally { $client.Close() }
+        Start-Sleep -Milliseconds 500
     }
-    throw "server not ready after ${TimeoutSec}s"
+    throw "server not listening on ${bindHost}:${bindPort} after ${TimeoutSec}s"
 }
 
 function Stop-SptServer {
