@@ -1050,9 +1050,12 @@ the **first bot-brain frame of the raid**, long before you can press a key. Set 
 `no compatibility guards will be applied`, and **`Player.log` carries the proof the arm was real.** That log
 is currently the *only* record of it — see "what this run cannot tell you" below.
 
-**2. Confirm the protocol parsed.** The line carries `protocol.steps`. The file defines **3** sections. If
-the log says 3, the parse worked on the file in use. If `protocol` reads `null`, the ini is not installed
+**2. Confirm the protocol parsed.** The line carries `protocol.steps`. The file defines **4** sections. If
+the log says 4, the parse worked on the file in use. If `protocol` reads `null`, the ini is not installed
 and every arm is arm 1.
+
+`Run tag` is **`brainslice`**, so the log self-identifies. The `endToLatch` validation rides along and needs
+no tag of its own.
 
 ### The arms
 
@@ -1096,18 +1099,52 @@ slicing is throttling SAIN's custom brain layers — which is precisely the inte
 *"the kind that produces 'the AI feels wrong' reports with no obvious cause."* That guard has never been
 measured; it is a prediction, and this raid is the first test of it.
 
-**Write one line per arm, during the arm.** Not afterwards — the point is that it is not reconstructed.
-
-| | B1 | B2 | B3 |
-|---|---|---|---|
-| did they push, or hold back? | | | |
-| did they flank, or come straight? | | | |
-| did they use cover between moves? | | | |
-| reaction time when you broke cover | | | |
-| anything that felt *wrong* | | | |
+**The held-position arms cannot answer it.** Standing still watching a street is the right way to measure
+frame time and the wrong way to judge whether bots fight well — nothing is fighting. So the AI read moves
+to its own phase, below, where it is actually answerable.
 
 A frame-time win with a "they stopped flanking" note is not a win. The release criteria do not mention AI
 quality; the people who install this will.
+
+### Arm 4 — fight Kaban's crew at LexOs, slicing on. Last, and not negotiable
+
+**Order.** A firefight would wreck the held-position measurement, so B1–B3 come first and this comes after
+them. It needs the fourth protocol step — after three presses `Advance()` refuses and nothing changes.
+
+This is two instruments at once, and the first one is the reason it is worth a phase of its own.
+
+**1. The AI-quality arm, with a real baseline behind it.** Sophia stress-tests here already: LexOs is the
+highest concentration of bots in one area on Streets, and she has run this fight **unsliced, repeatedly,
+looking for failure, and found none — no deaths, no issues with the bots.** That converts the subjective
+read from a vibe into a comparison against an established reference. It is also aimed squarely at
+`ModCompat`'s prediction: the guard exists because we thought slicing would feel wrong under BigBrain, and
+Kaban's crew at LexOs is where wrong would show.
+
+**Pass criteria are her own named failure modes**, because she is the one who knows what this fight does
+when it is working:
+
+| | reference (unsliced, repeated) | this run |
+|---|---|---|
+| deaths | none | |
+| did anything land a **grenade** | it can, and does | |
+| did the **dealership launchers** engage | they can, and do | |
+| did anyone **push** her | yes | |
+| anything that felt *wrong* | nothing, across many runs | |
+
+She has practical invincibility there **except** to grenades and the launchers — so those two are not
+hazards to note in passing, they are the sharpest available signal that the crew is still playing properly.
+**A noticeably passive crew is the finding.** So is a death, in the other direction.
+
+**2. The best-case frame-time arm.** Highest awake-bot count in one place on the map, so if slicing helps
+anywhere it helps most here. **Her observed 5–10 fps degrade in that area is the number to beat.** A null
+in the held arms plus a win here is a real finding; a null in both is a much stronger negative than the
+held arms could give alone.
+
+**What arm 4 is not.** It is **not comparable to B1/B2/B3 on frame time** — different position, with a
+firefight in it, and absolute ms do not transfer across either. Its control is historical: her own prior
+unsliced runs of the same fight. That control **cannot be replicated in-raid**, because killing Kaban's
+crew once leaves no second fight to reverse into. Treat the 5–10 fps figure as remembered rather than
+logged, and say so in whatever it supports.
 
 ### What this run cannot tell you, stated before it produces numbers
 
@@ -1157,3 +1194,33 @@ that it is *short*, and this is a second and worse reason. `slicing` is exactly 
 trust as ground truth, and on that one line it is ground truth about the next arm.
 
 **Both are properties of the boundary line only.** Every whole window inside an arm is self-consistent.
+
+---
+
+## The transit marathon — and the one thing that does not travel with it
+
+Ground Zero → Streets → Interchange → Customs → Factory → Woods → Lighthouse → Reserve, with a Lighthouse
+backtrack to reach Shoreline. **Six of those maps have never been launched.** Alpha verified the
+segmentation holds: `BaseLocalGame.method_15` sets `GameStatus.Stopped` on `ExitStatus.Transit`, so each
+leg increments `_raid` and re-resolves `_map`, and `ResetForRaid` is in the deployed build.
+
+Play normally. **Do not hold position** — that is a different run.
+
+### Two things to do before launching it, and the second one is not obvious
+
+**1. Remove `BepInEx\config\framesaver.protocol.ini`.** Separate runs, so `protocol` reads `null` and the
+provenance is unambiguous. An armed protocol that nobody presses is inert, but a `null` reading is a
+*statement* that no arm was applied, and this run wants that statement.
+
+**2. Confirm `Brain update period = 0` in `framesaver.ai.perf.cfg`. Removing the ini does not do this.**
+
+> **A protocol step rewrites the config file.** `ProtocolRunner` assigns through `ConfigEntryBase.BoxedValue`,
+> which is BepInEx's ordinary setter — the same path `GcControl` uses to self-disable its knobs at
+> `GcControl.cs:94` and `:143`. With `SaveOnConfigSet` at its default the new value is written to disk.
+> **So whatever the last arm set is still set at the next launch.** End the slicing raid on arm 4 and the
+> marathon starts with slicing quietly on, across six maps nobody has ever measured, with the ini deleted
+> and `protocol` reporting `null` — every signal saying "no arm applied" while an arm is applied.
+
+That is the cross-raid leak shape `ResetForRaid` exists to close, one level up: it rewinds the protocol's
+*position* and cannot rewind the config the protocol wrote. `agents.slicing` on the first window is the
+in-situ check, and it is why that field is worth having beyond the A/B it was built for.
