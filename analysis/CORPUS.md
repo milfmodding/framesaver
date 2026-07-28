@@ -27,6 +27,17 @@ partitions the corpus into three eras**, which is the primary way to date a log:
 filesystem; a timestamp does not. It also resolves the `Expand phase` semantic inversion below without needing
 a build date — **the inversion lands inside era C**, so era plus expanded-phase content is sufficient.
 
+### The same rule applies to EFT's own logs, and there the names are in a different timezone
+
+**EFT names its log directories in UTC while stamping the lines inside them in local time.** The session
+this project calls the 10:00 raid lives in `Logs/log_2026.07.28_17-00-51_.../`, and its first line reads
+`10:01:17 -07:00`. Exactly seven hours, so it is an offset and nothing more interesting.
+
+It is worth a line here because the failure mode is **concluding a session is missing rather than
+misnamed** — which cost one check already. `framesaver-20260728-100048-postlate-gc.ndjson` and that
+directory are the same session. Same principle as reading the `cfg` key count: trust what is inside the
+file over what is on it.
+
 ---
 
 ## Per-log provenance
@@ -148,6 +159,23 @@ see below** — and the unfiltered rate suggests one only because it is 1.9× in
 > Worse, **no magnitude threshold can select the destination**, because the defect makes it ordinary by
 > construction. That is why [nothing needing the frame after a spike is answerable](#what-this-corpus-cannot-answer)
 > anywhere in this corpus, and why the fix is a sampling-boundary change rather than a filter.
+
+**A clobbered phase and a fast phase look identical — but no log in this corpus shows one.** README's rule
+is that an absent phase means `< 0.5 ms`. `PlayerLoopProfiler.MarkersPresent()` returns `true` as soon as
+**any one** top-level phase still carries its `BeginMarker`, so a mod or a loop rewrite that drops seven of
+eight triggers no reinstall and those seven silently emit nothing. *Wrong conclusion:* that a phase which
+vanished was cheap.
+
+**Checked rather than assumed, because this one is testable retroactively.** Across all 14 logs with in-raid
+phase data, **no top-level phase is absent for a whole log, and none disappears mid-log** (present through
+window *k*, absent for every window after). Both scans returned zero. So this is a latent weakness in the
+guard, not a defect in the data — every log here is clean of it.
+
+**Recovery for future logs:** a clobbered phase contributes nothing to `accounted`, so its duration lands in
+`unaccounted` instead. The signature is therefore a *sustained* absence of the **same** phase across
+consecutive windows **together with an inflated `unaccounted`** — not the per-window absence that
+`TimeUpdate` shows normally. One phase blinking out for one window is the 0.5 ms threshold; the same phase
+gone for the rest of the session while the residual grows is the guard failing.
 
 **`gpu.vram` reads a string on the first window of each GPU-carrying log.** Initialisation, not failure.
 *Wrong conclusion:* that the `overBudget` regression guard is absent. **Recovery: skip window 0** — the field

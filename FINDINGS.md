@@ -3290,15 +3290,61 @@ Three further predictions, each of which someone will otherwise get backwards:
   its own span, and the latch does not touch it. **An unchanged `frameOverPeriodFrames` is not the fix
   failing** — and if it *does* collapse to ~0, the two counters were measuring one thing and one of them
   was redundant from the start.
-- **`unaccounted` must agree with `gap`.** Post-latch, `unaccounted` should equal
-  `endToStart − TimeUpdate − Initialization` on the same frame, within noise. Two independently derived
-  instruments, no shared arithmetic — this is the strongest check available and it costs nothing to run.
-  Disagreement means the latch is not where we think it is, and would land *before* any conclusion drawn
-  from the phase totals.
+- **`unaccounted` must agree with `gap` — and the three-term form survives the latch, shifted by one line.**
+  Two independently derived instruments with no shared arithmetic, so this is the strongest check available
+  and it costs nothing to run. Disagreement means the latch is not where we think it is, and would land
+  *before* any conclusion drawn from the phase totals. The exact form is derived below, because a plausible
+  wrong version of it is already in circulation.
 - **`null` periods should appear during raid load and essentially nowhere else.** The latch introduces the
   failure mode Beta guarded: a dropped marker freezes the boundary. Nulls clustered at the player-loop swap
   are the guard working. **Nulls at a steady rate mid-raid mean markers are being dropped routinely, which
   would make every phase number in this document suspect**, not just this build's.
+
+#### The `unaccounted ≈ gap` identity after the latch — derived, because the obvious version is wrong
+
+A prediction is in circulation that under the new latch the identity **collapses** to
+`unaccounted ≈ endToStart` with no subtraction. **It does not, and the reason is structural rather than
+numerical.**
+
+`endToStart` is bracketed by SPT's own events: `EndOfFrame` is the **last** subsystem of `PostLateUpdate`
+and `StartOfFrame` is inserted into `EarlyUpdate`. `TimeUpdate` and `Initialization` run **between** those
+two, so they are inside the span *by construction of the brackets*. `PlayerLoopProfiler`'s own doc says so:
+*"it CONTAINS TimeUpdate and Initialization"*. **Moving the period latch cannot remove them** — the latch
+decides which window a duration is attributed to; it has no effect on what the two SPT events enclose.
+
+What the latch *does* change is which line the subtrahends land on.
+
+| | window boundary | `unaccounted` is | `TimeUpdate` / `Initialization` on that line belong to |
+|---|---|---|---|
+| **today** | `Sample()`, inside `Update` | the gap **preceding** the phases on the line | the **same** frame as the gap |
+| **after the latch** | Begin marker of `root.subSystemList[0]` | the gap **trailing** the phases on the line | the **previous** frame relative to that gap |
+
+Today every term is on one line, which is why `gap = endToStart − TimeUpdate − Initialization ≈ unaccounted`
+fits at ±0.72 ms on 12 of 12. After the latch the window closes at the *first* phase's Begin, so the
+out-of-loop interval a line reports is the one **after** its own phases — while the `TimeUpdate` and
+`Initialization` inside the matching `endToStart` belong to the frame that starts the next window.
+
+> **Registered form:** `unaccounted[N] ≈ endToStart[N] − TimeUpdate[N+1] − Initialization[N+1]`, with the
+> subtrahends taken from the **following** window line.
+
+Three readings, and the first is the one that would be missed:
+
+| result | reading |
+|---|---|
+| **same-line three-term form still fits best** | the latch is **not** at the first phase's Begin — it is somewhere after `Initialization`, and the phase attribution is not what the design claims |
+| **next-line form fits** | the latch is where Beta designed it; `accounted <= period` by construction is real |
+| **`unaccounted ≈ endToStart` with no subtraction** | the latch coincides with `StartOfFrame` rather than the first phase's Begin — which is **the design Beta rejected** for having `FrameCounter` inserted ahead of it |
+
+**The collapsed form is a correct prediction about the superseded design.** It was true of moving
+`ReadAndReset()` to `StartOfFrame`, and it carried forward intact after that design was withdrawn — which
+is the failure mode this document keeps recording under a different name each time. Registering all three
+means the run distinguishes them instead of confirming whichever was expected.
+
+**One assumption, stated so it can be falsified rather than discovered.** This derivation assumes
+`Sample()` continues to read `EndToStartMs` as the profiler last wrote it, and that the latched snapshot it
+consumes is the window that closed at the most recent boundary. If item 4 also latches `endToStart` at the
+boundary, the alignment changes and this needs re-deriving **before** the raid, not after. Beta owns that
+decision and has been asked.
 
 #### The measurement this fix exists for, and it is not the counter
 
