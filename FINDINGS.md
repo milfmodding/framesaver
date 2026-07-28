@@ -3032,6 +3032,29 @@ Worth keeping — several of these cost real time to learn.
   breaks strict JSON consumers. Only bites accumulators sampled on a timer rather than per frame, since a
   window shortened by a state transition can legitimately contain nothing. Report a `samples` count
   alongside, so "no data" and "genuinely zero" stay distinguishable.
+- **A threshold that surfaces a symptom can suppress its own evidence.** Distinct from the omission and
+  inversion entries below, and worth its own line because the countermeasures for those do not touch it.
+
+  The `unaccounted` slip moves time from frame N to frame N+1: a stall inside the `Update` phase lands in
+  `period` on the line it happens and in the phase totals on the next. **So N is large and N+1 is ordinary —
+  by construction.** Spike lines are emitted on magnitude, so N is always emitted and **N+1 never is**. The
+  check for the defect was *"does a large-residual frame have a negative-residual line after it"*, and it
+  returned **0 of 13** — not because the follow-up lines were clean, but because **none of the 13 had a
+  following line at all**, the nearest being 2.9 to 31 seconds away at the run's 100 ms threshold.
+
+  > A defect that displaces evidence by one sample is invisible to any filter that selects samples by
+  > magnitude, because the displaced half is *normal* — that is what displacement means.
+
+  **The tell is not the value, it is the absence of an adjacent sample.** Before concluding from a
+  neighbour-comparison, check that the neighbours exist; a zero result over an empty population is
+  indistinguishable from a zero result over a full one, and only one of them is a finding.
+
+  **Countermeasure: count on every sample, not on the ones the trigger selects.** `negResidualFrames` and
+  `frameOverPeriodFrames` are per-window counts over all frames for exactly this reason — two comparisons
+  each, against a defect that spike-line analysis had put at 6.5% and whole-population counting was needed to
+  show at 23.9%. *Found by Delta running Beta's proposed check and reporting that it could not run, rather
+  than reporting its result.*
+
 - **A clean result is not evidence when the failure mode is a silent omission.** The single most common defect
   in this project is an instrument that omits something, returns well-formed output shorter than reality, and
   agrees with what the author already believed. There is no local symptom: the output is valid, plausible, and
