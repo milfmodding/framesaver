@@ -710,11 +710,11 @@ Sequence, for a knob with a baseline and a test value:
 | step | what | duration |
 |---|---|---|
 | 1 | reach the spot, settle on the aim point, **stop moving** | — |
-| 2 | **arm 1**, knob at baseline | **3 min** |
+| 2 | **arm 1**, knob at baseline | **4 min** |
 | 3 | open F12, change the knob, close it — **without moving the feet** | ~15 s |
-| 4 | **arm 2**, knob at test value | **3 min** |
+| 4 | **arm 2**, knob at test value | **4 min** |
 | 5 | revert the knob the same way | ~15 s |
-| 6 | **arm 3**, back at baseline | **3 min** |
+| 6 | **arm 3**, back at baseline | **4 min** |
 
 Windows are 60 s, so three minutes gives three windows per arm and you **discard the first one of each**.
 Two reasons, and both are silent if ignored:
@@ -725,7 +725,7 @@ Two reasons, and both are silent if ignored:
 - **The F12 overlay is a large IMGUI draw**, so the window you open it in has extra render and UI cost that
   belongs to neither arm.
 
-Arm 3 is not optional. It is the only thing that separates a knob effect from a drift over nine minutes —
+Arm 3 is not optional. It is the only thing that separates a knob effect from a drift over twelve minutes —
 heat, a bot wave arriving, the collector's heap growing. If arm 3 does not return to arm 1, **the run
 measured time, not the knob**, whatever arm 2 showed.
 
@@ -737,9 +737,9 @@ with it. This replaces it with an intervention, at the same spot, in five minute
 
 | step | what | duration |
 |---|---|---|
-| 1 | stand on the spot, aim at the **long sightline** | **2 min** |
-| 2 | **turn on the spot** to face a near wall — feet do not move | **2 min** |
-| 3 | turn back to the aim point | **2 min** |
+| 1 | stand on the spot, aim at the **long sightline** | **4 min** |
+| 2 | **turn on the spot** to face a near wall — feet do not move | **4 min** |
+| 3 | turn back to the aim point | **4 min** |
 
 Nothing is configured, nothing is toggled. The only variable is which way you are looking.
 
@@ -802,7 +802,26 @@ floor is where a genuinely good run gets thrown away.
 
 **Three windows per arm rather than two, and it is no longer optional.** The gate now needs arm 1 and arm 3
 each to have a stable mean, and Δ`render` still has to be read against a within-arm spread. Two windows per
-arm gives one Δ per arm — a noise estimate with no spread of its own. Nine minutes instead of six.
+arm gives one Δ per arm — a noise estimate with no spread of its own.
+
+**Which makes the arms four minutes, not three — the window boundary is not aligned to the arm boundary.**
+`ResetWindow()` fires at the raid transition and then runs on a fixed 60 s cadence; nothing re-aligns it to
+when you start standing still. So an arm beginning at an arbitrary offset into a window yields:
+
+| arm length | fully-contained windows, worst case | best case |
+|---|---|---|
+| 2 min | **1** | 2 |
+| 3 min | **2** | 3 |
+| **4 min** | **3** | 4 |
+
+Three minutes was written as "three windows per arm" and guarantees only two. **Four minutes guarantees
+three**, which is what the gate and the spread both assume. Protocol B is therefore **twelve minutes**, and
+Protocol A the same plus the two knob changes.
+
+**The straddling windows are not a loss that needs managing — they are self-excluding.** A window spanning
+the turn contains *both* views, so its `drawCalls.max ÷ .avg` blows past 1.15 and the view-held criterion
+drops it. **That is also the only thing separating the arms**, since Protocol B changes no config and
+nothing in the log marks where one arm ends.
 
 **Note the double duty before it bites:** arm 1 ↔ arm 3 now gates the run *and* serves as the replication
 check. That is safe — a run that drifted badly fails both, and both answers are "run it again" — but the
@@ -822,7 +841,7 @@ from both a confirmed slope and a null.
 | **`gameUpdate` moves too** | the view is driving more than rendering — visibility or LOD work on the CPU side — and neither the slope nor the split can be read until that is separated |
 
 **The ≈ 0 row is a good result and should be reported as one.** It retires the draw-call line of enquiry
-with a measurement instead of leaving it as a caveat on a regression, and it costs six minutes. The
+with a measurement instead of leaving it as a caveat on a regression, and it costs twelve minutes. The
 temptation afterwards will be to describe it as a failed experiment; it is the opposite — **provided the
 manipulation check passed**, which is the whole reason that check is now a gate rather than a footnote.
 
@@ -848,7 +867,7 @@ upper bound on what one position can swing, not an expectation, because it aggre
 
 **Arm 3 is a replication, not a formality, and it is a stronger control than `bots.awake`.** Both protocols
 already end by returning to the starting condition, so the comparison is free — and if arm 3 does not
-reproduce arm 1, something drifted over the nine minutes whatever the bot count says. Heat, a wave
+reproduce arm 1, something drifted over the twelve minutes whatever the bot count says. Heat, a wave
 arriving, the heap growing. **A result that survives arm 1 vs arm 2 but fails arm 1 vs arm 3 measured
 time, not the variable**, and no other criterion here can see that.
 
@@ -910,5 +929,5 @@ Worth raising in the queue on that basis; still behind the boundary latch.
 ### If there is only time for one thing
 
 **Protocol B.** Protocol A makes future comparisons valid; Protocol B answers an open question about goal 1
-today, needs no config changes, and takes six minutes. It is also the cheaper failure: a botched Protocol A
-wastes an intervention, while a botched Protocol B wastes six minutes of standing still.
+today, needs no config changes, and takes twelve minutes. It is also the cheaper failure: a botched
+Protocol A wastes an intervention, while a botched Protocol B wastes twelve minutes of standing still.

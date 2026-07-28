@@ -3444,6 +3444,12 @@ strongest statement the run supports:
 **One full window of eligible frames is the natural unit**, and it lands at the 0.1% bound. That is the
 criterion: not a magnitude, but *what the observed zero is able to exclude.*
 
+**Not the same tool as [`power-check.py`](analysis/power-check.py), and someone will reach for the wrong
+one.** That script bounds the **difference between two observed rates** — it is what established that the
+`frame > period` slip comparison is underpowered at n=37. This bounds **a single rate from a zero count.**
+Same family, opposite questions, and [this corpus already contains one figure quoted
+backwards](analysis/CORPUS.md).
+
 The degenerate case is caught in code. **The nearly-degenerate case is the one that slips through**, because
 it looks exactly like a pass and arrives with a plausible-looking number beside it.
 
