@@ -228,7 +228,71 @@ per `DisableGameFramerateLimit`. So there is nothing to sleep for, and `render` 
 
 **This sharpens the Streets bound considerably.** 100 fps is a 10 ms budget and `render` alone is 6.78 ms,
 leaving 3.2 ms for the entire update side against a current `gameUpdate` of 10.21 ms — a 69% cut, with render
-held exactly where it is and largely outside what a Harmony mod reaches.
+held exactly where it is and ~~largely outside what a Harmony mod reaches~~ **— see below; the write-off was
+wrong, though what replaces it is worth about a millisecond.**
+
+##### `render` **is** the `PostLateUpdate` phase, and the write-off was wrong
+
+**Established from source, not correlation.** `gameUpdate` is *defined* as `frame − render`
+([GClass1357.cs:85](../../Src/Assembly-CSharp/Assembly-CSharp/GClass1357.cs:85)):
+
+```csharp
+this.GameUpdateMeasurer.MeasureStatistics.AddMeasurement(new GStruct132
+{
+    Value = currentFrameTime - this.RenderMeasurer.MeasureStatistics.LastValue
+});
+```
+
+so `render = frame − gameUpdate` recovers `RenderMeasurer` algebraically. And `RenderMeasurer` runs from
+`StartOfPostLateUpdate` to `EndOfFrame`, which
+[CustomPlayerLoopSystemsInjector.cs:16,26](../../Src/Assembly-CSharp/Assembly-CSharp/CustomPlayerLoopSystem/CustomPlayerLoopSystemsInjector.cs:16)
+inserts as the **first and last subsystems of `PostLateUpdate`**.
+
+**So `render` is the wall-clock duration of the `PostLateUpdate` root player-loop system, on the main
+thread — by construction.** It is CPU work, not a GPU sync. PresentMon agrees independently: `CPUWait` p50
+**0.053 ms** over 182,845 rows, `GPUWait` p50 9.547 ms. The GPU idles for the CPU.
+
+**A measured `r = 1.00000` between `render` and our `PostLateUpdate` marker is *not* evidence for this** — it
+is two brackets around one interval, and the 0.0024 ms residual is the width of BSG's two injected
+subsystems, i.e. our own instrument overhead. The lesson is worth more than the number:
+**a separate field is not an independent measurement.** The first check — confirming `gameUpdate` is read
+from its own `GameUpdateMeasurer` rather than derived — was true and insufficient; it verified a separate
+*field*, not an independently *computed* one, and the answer was forty lines into the class already being
+cited.
+
+**What it buys is about a millisecond, and correlation is not share.** Over 38 Streets in-raid windows
+carrying a `gpu.render` block, `corr(render, drawCalls) = +0.717`; the bot-count confound is genuinely
+absent (partial `+0.683` for draw calls, `+0.116` for awake bots). But:
+
+```
+render_ms = 5.264 + 0.000467 × drawCalls          (0.47 µs per draw call)
+```
+
+**79% of Streets `render` is a constant that does not move with draw calls.** Model-free, needing no
+extrapolation: `drawCalls` spans **1,141–4,648** across those windows — 4× — while `render` spans only
+**5.63–7.81 ms**. Eliminating submission entirely, which is impossible, buys **~1.4 ms of 6.6**.
+
+0.47 µs per draw call is a normal single-threaded D3D11 submission cost and `graphicsMultiThreaded` is
+false, so the mechanism is real and correctly sized. It is a fifth of the block, not the block.
+
+**Two numbers to stop quoting until recomputed on a stated population.**
+[The draw-call note below](#gpu-side-telemetry--stage-3-2026-07-27) gives
+`corr(drawCalls, p50) = +0.06` and `corr(awakeBots, drawCalls) = +0.74`. **Neither reproduces on any window
+set either of two agents could construct** — roughly a dozen variants between them, nearest approaches
+`+0.004` and `+0.623`. Its conclusion — *"draw-call submission is not a cost here"* — is also wrong as
+stated: submission **is** a cost, ~1.4 ms of `render`; it simply does not show against total frame time.
+
+**Still open, and it is the reading that would change what is worth doing.** `PostLateUpdate` is a composite —
+culling, renderer updates, frame completion, **and the canvas/UI subsystems** — so part of the 6.5 ms may be
+EFT's in-raid UI rather than scene rendering, which would be reachable in a way scene rendering is not and is
+invisible to any draw-call theory. **No log can answer this:** `Expand phase` is `PreLateUpdate` in all
+thirteen logs, so no `PostLateUpdate` child has ever been emitted. Setting it to `PostLateUpdate` is a config
+change, no build, and it also separates render work from present/sync directly — closing the one gap left by
+`TimeUpdate ≈ 0`, which rules out a wait *in `TimeUpdate`* but not one inside a `PostLateUpdate` subsystem.
+
+**And "CPU work" is not the same as "reachable."** This is Unity's render pipeline, not game script. The
+write-off may still be operationally right for the wrong stated reason, and the phase expansion is exactly
+the result that will tempt someone to slide from one to the other.
 
 **Three caveats, because this changes what gets worked on.** Interchange (n=7) and Factory (n=9) are close to
 anecdotal and only Streets has real sample size. The pooling crosses mod stacks, dates and builds, so the
@@ -2815,6 +2879,46 @@ Worth keeping — several of these cost real time to learn.
   documents; the absurd hit rate announced the bug immediately and it cost one command. A check that passes
   wrongly announces nothing and costs a run. Loud failure is a feature worth paying for.
 
+- **A stale reference smells stale. An inverted one does not — and five failures on 2026-07-28 were all
+  checks that ran and returned a pass.** The entry above is about instruments that could not see something.
+  These are different and in some ways worse: **the safeguard was present, executed, and confidently wrong.**
+  Collected in one pass because the shared property is the only thing that makes them recognisable — the
+  countermeasures do not generalise and are listed per case.
+
+  **Lead case, because it is the nastiest shape found so far.** `Expand phase` was an allowlist naming one
+  player-loop phase to decompose. It became a **blocklist** the same day, keeping its key. Every existing
+  reference silently reversed: the run-sheet line *"set `Expand phase` to `PostLateUpdate`"* — correct when
+  written — became an instruction to **block the one phase the run existed to decompose**, producing a
+  clean-looking run with no render breakdown and no error. An existing `.cfg` carrying `PreLateUpdate` from
+  the allowlist era likewise flipped from expanding it to suppressing it.
+
+  > **A setting that keeps its key while reversing its meaning converts every existing reference into a
+  > confidently wrong instruction, and nothing in the text looks stale.**
+
+  **Countermeasure: rename the key, do not just re-document it.** BepInEx orphans an unknown key and creates
+  the new one at its default, so a stale value becomes **inert** rather than **inverted** — the only fix that
+  does not depend on a reader noticing something that looks correct. Fail-safe beats fail-noticed. Three
+  documentation mitigations were written first and all three required someone to read them.
+
+  *Specimen: Gamma, who wrote the run-sheet line and specified the inversion that reversed it, two hours
+  apart, without connecting them.*
+
+  The other four, with what each actually needed:
+
+  | | the failure | countermeasure |
+  |---|---|---|
+  | **A separate field is not an independent measurement** | `render = frame − gameUpdate` was defended as two independent instruments because `gameUpdate` is read from its own BSG measurer. It is — and that measurer is *defined* as `frame − render` forty lines into the class already being cited. The check verified a separate **field**, not an independently **computed** one. | Follow the field to its definition. A verification that stops at "different object, different field" has stopped where checking *feels* complete, one level above the answer. The tell was that agreement was 0.0024 ms rather than merely close — that is one interval measured twice, not two instruments agreeing. |
+  | **A truncated search is a silent omission with a byline** | *"`presetBatch` appears in no `.cs` file"*, concluded from a `head -20` grep whose output was flooded by locale JSON. | Count before reading. A search that was cut reports absence indistinguishably from a search that found nothing. |
+  | **Match the statistic to the question** | A near-miss: blocking `Initialization` and `PreUpdate` from expansion on medians of 0.005 and 0.028 ms — while FINDINGS already recorded *one `Initialization` at 74.8 ms* among in-raid spike frames. | **A spike instrument must be configured on tail behaviour, never on averages.** A phase with a negligible mean can carry a rare large spike, so selecting on the mean reintroduces exactly the omission the change was meant to prevent. Distinct from the others: the instrument was fine, the *aiming statistic* answered a different question. |
+  | **A filter's failure direction is a property of its purpose, not of the filter** | `git add -A` swept another agent's in-flight source and a build artifact into a commit described as documentation-only. | Commit by explicit path. Failing toward *taking too much* is the correct direction for an instrument — it is the whole argument for the expansion blocklist — and the wrong one for a commit. The same default is safe in one context and unsafe in the other, so "which way does this fail" must be re-asked per use rather than settled once. |
+
+  *Specimens: Alpha for rows 1–2, Gamma for rows 3–4.*
+
+  **What none of them were: carelessness.** Every one came from a step performed *because* it was the careful
+  thing to do — verifying a suspected tautology, grepping before asserting, choosing a threshold from measured
+  data, staging work before committing. **The check is not a safe place to stop thinking**, and the practical
+  consequence is the one the day already demonstrated repeatedly: these were caught by a second person
+  re-deriving from source or raw logs, never by the author re-reading their own work.
 - **A label is not a caveat. A qualifier that lives anywhere except the number will be dropped by the first
   person who quotes it.** Two figures in this document were misread this way four days apart, and **neither
   was a measurement fault** — both numbers were correct, and in both cases the qualification was sitting in
