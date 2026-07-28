@@ -1578,3 +1578,55 @@ observations, which is exactly why it got written as "every single-clause observ
 the PMC and boss-follower roles — the expensive ones, the ones a per-profile figure gets multiplied against.
 **Coverage that high is the condition under which over-generalisation is hardest to see**, because the
 counterexamples are rare enough to look like noise and are never the ones you spot-check.
+
+## 2026-07-28 — Beta: two source trees we were not using, and a no-op patch
+
+### Both SPT source trees are on disk
+
+Recording because three agents have been re-deriving from decompiles and DLLs while these sat unused:
+
+| tree | contains |
+|---|---|
+| `F:\SPT\Community\server-csharp-main` | full SPT 4.x **server** C# source — `BotController`, `bot.json`, every config default |
+| `F:\SPT\Community\modules-master` | full SPT **client module** source — every `ModulePatch`, including `RemoveUsedBotProfilePatch` |
+
+`F:\SPT\Src` holds only the `Assembly-CSharp` decompile. The SPT modules deployed as `spt-*.dll` are *not*
+decompiled there, which is why `RemoveUsedBotProfilePatch` appears nowhere under `Src` — it is SPT's, not
+BSG's, and its source was available all along.
+
+### `RemoveUsedBotProfilePatch` is a no-op against the vanilla call graph
+
+Enumerated, not sampled. `RemoveUsedBotProfilePatch` forces `withDelete = true` on
+`GClass680.GetNewProfile(BotCreationDataClass, bool)`. The flag reaches
+`BotProfileDataClass.ChooseProfile`, where `true` means `profiles2Select.Remove(profile)` — consume the
+profile out of the client-side cache. That much is real.
+
+**Every call site in `Assembly-CSharp` that supplies the flag supplies the literal `true`:**
+`BotCreatorClass.cs:131` (`ActivateBot`, the main spawn path), `BotCreationDataClass.cs:65`,
+`BotsPresets.cs:245`, `BotsPresets.cs:209`. The remaining three sites forward a parameter and introduce no
+literal. `BotCreatorClass.method_0` — the five-argument one carrying `withDelete` — has exactly one caller.
+
+So the patch sets a value the game already sets. **Any PR sentence of the form "this patch causes X" is
+wrong**, and that is a claim we were within one draft of publishing.
+
+**Not yet checked, and handed to Delta as the way this is most likely to be wrong:** `IBotCreator.GenerateProfile`
+and `IGetProfileData.ChooseProfile` are public interface members, and Fika, SAIN and QuestingBots are all on
+disk under `Community/`. A mod calling either with `false` would restore the patch's purpose. Also unchecked:
+whether the patch was load-bearing on an earlier EFT build. **"No-op now" is not "always pointless"**, and a
+PR that says otherwise makes a historical claim it has not tested.
+
+### A truncated search reported as a clean result, again
+
+First tree-wide grep for `RemoveUsedBotProfile` across `SPT4.0.13` returned nothing. It had not finished
+running — I read the output file while the command was still going, and the empty section looked identical
+to a real null.
+
+What caught it: re-running against the module DLLs **with a positive control**, grepping for `ModulePatch`
+alongside it. `ModulePatch` appeared in 5 of 6 DLLs, confirming the search could see into them at all; the
+target then appeared in `spt-singleplayer.dll`.
+
+This is the third instance of the same failure this project has had — `strings` returning zero lines from
+the launcher bundle, the `loading` vs `load` filter bug, and now this. The countermeasure that works is not
+"be careful with greps" but **carry a positive control in the same command**: search for something that must
+be there, in the same invocation, and a null result becomes readable.
+
