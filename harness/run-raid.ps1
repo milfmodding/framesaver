@@ -343,9 +343,14 @@ function Save-ClientArgs {
     Note $cmd
 }
 
-function Start-Client {
+function Get-ClientArgs {
+    <#
+      One definition, used by both the launch and the dry run. An earlier
+      version built the string twice and the dry run kept printing the old
+      shape after the real one was corrected - a dry run that disagrees with
+      the launch is worse than no dry run, because it is believed.
+    #>
     param($Backend, $Token)
-    Head 'client'
 
     $saved = Get-SavedArgs
     if ($saved) {
@@ -356,12 +361,36 @@ function Start-Client {
         Note "replaying captured arguments"
     }
     else {
-        Warn 'no captured launcher arguments - using the minimum SPT requires'
-        Warn 'run with -CaptureArgs once to make this exact; see the README'
-        $a = '-token={0} -config={{"BackendUrl":"{1}"}}' -f $Token, $Backend
+        # Read out of the launcher's own source, not guessed:
+        # SPT.Launcher.Base/Controllers/GameStarter.cs:140 builds exactly this,
+        # and Json.SerializeSingleQuotes sets QuoteChar to a single quote, so the
+        # config really is single-quoted on the command line.
+        #
+        # -force-gfx-jobs native matters and an earlier version of this script
+        # omitted it. It is a graphics-job threading flag, so leaving it out
+        # would change `render` - the quantity Protocol B measures - against
+        # every log in the corpus. boot.config also sets
+        # gfx-enable-native-gfx-jobs=1, so the two agree and omitting the flag
+        # may well be harmless; "may well be" is not a basis for a measurement.
+        #
+        # ClientConfig also carries Version and MatchingVersion. SPT's own
+        # RequestHandler reads only BackendUrl, but BSG's ApplicationConfigClass
+        # reads the others, so they are not decoration.
+        Note 'using the launcher-equivalent arguments (from GameStarter.cs:140)'
+        $a = ("-force-gfx-jobs native -token={0} " +
+              "-config={{'BackendUrl':'{1}','MatchingVersion':'live','Version':'live'}}") -f $Token, $Backend
     }
+    $a
+}
 
+function Start-Client {
+    param($Backend, $Token)
+    Head 'client'
+
+    $a = Get-ClientArgs -Backend $Backend -Token $Token
     Note "args: $a"
+    # UseShellExecute=false and the game directory as cwd, matching
+    # GameStarter.cs:149-152.
     $p = Start-Process -FilePath $ClientExe -WorkingDirectory $InstallDir `
                        -ArgumentList $a -PassThru
     Ok "started pid $($p.Id)"
@@ -418,10 +447,10 @@ if ($fatal -gt 0) { Warn "overriding $fatal failed check(s) because -Force was g
 if ($DryRun) {
     Head 'dry run'
     Note "would start server : $ServerExe"
-    Note ("would start client : {0} -token={1} -config={{`"BackendUrl`":`"{2}`"}}" -f `
-          $ClientExe, $info.Token, $info.Backend)
-    if (Get-SavedArgs) { Note 'captured launcher arguments would be replayed' }
-    else { Warn 'no captured arguments yet - run -CaptureArgs once' }
+    Note "would start client : $ClientExe"
+    Note ("        with args : " + (Get-ClientArgs -Backend $info.Backend -Token $info.Token))
+    if (Get-SavedArgs) { Note 'these are captured launcher arguments, replayed' }
+    else { Note 'these are read from GameStarter.cs - -CaptureArgs is optional' }
     Invoke-PostFlight -Before $logsBefore -NothingRan
     exit 0
 }

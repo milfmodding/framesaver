@@ -32,39 +32,47 @@ deploy is, and guessing which costs a raid. `-Force` overrides it and says so.
 
 Nothing here modifies the plugin, the config, or a profile.
 
-## Run `-CaptureArgs` once, and here is the honest reason
+## The launch arguments, and why they are not a guess
+
+The client is started with exactly what the launcher builds at
+`SPT.Launcher.Base/Controllers/GameStarter.cs:140`:
+
+```
+-force-gfx-jobs native -token=<profileId>
+-config={'BackendUrl':'<url>','MatchingVersion':'live','Version':'live'}
+```
+
+Single quotes are not a typo — `Json.SerializeSingleQuotes` sets Newtonsoft's
+`QuoteChar` to `'`, so that is genuinely what goes on the command line.
+
+**An earlier version of this script passed only `-token` and `-config` with just
+`BackendUrl`, and that was wrong in a way worth recording.** SPT's own
+`RequestHandler` reads only those two, so it would have *worked* — but:
+
+- **`-force-gfx-jobs native` is a graphics-job threading flag.** Omitting it
+  risks changing `render`, which is the quantity Protocol B exists to measure,
+  against every log already in the corpus. `boot.config` also sets
+  `gfx-enable-native-gfx-jobs=1`, so the two agree and omitting the flag may well
+  be harmless — but "may well be" is not a basis for a measurement.
+- **`ClientConfig` carries `Version` and `MatchingVersion` too.** SPT ignores
+  them; BSG's `ApplicationConfigClass` does not.
+
+The launcher binary could not answer this — it is a 29.5 MB single-file bundle
+and searching it for argument strings returns almost nothing, which is an
+instrument seeing nothing rather than evidence of absence. The launcher *source*
+answered it in one line.
+
+`-CaptureArgs` is therefore **optional now**, kept for the case where a future SPT
+version changes the arguments:
 
 ```
 harness\run-raid.bat -CaptureArgs
 ```
 
-This starts the server and the **launcher**, waits for the game to appear, and
-records the client's real command line to `launch-args.json`. Press Start in the
-launcher as usual. After that, `run-raid.bat` starts the client directly and the
-launcher is never needed again.
-
-**Why not just pass the arguments SPT documents?** Because I could not verify
-what the launcher actually passes. `SPT.Launcher.exe` is a 29.5 MB single-file
-bundle, so searching it for argument strings returns almost nothing — and that
-is an instrument seeing nothing, not evidence the arguments are absent. No EFT
-or BepInEx log on disk records a command line either.
-
-What *is* verified, from SPT's own source rather than from memory:
-`SPT.Common.Http.RequestHandler` reads `-token=<profileId>` and
-`-config={"BackendUrl":...}` and nothing else, by plain string replacement.
-
-So the minimum is known and sufficient for SPT to function. What is unknown is
-whether the launcher passes anything **more** — a graphics flag, a Unity switch —
-and if it does, a harness that omits it is launching a different program than
-every log in the corpus was recorded under. That would be a silent comparability
-break, which is the expensive kind.
-
-Until `launch-args.json` exists the harness uses the known minimum and **warns
-loudly on every run**. Capture replaces a guess with a measurement, and it costs
-one launch you were going to do anyway.
-
-On replay the token and backend URL are substituted from the current profile and
-`http.json`; every other captured argument is passed through untouched.
+It starts the server and the launcher, waits for the game to appear, and records
+the real command line to `launch-args.json`. Press Start in the launcher as
+usual. On replay the token and backend URL are substituted from the current
+profile and `http.json`; every other captured argument passes through untouched.
 
 ## What it does not do
 
