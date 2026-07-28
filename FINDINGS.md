@@ -1754,8 +1754,39 @@ same raid, stock batch 30**:
 predicts the response size, not merely fits it.
 
 It holds across roles and across the batch change. `assaultx3` and `assaultx8` on stock batch 45 give 11.0 and
-10.7 KB per profile; the same requests after `bot.json` was capped to 5 give 10.2–12.2. **Every single-clause
-observation in the log set lands at 10.1–12.2 KB per profile, spanning batch 45 → 5 and requests of 1 → 32.**
+10.7 KB per profile; the same requests after `bot.json` was capped to 5 give 10.2–12.2. ~~**Every single-clause
+observation in the log set lands at 10.1–12.2 KB per profile, spanning batch 45 → 5 and requests of 1 → 32.**~~
+
+**Struck 2026-07-28, Delta — the *rule* is confirmed and predictive; the *flat band* is scav-only and was
+generalised to every role it was never measured on.** Re-derived independently in
+[`analysis/delta-presetbatch.py`](analysis/delta-presetbatch.py) over all 288 single-clause observations in
+23 logs, fitting each log's `presetBatch` era from the data rather than assuming it:
+
+| role | n | median KB/profile |
+|---|---|---|
+| `pmcBEAR` | 8 | **23.4** |
+| `pmcUSEC` | 2 | **22.3** |
+| `followerBoar` | 2 | **21.1** |
+| `followerBoarClose2` | 2 | **19.2** |
+| `shooterBTR` | 36 | **13.3** |
+| `assault` | 171 | 11.1 |
+| `marksman` | 67 | 10.1 |
+
+**95 of 288 observations (33%) fall outside 10.1–12.2, and the role medians span 2.3×.** The band was read off
+`assault` and `marksman` — which are 238 of the 288 observations, so it looked universal — and PMC profiles are
+**more than twice** the size the document has been quoting. Nothing downstream of this reverses direction: it
+makes the batch cost *larger* for the roles it was understating. But any per-profile figure applied to a PMC
+wave is low by ~2×, and the 4.04 ms/profile construction cost inherits the same defect.
+
+Two things the re-derivation *confirmed* rather than broke, and which should not be re-derived again:
+
+- **The three marksman observations are exact.** `20260726-1704`, one log, one raid, stock batch 30:
+  `Max(30,3)=30` → 10.11 KB, `Max(30,17)=30` → 10.08 KB, `Max(30,32)=32` → 10.06 KB. Three significant figures
+  across an 11× range in requested count. The rule predicts, it does not merely fit.
+- **`shooterBTR` is a control nobody planted.** Its `presetBatch` is **1** in stock *and* in the capped config,
+  so `Max(1, asked) == asked` always and it is the one role the config edits cannot move. Across all three eras
+  `shooterBTRx3` spans 32,614–44,999 chars (**1.38×**, ordinary loadout variance) while `marksmanx3` over the
+  same edits spans 49,771–310,696 (**6.24×**). A role the rule says is immune behaved immune.
 
 **This dissolves the 42–137 KB puzzle.** At batch 5 a small request generates 5 profiles ≈ **55 KB**, and
 multi-clause requests give more — so the post-fix range is exactly what the rule predicts, and there was never
@@ -1770,6 +1801,49 @@ construction to deliver 3 bots, and at batch 5 it costs 5 ≈ 20 ms.
 
 **Corollary for anyone reading response size as a proxy: do not.** Response bytes tell you `Max(batch, asked)`,
 not how many bots the raid wanted. `profileBuild.profiles` counts profiles built per window directly.
+
+#### What survives adversarial review, for the upstream PR
+
+Checked 2026-07-28 by Delta against `Community/server-csharp-main` (`Build.props` → `SptVersion 4.0.13`,
+matching the running server's `SPT 4.0.13` watermark, so line citations are safe). The brief was to *refute*.
+
+**The `Math.Max` binds, and it is not close.** The worry was that callers always pass a `condition.Limit`
+above the preset, making the default inert. They do not: across 288 single-clause observations the batch
+exceeds the request on **80%**, and under the *shipped* config on **74%** at a median **12.5× / max 15×**
+inflation. The cleanest single comparison is one request either side of the config edit — `assaultx3`,
+stock median **508,660 chars** against capped-5 median **56,497**, a **9.0×** swing on an identical request.
+
+**It is a deliberate default, not a bug, and the PR should say so.** [`BotController.cs:356`](../../Community/server-csharp-main/Libraries/SPTarkov.Server.Core/Controllers/BotController.cs:356)
+carries an inline comment — *"Choose largest between value passed in from request vs what's in bot.config"* —
+so `Max` is doing what it was written to do. The defensible claim is not "SPT has a defect" but "these
+defaults are sized for wave pre-generation and are 15× oversized on the on-demand path", which is a
+tuning argument the maintainers can accept without conceding a bug. **`server-csharp-main` is a source drop
+with no `.git`, so whether these values are recent, deliberate or already changed upstream cannot be
+established locally** — that needs a real clone before anything is filed.
+
+**One genuine small bug, unrelated to performance.** `GetBotPresetGenerationLimit` returns **10** on a miss
+([`BotController.cs:49-59`](../../Community/server-csharp-main/Libraries/SPTarkov.Server.Core/Controllers/BotController.cs:49))
+while the string it logs says *"defaulting to 30"* — in `en.json:11` and every other locale. Worth including;
+costs nothing.
+
+**But the fallback is unreachable in practice, so do not lead with it.** `presetBatch` has 61 keys covering
+every role Sophia's maps spawn, and the warning appears **zero times** across all three server logs
+(`spt2026072[678].log`), which do carry other `[Warn]` lines. Only three roles can reach it at all:
+`spiritSpring` and `spiritWinter` have no key, and `bossTagillaAgro` is misspelled `bossTagillAagro` in
+`bot.json` against `WildSpawnType.bossTagillaAgro` in `LocationBase.cs` — `PresetBatch` is a plain
+`Dictionary<string, int>`, so the lookup is ordinal and misses. Real, cheap to fix, never observed firing.
+
+**The `LocalPlayer` vs `ObservedPlayerView` framing does not support the fix, and should be cut.** The
+argument was that `presetBatch` amortises a cost SPT does not have because its bots are full `LocalPlayer`
+MonoBehaviours. Two independent problems. *It is not SPT's choice*: `LocalGame` is BSG's own offline game
+class and it is what hands `BotCreatorClass` a `Func<GameWorld, Profile, Vector3, Task<LocalPlayer>>`; the
+only SPT module that mentions `LocalPlayer` at all is `DisableDevMaskCheckPatch`. *And it is the wrong cost*:
+that factory is invoked once per **activated** bot at [`BotCreatorClass.cs:106`](../../Src/Assembly-CSharp/Assembly-CSharp/BotCreatorClass.cs:106),
+whereas `presetBatch` controls how many `Profile`s are **generated and transferred**. Going 45 → 5 changes
+profiles generated by 9× and `LocalPlayer` instantiations by **zero** — the bot either spawns or it does not.
+The cost the batch actually amortises is server-side generation plus the client-side response handling this
+document measured directly at ~0.34 µs/char. That measurement is the argument; the architecture sentence is a
+non-sequitur sitting on top of it and would be the first thing a maintainer pulled.
 
 Note the client-side budget is useless here for the same reason it was useless generally: one response is
 one callback.
@@ -2897,14 +2971,41 @@ sitting underneath this, and it spins in windows with zero `creates`.
 `presetBatch`, the `Profile` constructor, the backup-flush bail and the bundle backlog are all downstream
 consequences of asking for ~70× more bots than the game will ever create.
 
-#### The amplifier: SPT makes every cached profile single-use
+#### ~~The amplifier: SPT makes every cached profile single-use~~ The amplifier is real; SPT does not cause it
 
 Found 2026-07-26 while reviewing SPT's client modules, and it closes the "constant poll" question left open
 above — the backup system was the wrong suspect.
 
-`RemoveUsedBotProfilePatch` forces `withDelete = true` on `BotsPresets.GetNewProfile`
+~~`RemoveUsedBotProfilePatch` forces `withDelete = true` on `BotsPresets.GetNewProfile`~~
 ([RemoveUsedBotProfilePatch.cs:22](../../Community/modules-master/project/SPT.SinglePlayer/Patches/RaidFix/RemoveUsedBotProfilePatch.cs:22)).
 Every profile handed out is removed from the cache. That is correct in isolation — it stops duplicate bots.
+
+**Corrected 2026-07-28, Delta, before this went into a public PR: the patch is a no-op. `withDelete` is
+already `true` at every reachable call site in BSG's own code.** Three of them, all hardcoded:
+
+| site | file:line | value |
+|---|---|---|
+| `BotCreationDataClass.Create`, else branch | [`BotCreationDataClass.cs:65`](../../Src/Assembly-CSharp/Assembly-CSharp/BotCreationDataClass.cs:65) | `GenerateProfile(data, ct, true)` |
+| `BotsPresets.CreateProfile`, refill after a miss | [`BotsPresets.cs:209`](../../Src/Assembly-CSharp/Assembly-CSharp/BotsPresets.cs:209) | `ChooseProfile(this.List_0, true)` |
+| `BotsPresets.FillCreationDataWithProfiles` | [`BotsPresets.cs:245`](../../Src/Assembly-CSharp/Assembly-CSharp/BotsPresets.cs:245) | `GetNewProfile(data, true)` |
+
+and the third is **dead code**. `BotCreationDataClass.Create` branches on `botCreator as BotsPresets`; the
+live `IBotCreator` is a `BotCreatorClass` ([`LocalGame.cs:103`](../../Src/Assembly-CSharp/Assembly-CSharp/EFT/LocalGame.cs:103)
+constructs it wrapping `botsPresets` as its `GInterface21`), `BotsPresets`' base `GClass680` implements
+`GInterface21` and **not** `IBotCreator`, and nothing in the assembly derives from `BotsPresets` — so the cast
+is always null and `FillCreationDataWithProfiles` never runs. The live path is
+`Create` → `BotCreatorClass.GenerateProfile(…, true)` → `BotsPresets.CreateProfile(…, withDelete: true)` →
+`GetNewProfile(data, true)`. The patch prefixes that last call and sets `true` to `true`.
+
+Two consequences. **First, this cannot be led with as "SPT's own defect" — deleting a used profile is BSG
+behaviour, and removing the patch would change nothing.** Second, the mechanism below is unaffected: the cache
+really does drain at the rate of attempts. Only its *attribution* was wrong. That distinction is the whole
+value of the check, because the mechanism is what the fix targets and the attribution is what the PR would
+have claimed.
+
+A detail worth keeping, since the live path is now pinned: the refill inside `CreateProfile` asks for
+`new WaveInfoClass(3, …)` ([`BotsPresets.cs:192`](../../Src/Assembly-CSharp/Assembly-CSharp/BotsPresets.cs:192)) —
+**the hardcoded 3 that makes `Max(45, 3)` a 15× inflation is BSG's, and it is not configurable.**
 
 Combined with the spawn churn it is the multiplier that turns a retry loop into a stall generator:
 **a rejected spawn attempt still pulls a profile from the cache and still deletes it.** The cache therefore
@@ -3003,6 +3104,112 @@ and must be re-checked before trusting them anywhere else:
   view, not a bug.
 
 ---
+
+---
+
+## Registered predictions — the clock counters and the boundary latch, 2026-07-28
+
+Written by Gamma **before either instrument has produced a line**, on the precedent of
+[the `endToStart` registration](#registered-prediction--written-2026-07-28-by-delta-before-endtostart-has-ever-run).
+Re-derivation is the cheap check this project has leaned on all day and it is **unavailable for a
+first-run field**: there is no prior log to re-query, so the only defence against fitting a story to
+whatever arrives is to write the story down first.
+
+Two registrations, not one. The queue treated the magnitude fields and the snapshot-boundary move as one
+change; [Beta's correction](COORDINATION.md) separated them, and they predict opposite things about the
+same counter. Reading them as one is how a fix and a regression cancel.
+
+### Registration 1 — the magnitude fields, build `403b1aeb`
+
+`negResidualFrames` / `frameOverPeriodFrames` have shipped since `88a1166a` as bare counts. `403b1aeb`
+adds `WorstMs` and `SumMs` to each. Nothing about the sampling has changed, so **this build measures the
+defect, it does not fix it.**
+
+Both counters are over *every* frame, so `SumMs / Frames` is a mean over the counted frames — the
+quantity that separates sub-millisecond clock jitter from the −56 to −200 ms mechanism. That separation
+is the entire reason the fields exist, and it is what these predictions are about.
+
+| field | predicted | why |
+|---|---|---|
+| `frameOverPeriodFrames / totalFrames` | **~50%** | already measured at 50.9% over 28,678 frames. `frame` and `period` bracket nearly the same span, so symmetric sub-ms noise gives a coin flip |
+| `frameOverPeriodSumMs / Frames` | **< 1 ms** | corollary of the above: if the two clocks measure nearly the same interval the mean excess must be small |
+| `frameOverPeriodWorstMs` | **tens to hundreds of ms** | the rare frame where a stall lands between BSG's frame boundary and our `Update` sample point |
+| `negResidualFrames / totalFrames` | **low single-digit % or less** | `unaccounted` has a *positive* floor — the native inter-frame gap is in no phase — so going negative needs a straddle large enough to overcome it |
+| `negResidualSumMs / Frames` | **several ms to tens of ms** | same reason: the floor filters out jitter, so what remains should be mechanism-sized |
+
+**The signature that confirms the split-`Update` account** is the conjunction, not any single number:
+coin-flip `frameOverPeriod` rate with a sub-millisecond mean and a huge worst, alongside a *much rarer*
+`negResidual` with a mean far above a millisecond. Three of the five could come out as predicted and the
+account still fail — it is the contrast between rows 2 and 5 that carries it.
+
+#### The outcomes that would embarrass us, named in advance
+
+- **`negResidualSumMs / Frames` comes out under 1 ms.** Then the negatives are jitter and the split-`Update`
+  mechanism was read out of a magnitude-selected population — the spike lines — which is the exact defect
+  [the methodology note](#methodology-notes) warns about, committed by the instrument written to avoid it.
+  **Beta's item 4 would still be correct** and would still be worth building; it would simply be cosmetic
+  rather than load-bearing, and every claim resting on the A family would need re-reading.
+- **`negResidualFrames` also reads ~50%.** Then there is no positive floor, which means the eight phase
+  markers account for time they should not — a double-count. That invalidates `unaccounted` as a quantity
+  rather than merely its sign, and it would reach further back than anything else on this list.
+- **Both `WorstMs` fields come out small, under ~5 ms.** Then the whole clock-disagreement family is
+  sub-frame noise and has no bearing on the 130 / 334 ms stall families. That is *good* news for the stall
+  analysis — it removes a confound — and it means four builds went into a non-issue. Worth saying out loud
+  now, because after the fact it will be tempting to describe it as "ruling out a confound" and bank it as
+  a result.
+- **`negResidualWorstMs` exceeds `period` on the same line.** Structurally impossible; a residual cannot
+  be more negative than the window is long. That reads as an accumulator that is not being reset, and it
+  voids the build rather than reporting on it.
+
+**Two counters that must not be compared to today's figures.** The `periodMs > 0` guard means the first
+sampled frame of a run no longer increments either counter, so **every rate in this build is over a
+denominator one frame smaller** than the ones in the corpus. Immaterial at 28,678 frames, and stated
+because [the last two cross-log comparisons in this project were both wrong for reasons of exactly this
+size](analysis/CORPUS.md).
+
+### Registration 2 — the boundary latch, not yet built
+
+Beta's item 4 latches **both** `ReadAndReset()` and the `period` timestamp at the Begin marker of the
+first top-level phase. Under it the eight phase intervals are disjoint sub-intervals of the period window.
+
+The consequence is not statistical and there is no threshold to choose:
+
+> **`negResidualFrames` must be exactly 0, for the whole run.** Not "small". Not "much reduced". Zero, by
+> construction — and any non-zero value is a defective instrument rather than a property of the game.
+
+That is what makes shipping the counters one build ahead of the fix worth doing: it converts the counter
+from a measurement into an assertion.
+
+Three further predictions, each of which someone will otherwise get backwards:
+
+- **`frameOverPeriodFrames` should *not* move.** It stays near 50%. `frame` is still BSG's own counter over
+  its own span, and the latch does not touch it. **An unchanged `frameOverPeriodFrames` is not the fix
+  failing** — and if it *does* collapse to ~0, the two counters were measuring one thing and one of them
+  was redundant from the start.
+- **`unaccounted` must agree with `gap`.** Post-latch, `unaccounted` should equal
+  `endToStart − TimeUpdate − Initialization` on the same frame, within noise. Two independently derived
+  instruments, no shared arithmetic — this is the strongest check available and it costs nothing to run.
+  Disagreement means the latch is not where we think it is, and would land *before* any conclusion drawn
+  from the phase totals.
+- **`null` periods should appear during raid load and essentially nowhere else.** The latch introduces the
+  failure mode Beta guarded: a dropped marker freezes the boundary. Nulls clustered at the player-loop swap
+  are the guard working. **Nulls at a steady rate mid-raid mean markers are being dropped routinely, which
+  would make every phase number in this document suspect**, not just this build's.
+
+#### The measurement this fix exists for, and it is not the counter
+
+Once `negResidualFrames` is 0, re-run the stage-4 attribution on a fresh raid and compare the A family
+(~130 ms, collections present) to its shape in the current corpus:
+
+| A family after the latch | reading |
+|---|---|
+| **gone** — its time now lands on one line as a large `Update` phase | A was the split-`Update` artifact end to end, and the two-family split was an artifact of where we sampled |
+| **survives with the same shape** | the split explains the *mis-attribution* but not the *event*; A is real and still needs a cause |
+| **shrinks but persists** | both, in some proportion — and that proportion is measurable rather than arguable, which is the outcome to hope for |
+
+The middle row is the one that must not be quietly skipped. [Beta's own note says the time is real and
+mis-attributed by one line, not a phantom](COORDINATION.md) — so "A disappears" would be the *surprising*
+result, and it is the one a reader eager for a clean story will expect.
 
 ## Methodology notes
 

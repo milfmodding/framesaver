@@ -318,8 +318,13 @@ QB also offers two reusable hook points:
 
 Not a compatibility question, but the review answered an open one from FINDINGS.
 
-`RemoveUsedBotProfilePatch` forces `withDelete = true` on `BotsPresets.GetNewProfile`, making every cached
-profile single-use. Sensible on its own — it stops duplicate bots.
+~~`RemoveUsedBotProfilePatch` forces `withDelete = true` on `BotsPresets.GetNewProfile`, making every cached
+profile single-use. Sensible on its own — it stops duplicate bots.~~
+
+**Corrected 2026-07-28, Delta: the patch is a no-op.** `withDelete` is already `true` at all three call sites
+in BSG's own code, and the one that would have mattered is dead. Full derivation and citations in
+[FINDINGS.md](FINDINGS.md), under "The amplifier is real; SPT does not cause it". The amplifier mechanism
+below still holds — only its attribution was wrong.
 
 Combined with the spawn churn it is the missing amplifier. **Each rejected spawn attempt still pulls a
 profile from the cache and deletes it.** The cache therefore drains at the rate of *attempts*, not *spawns*,
