@@ -31,29 +31,31 @@ a build date — **the inversion lands inside era C**, so era plus expanded-phas
 
 ## Per-log provenance
 
-`animCulled infl` counts in-raid windows where `animCulled` exceeds `asleep`. The last two columns are
-**normalised to `period > 100 ms`** so that logs at different spike thresholds are comparable — see the
-threshold defect below, which is why the raw rates must not be compared directly.
+`animCulled infl` counts in-raid windows where `animCulled` exceeds `asleep`. **`line-pairing slip` is
+normalised to `period > 100 ms` *and* to a magnitude cut of 1 ms** — both are required, and applying one
+without the other is how two agents each read a phantom regression into the era-C logs. It counts lines
+with `frame > period + 1 ms` **or** `unaccounted < −1 ms`; the two co-occur by construction, so they are
+one column rather than two.
 
-| log | state | era | spike ms | expanded | raids | maps | animCulled infl | `frame>period` | `unacc < -1ms` |
-|---|---|---|---|---|---|---|---|---|---|
-| `20260726-170412-baseline` | complete | A | 100 | PreLateUpdate | 5 | Interchange, TarkovStreets, bigmap, factory4_day | 20/30 | 2/34 | 1/34 |
-| `20260726-183701-ai-stack` | complete | A | 100 | PreLateUpdate | 2 | TarkovStreets, factory4_day | 0/17 | 6/50 | 4/50 |
-| `20260726-191139-ai-stack` | complete | A | 100 | PreLateUpdate | 1 | TarkovStreets | 0/6 | 1/12 | 1/12 |
-| `20260726-205307-ai-stack` | complete | A | 100 | PreLateUpdate | 1 | TarkovStreets | 0/9 | **11/35** | 5/35 |
-| `20260726-212828-ai-stack` | complete | A | 100 | PreLateUpdate | 1 | TarkovStreets | 0/3 | 2/7 | 2/7 |
-| `20260726-231556-ai-stack` | complete | A | 100 | PreLateUpdate | 1 | TarkovStreets | 0/6 | 0/3 | 0/3 |
-| `20260726-234729-ai-stack` | no in-raid | A | 100 | PreLateUpdate | 1 | — | 0/0 | — | — |
-| `20260726-235721-ai-stack` | complete | A | 100 | PreLateUpdate | 1 | TarkovStreets | 0/7 | 3/13 | 2/13 |
-| `20260727-002111-ai-stack` | complete | A | 100 | PreLateUpdate | 1 | TarkovStreets | 0/8 | 2/7 | 1/7 |
-| `20260727-004848-ai-stack` | **empty** | — | 100 | — | 0 | — | — | — | — |
-| `20260727-005816-ai-stack` | complete | A | 100 | PreLateUpdate | 1 | TarkovStreets | 0/2 | 0/5 | 0/5 |
-| `20260727-010740-ai-stack` | complete | B | 100 | PreLateUpdate | 1 | TarkovStreets | 0/2 | 3/6 | 2/6 |
-| `20260727-201220-ai-stack` | complete | B | 100 | PreLateUpdate | 2 | TarkovStreets | 10/22 | 5/33 | 3/33 |
-| `20260727-232106-ai-stack` | **empty** | — | 100 | — | 0 | — | — | — | — |
-| `20260727-232217-control` | complete | C | 100 | PreLateUpdate | 2 | TarkovStreets, bigmap | 12/28 | 12/76 | 8/76 |
-| `20260728-092354-postlate-gc` | complete | C | **30** | **all 8** | 1 | TarkovStreets | 0/11 | 7/24 | 2/24 |
-| `20260728-100048-postlate-gc` | **live** | C | **30** | **all 8** | 1 | TarkovStreets | 0/2 | 1/4 | 1/4 |
+| log | state | era | spike ms | expanded | raids | maps | animCulled infl | line-pairing slip |
+|---|---|---|---|---|---|---|---|---|
+| `20260726-170412-baseline` | complete | A | 100 | PreLateUpdate | 5 | Interchange, TarkovStreets, bigmap, factory4_day | 20/30 | 1/34 |
+| `20260726-183701-ai-stack` | complete | A | 100 | PreLateUpdate | 2 | TarkovStreets, factory4_day | 0/17 | 4/50 |
+| `20260726-191139-ai-stack` | complete | A | 100 | PreLateUpdate | 1 | TarkovStreets | 0/6 | 1/12 |
+| `20260726-205307-ai-stack` | complete | A | 100 | PreLateUpdate | 1 | TarkovStreets | 0/9 | 5/35 |
+| `20260726-212828-ai-stack` | complete | A | 100 | PreLateUpdate | 1 | TarkovStreets | 0/3 | 2/7 |
+| `20260726-231556-ai-stack` | complete | A | 100 | PreLateUpdate | 1 | TarkovStreets | 0/6 | 0/3 |
+| `20260726-234729-ai-stack` | no in-raid | A | 100 | PreLateUpdate | 1 | — | — | — |
+| `20260726-235721-ai-stack` | complete | A | 100 | PreLateUpdate | 1 | TarkovStreets | 0/7 | 2/13 |
+| `20260727-002111-ai-stack` | complete | A | 100 | PreLateUpdate | 1 | TarkovStreets | 0/8 | 2/7 |
+| `20260727-004848-ai-stack` | **empty** | — | 100 | — | 0 | — | — | — |
+| `20260727-005816-ai-stack` | complete | A | 100 | PreLateUpdate | 1 | TarkovStreets | 0/2 | 0/5 |
+| `20260727-010740-ai-stack` | complete | B | 100 | PreLateUpdate | 1 | TarkovStreets | 0/2 | 2/6 |
+| `20260727-201220-ai-stack` | complete | B | 100 | PreLateUpdate | 2 | TarkovStreets | 10/22 | 3/33 |
+| `20260727-232106-ai-stack` | **empty** | — | 100 | — | 0 | — | — | — |
+| `20260727-232217-control` | complete | C | 100 | PreLateUpdate | 2 | TarkovStreets, bigmap | 12/28 | 8/76 |
+| `20260728-092354-postlate-gc` | complete | C | **30** | **all 8** | 1 | TarkovStreets | 0/11 | 2/24 |
+| `20260728-100048-postlate-gc` | **live** | C | **30** | **all 8** | 1 | TarkovStreets | 0/4 | 1/6 |
 
 **`state` matters and is a snapshot.** `empty` means zero sample and zero spike lines — an aborted launch,
 nothing to find. `no in-raid` means the session never reached `state: raid`. **`live` means the file was still
@@ -100,9 +102,11 @@ phenomenon, or that a negative residual is meaningful. **Recovery: the affected 
 `frame > period` is on the line.** Use a magnitude cut of **`< −1 ms`**: the mechanism's signature is −56 to
 −200 ms, and pooling sub-millisecond jitter with it changes the headline by ~4×.
 
-**Rate varies 0%–31% across logs at identical threshold**, so this is a property of the *run*, not of the
-instrument — it tracks how often the `Update`-phase stall occurs, which moves with mod stack and map. The
-worst log in the corpus is `20260726-205307-ai-stack` at 11/35, era A, threshold 100.
+**Rate varies 0%–33% across logs at identical threshold, so this is a property of the *run*, not of the
+instrument** — it tracks how often the `Update`-phase stall occurs, which moves with mod stack and map.
+The high rates are all small-`n` logs; among the five with `n ≥ 30` the range is **0.0%–14.3%**, and the
+era-C 30 ms logs sit inside it at 8.3%. **There is no build-related trend**, and the unfiltered rate
+suggests one only because it is 1.9× inflated at the lower threshold.
 
 > **The limit of that recovery, and it is the reason the defect matters at all.** Self-identification finds
 > the **source** line and never the **destination**. The mechanism moves time from line N to line N+1: N is
