@@ -2369,3 +2369,50 @@ Every earlier declaration happened to check names that doubled as member names, 
 missing. Fifth instrument-saw-nothing of the day and **the first inside a verification tool** — the one
 place it can invalidate everything checked with it.
 
+
+---
+
+## 2026-07-28 — Delta handover at the second compaction
+
+### Verified clean — do not re-derive these
+
+| claim | status |
+|---|---|
+| out-of-loop attribution of the 165–402 ms family | **22 / 22** post-latch at i−1, **0.0%** coincidence baseline; 12/15 pre-latch at i+0 against 0.4% |
+| `endToStart` and `unaccounted` are one line apart post-latch | confirmed; `endToStart` travels with `frame`, `unaccounted` with `period` |
+| draw-call slope | **1.56× – 2.25×** fitted; every membership convention lands inside 1.3×–2.25× |
+| Protocol A GC-slice trade | V real, ratios 0.52 / 0.35, **p = 0.115 / 0.074** — not publishable |
+| `frame > period` on large stalls | 33 lines: **26 explained** as pair halves, **7 unpaired** |
+| `RemoveUsedBotProfilePatch` | inert on this build; one literal at `BotCreationDataClass.cs:65`, three forwards |
+| `presetBatch` `Math.Max` binds | `assaultx3` = 508,660 chars stock vs 56,497 capped, **9.0×** |
+| per-profile size by role | PMC 22–24 KB, followers 19–21, shooterBTR 13.3, assault 11.1, marksman 10.1 |
+| Alpha's three marksman figures | exact — 10.06–10.11 KB/profile across an 11× range in requested count |
+| `ProfileBuild.Depth` latch | real, and **has never fired** — 1:1 across all 22 logs carrying the field |
+
+### Open, in the order I would take them
+
+1. **The seven unpaired `frame > period` events.** Needs the control log re-derived under the pairing rule
+   before any rate or raid-count is quoted. Nobody has done that; the control predates the latch.
+2. **Which anchor is correct** — `frame`'s or `period`'s — now that they disagree by one boundary. Beta's
+   call. Not a data question.
+3. **The A-population `CPUBusy` 125–133 ms figure**, still resting on the neighbourhood-max join. Outstanding
+   since the first handover.
+4. **The PR branch**: `gaylatea-framesaver` at three commits, **unpushed**. Push and the batch number are
+   Sophia's. Claim 1 is out; claim 2 leads on *lowering the default cannot starve any caller*, which is
+   provable from `Math.Max` and needs nobody to trust our instrument.
+
+### Two things a fresh Delta should know about how today actually went
+
+**Every substantive correction I made today was to a number, not to a method.** The methods were sound —
+Alpha's shuffled null, Beta's call-site enumeration, Gamma's self-calibrating floor were all *better* than
+what I would have built. What they got wrong was the population the method ran on: the null on uncut spikes
+where ±5 ms matches everything, the enumeration on a parameter never read in its body, the floor on
+adjacent-window drift when the comparison spans an arm. **The reviewer's edge is almost never a better
+technique. It is asking what the denominator is.**
+
+**And I made the same class of error at the same rate.** A Windows-Python glob over an MSYS path that matched
+nothing and read as *"the field does not exist"*; a `git add -A` that swept two of someone else's binaries
+into my commit; a BOM added to a file bound for a public repo; a backtick in a commit message that mangled it
+and left a stray file in the tree. Three of the four were caught by looking at output I had no reason to
+expect to be interesting — a grep run alongside, a `git diff`, a `git status`. **The role's advantage is
+structural and it does not transfer to your own work.** Budget for that.
