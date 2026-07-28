@@ -1,0 +1,376 @@
+<#
+.SYNOPSIS
+  Start the SPT server, start the client against it, and tear both down when
+  the client closes. Runs the pre-raid and post-raid protocol checks around it.
+
+.DESCRIPTION
+  The point is not saving keystrokes. It is that the checks around a run stop
+  being things someone remembers to do:
+
+    before   which commit is the deployed plugin, and does it match the
+             approved one; is the config what the protocol assumes; is
+             anything already running
+    after    which log did this run produce, and what does the latch
+             validator say about it
+
+  Nothing here modifies the plugin, the config, or a profile. It starts two
+  processes, waits, and stops the one it started.
+
+.PARAMETER DryRun
+  Run both check phases and print what would be launched. Starts nothing.
+  Safe to run at any time, including while the game is open.
+
+.PARAMETER CaptureArgs
+  Start the server and the *launcher*, wait for EscapeFromTarkov.exe to
+  appear, and record its command line to harness/launch-args.json. Use this
+  once. After that the client is started directly and no launcher click is
+  needed.
+
+.PARAMETER ExpectCommit
+  Fail before starting anything if the deployed plugin was not built from
+  this commit. Defaults to the contents of harness/GO if that file exists.
+
+.PARAMETER Force
+  Continue past a failed pre-flight check. Prints what it is overriding.
+
+.EXAMPLE
+  .\run-raid.ps1 -DryRun
+  .\run-raid.ps1 -CaptureArgs
+  .\run-raid.ps1
+#>
+[CmdletBinding()]
+param(
+    [switch] $DryRun,
+    [switch] $CaptureArgs,
+    [string] $ExpectCommit,
+    [switch] $Force
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+# ---------------------------------------------------------------- layout ----
+
+$HarnessDir  = $PSScriptRoot
+$RepoDir     = Split-Path -Parent $HarnessDir
+$InstallDir  = 'F:\SPT\SPT4.0.13'
+$ServerDir   = Join-Path $InstallDir 'SPT'
+$ServerExe   = Join-Path $ServerDir 'SPT.Server.exe'
+$LauncherExe = Join-Path $ServerDir 'SPT.Launcher.exe'
+$ClientExe   = Join-Path $InstallDir 'EscapeFromTarkov.exe'
+$PluginDll   = Join-Path $InstallDir 'BepInEx\plugins\Framesaver.dll'
+$ConfigFile  = Join-Path $InstallDir 'BepInEx\config\framesaver.ai.perf.cfg'
+$LogDir      = Join-Path $InstallDir 'BepInEx\plugins\Framesaver-logs'
+$ProfileDir  = Join-Path $ServerDir 'user\profiles'
+$HttpConfig  = Join-Path $ServerDir 'SPT_Data\configs\http.json'
+$ArgsFile    = Join-Path $HarnessDir 'launch-args.json'
+$GoFile      = Join-Path $HarnessDir 'GO'
+
+$Provenance  = Join-Path $RepoDir 'analysis\build-provenance.py'
+$LatchCheck  = Join-Path $RepoDir 'analysis\check-boundary-latch.py'
+
+$script:Failures = 0
+
+function Say    { param($m) Write-Host $m }
+function Head   { param($m) Write-Host ''; Write-Host "== $m" -ForegroundColor Cyan }
+function Ok     { param($m) Write-Host "   ok   $m" -ForegroundColor Green }
+function Note   { param($m) Write-Host "   --   $m" -ForegroundColor DarkGray }
+function Warn   { param($m) Write-Host "   warn $m" -ForegroundColor Yellow }
+function Bad    { param($m) Write-Host "   FAIL $m" -ForegroundColor Red; $script:Failures++ }
+
+# ------------------------------------------------------------- pre-flight ----
+
+function Get-BackendUrl {
+    $http = Get-Content -Raw -LiteralPath $HttpConfig | ConvertFrom-Json
+    # backendIp/backendPort are what the client is told to talk to; ip/port are
+    # what the server binds. They are normally the same and need not be.
+    "http://{0}:{1}" -f $http.backendIp, $http.backendPort
+}
+
+function Get-Token {
+    # The client's -token is the profile id, which is also the file name. SPT
+    # parses it with a plain string Replace, so anything extra breaks it.
+    $profiles = @(Get-ChildItem -LiteralPath $ProfileDir -Filter '*.json' -File)
+    if ($profiles.Count -eq 0) { throw "no profile in $ProfileDir" }
+    if ($profiles.Count -gt 1) {
+        throw ("$($profiles.Count) profiles in $ProfileDir - " +
+               "this harness will not pick one for you: " +
+               ($profiles.Name -join ', '))
+    }
+    [IO.Path]::GetFileNameWithoutExtension($profiles[0].Name)
+}
+
+function Test-AlreadyRunning {
+    # Refuse rather than adding a second server. Two servers on one port is a
+    # confusing state that looks like a working one.
+    $busy = @()
+    foreach ($n in 'SPT.Server', 'EscapeFromTarkov', 'SPT.Launcher') {
+        $p = Get-Process -Name $n -ErrorAction SilentlyContinue
+        if ($p) { $busy += "$n (pid $($p.Id -join ','))" }
+    }
+    $busy
+}
+
+function Invoke-PreFlight {
+    Head 'pre-flight'
+
+    # @() because PowerShell unrolls an empty array to $null on return, and
+    # Set-StrictMode then throws on .Count rather than reporting zero.
+    $busy = @(Test-AlreadyRunning)
+    if ($busy.Count -gt 0) { Bad ("already running: " + ($busy -join '; ')) }
+    else { Ok 'nothing already running' }
+
+    if (-not (Test-Path -LiteralPath $PluginDll)) {
+        Bad "no plugin at $PluginDll"
+    }
+    else {
+        $md5 = (Get-FileHash -LiteralPath $PluginDll -Algorithm MD5).Hash.ToLower()
+        Ok "plugin md5 $md5"
+
+        # The commit is read out of the assembly, so it cannot disagree with
+        # the file the way a filename or a written-down hash can.
+        $stamp = $null
+        if (Test-Path -LiteralPath $Provenance) {
+            $out = & python $Provenance $PluginDll 2>&1
+            $line = $out | Where-Object { $_ -match 'commit\s+([0-9a-f]{7,})' } | Select-Object -First 1
+            if ($line -and $line -match 'commit\s+([0-9a-f]{7,})') { $stamp = $Matches[1] }
+        }
+        if (-not $stamp) { Bad 'could not read the build commit out of the plugin' }
+        else {
+            Ok "built from commit $stamp"
+            $want = $ExpectCommit
+            if (-not $want -and (Test-Path -LiteralPath $GoFile)) {
+                $want = (Get-Content -Raw -LiteralPath $GoFile).Trim()
+            }
+            if (-not $want) {
+                Warn 'no expected commit given and no harness/GO file - not checked'
+            }
+            elseif ($stamp.StartsWith($want) -or $want.StartsWith($stamp)) {
+                Ok "matches the approved commit $want"
+            }
+            else {
+                Bad "approved commit is $want but the deployed plugin is $stamp"
+                Note 'either the approval is stale or the deploy is - do not guess'
+            }
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $ConfigFile)) { Bad "no config at $ConfigFile" }
+    else {
+        # Reported, not enforced. These are choices per run; the failure this
+        # prevents is discovering afterwards that one of them was not what the
+        # protocol assumed.
+        foreach ($key in 'Run tag', 'Window seconds', 'Spike event ms', 'Do not expand phases') {
+            $line = Select-String -LiteralPath $ConfigFile -Pattern "^$([regex]::Escape($key)) =" |
+                    Select-Object -First 1
+            if ($line) { Note ($line.Line.Trim()) } else { Warn "config key missing: $key" }
+        }
+    }
+
+    $backend = Get-BackendUrl
+    Ok "backend $backend"
+    try { $token = Get-Token; Ok "profile token $token" }
+    catch { Bad $_.Exception.Message; $token = $null }
+
+    [pscustomobject]@{ Backend = $backend; Token = $token }
+}
+
+# ----------------------------------------------------------------- server ----
+
+function Start-SptServer {
+    Head 'server'
+    $p = Start-Process -FilePath $ServerExe -WorkingDirectory $ServerDir -PassThru
+    Ok "started pid $($p.Id)"
+    $p
+}
+
+function Wait-ServerReady {
+    param($Proc, [int] $TimeoutSec = 180)
+
+    # Poll for a real response rather than sleeping. A fixed sleep is right
+    # exactly once and silently wrong on either side of that.
+    $url = (Get-BackendUrl) + '/launcher/server/version'
+    $sw  = [Diagnostics.Stopwatch]::StartNew()
+    while ($sw.Elapsed.TotalSeconds -lt $TimeoutSec) {
+        if ($Proc.HasExited) {
+            throw "server exited during startup with code $($Proc.ExitCode)"
+        }
+        try {
+            $r = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3
+            if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) {
+                Ok ("ready after {0:n1}s" -f $sw.Elapsed.TotalSeconds)
+                return
+            }
+        }
+        catch { Start-Sleep -Milliseconds 500 }
+    }
+    throw "server not ready after ${TimeoutSec}s"
+}
+
+function Stop-SptServer {
+    param($Proc)
+    if (-not $Proc) { return }
+    Head 'teardown'
+    if ($Proc.HasExited) { Note "server already exited (code $($Proc.ExitCode))"; return }
+
+    # CloseMainWindow first so the server can flush and save. Only the process
+    # this script started is ever touched - never by name, because the user may
+    # have a second server running deliberately.
+    [void] $Proc.CloseMainWindow()
+    if (-not $Proc.WaitForExit(20000)) {
+        Warn 'server did not exit on request - killing'
+        Stop-Process -Id $Proc.Id -Force -ErrorAction SilentlyContinue
+        [void] $Proc.WaitForExit(10000)
+    }
+    if ($Proc.HasExited) { Ok "server stopped (code $($Proc.ExitCode))" }
+    else { Bad "server pid $($Proc.Id) still running" }
+}
+
+# ----------------------------------------------------------------- client ----
+
+function Get-SavedArgs {
+    if (-not (Test-Path -LiteralPath $ArgsFile)) { return $null }
+    (Get-Content -Raw -LiteralPath $ArgsFile | ConvertFrom-Json).arguments
+}
+
+function Wait-ForClient {
+    param([int] $TimeoutSec = 300)
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    while ($sw.Elapsed.TotalSeconds -lt $TimeoutSec) {
+        $p = Get-Process -Name 'EscapeFromTarkov' -ErrorAction SilentlyContinue
+        if ($p) { return $p | Select-Object -First 1 }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "EscapeFromTarkov.exe did not appear within ${TimeoutSec}s"
+}
+
+function Save-ClientArgs {
+    param($Proc)
+    $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId = $($Proc.Id)").CommandLine
+    if (-not $cmd) { Warn 'could not read the client command line'; return }
+
+    # Stored verbatim. The token and backend are substituted at replay time so
+    # the file stays valid across a profile change, and everything else the
+    # launcher passes is preserved - because a harness that launches with
+    # different arguments than the launcher is measuring a different program.
+    @{ capturedFrom = 'SPT.Launcher.exe'; commandLine = $cmd
+       arguments = ($cmd -replace '^\s*"?[^"]*EscapeFromTarkov\.exe"?\s*', '') } |
+        ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $ArgsFile -Encoding utf8
+    Ok "captured client arguments to $ArgsFile"
+    Note $cmd
+}
+
+function Start-Client {
+    param($Backend, $Token)
+    Head 'client'
+
+    $saved = Get-SavedArgs
+    if ($saved) {
+        # Replace the launcher's own token/config with this run's values and
+        # keep every other argument exactly as captured.
+        $a = $saved -replace '-token=\S+', "-token=$Token"
+        $a = $a -replace '-config=\{[^}]*\}', ('-config={{"BackendUrl":"{0}"}}' -f $Backend)
+        Note "replaying captured arguments"
+    }
+    else {
+        Warn 'no captured launcher arguments - using the minimum SPT requires'
+        Warn 'run with -CaptureArgs once to make this exact; see the README'
+        $a = '-token={0} -config={{"BackendUrl":"{1}"}}' -f $Token, $Backend
+    }
+
+    Note "args: $a"
+    $p = Start-Process -FilePath $ClientExe -WorkingDirectory $InstallDir `
+                       -ArgumentList $a -PassThru
+    Ok "started pid $($p.Id)"
+    $p
+}
+
+# ------------------------------------------------------------ post-flight ----
+
+function Invoke-PostFlight {
+    param($Before, [switch] $NothingRan)
+    Head 'post-flight'
+
+    $now = @(Get-ChildItem -LiteralPath $LogDir -Filter '*.ndjson' -File -ErrorAction SilentlyContinue)
+    $new = @($now | Where-Object { $Before -notcontains $_.Name })
+
+    if ($new.Count -eq 0) {
+        # A dry run is *expected* to produce nothing, so warning here would fire
+        # on the normal case - and a check that always fires is one nobody reads.
+        if ($NothingRan) { Note 'no new log, as expected - nothing was started' }
+        else { Warn 'this run produced no new ndjson - the plugin may not have loaded' }
+        return
+    }
+    foreach ($f in $new) {
+        Ok ("log {0} ({1:n0} bytes)" -f $f.Name, $f.Length)
+        if (-not (Test-Path -LiteralPath $LatchCheck)) { continue }
+
+        & python $LatchCheck $f.FullName
+        switch ($LASTEXITCODE) {
+            0 { Ok 'latch validator: passed' }
+            2 { Warn 'latch validator: INCONCLUSIVE - it could not assess this log' }
+            default { Bad "latch validator: failed (exit $LASTEXITCODE)" }
+        }
+    }
+}
+
+# ------------------------------------------------------------------- main ----
+
+# Snapshot the log directory before anything starts, so the run's own output
+# can be named afterwards rather than guessed at by timestamp.
+$logsBefore = @(@(Get-ChildItem -LiteralPath $LogDir -Filter '*.ndjson' -File `
+                                -ErrorAction SilentlyContinue) | ForEach-Object { $_.Name })
+
+$info  = Invoke-PreFlight
+$fatal = $script:Failures
+
+if ($fatal -gt 0 -and -not $Force) {
+    Head 'stopping'
+    Bad "$fatal pre-flight check(s) failed - nothing was started"
+    Note 'pass -Force to run anyway, or fix the mismatch'
+    exit 1
+}
+if ($fatal -gt 0) { Warn "overriding $fatal failed check(s) because -Force was given" }
+
+if ($DryRun) {
+    Head 'dry run'
+    Note "would start server : $ServerExe"
+    Note ("would start client : {0} -token={1} -config={{`"BackendUrl`":`"{2}`"}}" -f `
+          $ClientExe, $info.Token, $info.Backend)
+    if (Get-SavedArgs) { Note 'captured launcher arguments would be replayed' }
+    else { Warn 'no captured arguments yet - run -CaptureArgs once' }
+    Invoke-PostFlight -Before $logsBefore -NothingRan
+    exit 0
+}
+
+$server = $null
+try {
+    $server = Start-SptServer
+    Wait-ServerReady -Proc $server
+
+    if ($CaptureArgs) {
+        Head 'capture'
+        Note 'starting the launcher - press Start in it as usual'
+        [void] (Start-Process -FilePath $LauncherExe -WorkingDirectory $ServerDir -PassThru)
+        $client = Wait-ForClient
+        Save-ClientArgs -Proc $client
+    }
+    else {
+        $client = Start-Client -Backend $info.Backend -Token $info.Token
+    }
+
+    Head 'running'
+    Say  '   waiting for the client to close. Closing the game ends the session.'
+    $client.WaitForExit()
+    Ok "client exited (code $($client.ExitCode))"
+}
+finally {
+    # finally, so a Ctrl-C or a thrown error still stops the server. Leaving a
+    # headless server running is the failure this whole script exists to avoid.
+    Stop-SptServer -Proc $server
+    Invoke-PostFlight -Before $logsBefore
+
+    Head 'done'
+    if ($script:Failures -gt 0) { Bad "$($script:Failures) problem(s) - read above" }
+    else { Ok 'clean run' }
+}
