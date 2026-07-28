@@ -231,7 +231,7 @@ not just a game restart. Shipping it means a server mod overriding `botConfig.pr
 | | |
 | --- | --- |
 | Install | `F:\SPT\SPT4.0.13` |
-| Plugin | `BepInEx\plugins\Framesaver.dll` (post-build step copies it there) |
+| Plugin | `BepInEx\plugins\Framesaver.dll` (copied there only by `-p:Deploy=true`) |
 | Config | `BepInEx\config\framesaver.ai.perf.cfg` — written on first launch, **not** the `F:\SPT\Base` path |
 | Logs | `BepInEx\plugins\Framesaver-logs\framesaver-<timestamp>-<tag>.ndjson` |
 
@@ -240,6 +240,28 @@ cover several maps back to back. **Set `Run tag` to the stage** (`solo`, `ai-sta
 
 Confirm before the first raid: V-Sync **off**. `gameUpdate` excludes the frame-limiter sleep, but `frame`
 does not, and a capped `frame` makes percentile comparisons meaningless.
+
+### Before you raid: confirm the deployed binary is the approved one
+
+```bash
+python analysis/build-provenance.py "F:\SPT\SPT4.0.13\BepInEx\plugins\Framesaver.dll"
+```
+
+It prints the commit the binary was built from, read out of the assembly itself. **Compare it against the
+commit named in the GO signal.** If they differ, the approval is stale and the raid would test something
+nobody verified.
+
+**Why this is your check and not the reviewer's.** On 2026-07-28 an approval went stale **five times**, and the
+last one inside minutes: GO was signalled on `85db183d`, item 4 was built and deployed, and the deployed
+binary became `8fe7f747` — a different build with a *different instrument in it*. Nobody broke a rule. Freeze
+declarations are written before a deploy and read after one, so the writer and the reader are never looking at
+the same moment. Opt-in deploy made deploying deliberate; it did not make it announced.
+
+**A check that runs at the moment of use cannot go stale, and that is the only property that fixes this.**
+The reviewer's verification is still worth having — it is what catches a binary missing a field it should
+contain — but it is a claim about the past, and this one costs a raid when it is wrong.
+
+Two minutes, and it is the only step here that protects every other number in the session.
 
 ## Method: A/B inside one raid
 
@@ -724,17 +746,37 @@ indistinguishable, and the failure mode manufactured the most consequential read
 Dividing by the swing you actually got, rather than the one you assumed, is what closes it: a weak
 manipulation becomes a wide error bar instead of a null, and a *failed* manipulation announces itself.
 
-**Manipulation check, and it is a pass criterion rather than a note:**
+**Manipulation check — a signal-to-noise ratio the run measures on itself, not an absolute number.**
+
+The first version of this set an absolute floor of Δ`drawCalls.avg` ≥ 2,000. **That number came from the
+wrong population.** Delta measured natural window-to-window movement in `drawCalls.avg` *while roaming* —
+median 570 adjacent, **p90 1,583**, and at the two-window separation that step 1 and step 3 sit at, **median
+962, p90 2,113, max 2,976**. A 2,000 "manipulation" is below the p90 of roaming noise.
+
+Those are roaming windows, so they bound held-position drift from above rather than estimating it. **And
+there is no better estimate anywhere in the corpus, because nobody has ever held position** — conditioning
+on view stability leaves three adjacent pairs, one of which shows Δ = 2,284 with both windows view-stable,
+which is a view *change between* windows rather than drift within one. n=3, confounded. No number.
+
+So the floor is measured in the run itself:
+
+> **Within an arm, the two windows share position and view — so the Δ between them *is* the held drift.**
+> Between arms, the Δ is drift plus manipulation. **Require the between-arm Δ to be at least 3× the largest
+> within-arm Δ**, and the protocol calibrates its own floor from data taken seconds earlier under the exact
+> conditions of the test.
 
 | | |
 |---|---|
-| **Δ`drawCalls.avg` ≥ 2,000** | the run is readable. Predicted Δ`render` ≈ 0.93 ms |
-| **Δ`drawCalls.avg` < 2,000** | **void, not negative.** Do not compute the ratio, do not report a null — find a wall with less behind it, or a longer sightline, and run it again |
+| between-arm Δ ≥ **3×** the largest within-arm Δ | the run is readable |
+| between-arm Δ < that | **void, not negative.** Do not compute the ratio, do not report a null — find a wall with less behind it, or a longer sightline, and run it again |
 
-The error bar is free and already in the protocol: **two windows per arm gives the within-arm spread**, and
-Δ`render` should be read against it rather than against zero. If the two arms overlap inside their own
-scatter, the answer is "this swing was too small to resolve", which is a third thing distinct from both a
-confirmed slope and a null.
+**Optional and worth it if there is time: three windows per arm rather than two.** Two gives one within-arm
+Δ per arm, which is a noise estimate with no spread of its own; three gives two per arm and six across the
+run. That is nine minutes instead of six, and it is the difference between a noise floor and a guess at one.
+
+Then Δ`render` is read against the same within-arm spread rather than against zero. **If the arms overlap
+inside their own scatter, the answer is "this swing was too small to resolve"** — a third thing, distinct
+from both a confirmed slope and a null.
 
 | outcome — slope in ms per call | reading |
 |---|---|
@@ -775,15 +817,32 @@ reproduce arm 1, something drifted over the nine minutes whatever the bot count 
 arriving, the heap growing. **A result that survives arm 1 vs arm 2 but fails arm 1 vs arm 3 measured
 time, not the variable**, and no other criterion here can see that.
 
+**In Protocol B it does more than that — it is what makes the protocol an intervention at all.** The
+manipulation check certifies that draw calls *changed*; it cannot certify that the **view** changed them. A
+fire starting, a vehicle moving, bots piling into frame — any of those gives a large Δ`drawCalls`, passes
+the check, and yields a perfectly well-formed ratio, at which point Protocol B has quietly degraded back
+into the observation it exists to escape, with nothing in the log recording the degradation.
+
+**A spontaneous scene change does not revert exactly.** So arm 1 ≈ arm 3 with arm 2 apart is strong
+evidence the view was the driver, because the alternative requires a confound to appear and disappear on
+the same schedule as your feet not moving. That is the whole causal claim, and it rests on the replication
+rather than on the manipulation check.
+
 **The bounding box is the criterion, not `dist`.** `dist` sums a per-frame distance over ~3,000 frames a
 window, so its floor grows with frame count and it will read non-zero standing perfectly still; the box
 does not accumulate. `dist` is kept because it catches the one thing a box misses — pacing a small circle,
 which returns a tidy box and a large path.
 
-**These two thresholds are bounds, not measurements.** Nobody has ever stood still with this instrument
-running, so there is no measured noise floor and the first held window *is* the calibration: record its
-`dist` and box and replace these numbers with what they actually read. The placement is not delicate — the
-quietest roaming window on record is 76 m against a 5 m bound, more than an order of magnitude of daylight.
+**These thresholds are bounds, not measurements.** Nobody has ever stood still with this instrument
+running, so there is no measured noise floor and the first held window *is* the calibration: record what it
+actually read and replace these numbers with those.
+
+For `dist` and the box the placement is not delicate — the quietest roaming window on record is 76 m
+against a 5 m bound, more than an order of magnitude of daylight. **For `drawCalls` it is delicate**, which
+is why that one is expressed as a ratio the run measures on itself rather than as a number: the bound on
+natural drift and the expected manipulation are the same order of magnitude. Record the within-arm
+`drawCalls.avg` Δ from the first held run — **it is the first honest estimate of held drift anyone will
+have**, and everything downstream of it currently rests on a bound taken from roaming windows.
 
 **`bots.awake` is the combat check.** Standing still on Streets draws fire, and a bot shooting at you is a
 different CPU workload from a bot patrolling. Consistent is fine; *different between arms* is not.
@@ -803,11 +862,15 @@ else. **So no field verifies that you held the aim point**, which is precisely w
 3.21, median 1.63, with only 5 windows at or below 1.15. A fixed view genuinely does drive it to ~1.0, and
 roaming genuinely does not — so ≤ 1.15 certifies a held view without certifying *which* view.
 
-**Proposed build item, not built** — `Telemetry.cs` is Beta's and the freeze belongs to them: add yaw and
-pitch min/max to the `pos` block, about six lines beside the existing per-axis code. It would make "the aim
-point was held" a direct reading instead of an inference, and it would let Protocol B's two arms be
-identified from the log rather than from the run notes. Cheap, and the next held-position run is the one
-that would use it.
+**Proposed build item** — yaw and pitch min/max in the `pos` block, about six lines beside the existing
+per-axis code. Not built here; `Telemetry.cs` is Beta's.
+
+**Its priority changed once the drift was measured, and the argument is now quantitative rather than
+convenience.** The expected manipulation is ~3,300–4,700 draw calls. The bound on natural window-to-window
+drift is ~3,000. **Those are the same order of magnitude** — so the log cannot presently distinguish "the
+view moved the draw calls" from "something in the scene did while the view was held", and the entire causal
+claim rests on the arm 1 ≈ arm 3 replication argument above. Yaw and pitch would make it a direct reading.
+Worth raising in the queue on that basis; still behind the boundary latch.
 
 ### If there is only time for one thing
 
