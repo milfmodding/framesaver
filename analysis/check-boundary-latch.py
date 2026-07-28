@@ -45,7 +45,8 @@ def load(path):
 # Checks 1 and 2 validate the latch and are the reason this script exists. Check 3
 # would run against any log ever written, so it must not be able to carry a pass on
 # its own.
-ESSENTIAL = ("negative-residual assertion", "boundary tracks StartOfFrame")
+ESSENTIAL = ("negative-residual assertion", "boundary tracks StartOfFrame",
+             "in-raid latch coverage")
 
 
 def check(path):
@@ -74,7 +75,15 @@ def check(path):
                   f"worst {worst} ms -- accounted <= period should be an identity")
             failures += 1
         else:
-            print(f"  ok    negResidualFrames 0 of {eligible} eligible frames")
+            # Coverage sits IN the pass line, not two lines above it in a lower
+            # severity. Gamma's case: 41 eligible frames against 3,359 missed read
+            # as "PASSED" with a plausible-looking number beside the zero. The
+            # assertion's strength scales with the eligible count, so the eligible
+            # count belongs next to the assertion.
+            sampled = sum(r.get("frames", 0) for _, r in windows)
+            cov = (100.0 * eligible / sampled) if sampled else float("nan")
+            print(f"  ok    negResidualFrames 0 of {eligible} eligible frames "
+                  f"({cov:.2f}% coverage of {sampled} sampled)")
     else:
         print("  SKIP  clockResidualFrames absent (log predates the latch)")
         skipped.append(ESSENTIAL[0])
@@ -134,7 +143,40 @@ def check(path):
         share = (100.0 * missed / total) if total else 0.0
         print(f"  info  {missed} boundary-missed frames ({share:.2f}% of {total})")
 
-    # 5. Gamma's third population: frames sampled while the profiler was NOT installed.
+    # 5. Coverage, in-raid only. A latch that mostly does not fire is a likelier
+    #    defect than one that never fires -- a marker clobbered and reinstalled on a
+    #    cycle produces exactly that -- and check 1 only catches the total-zero case.
+    #
+    #    The threshold is NOT a guessed number, which is the mistake that produced
+    #    the 23.9% comment. It is the point where the claim stops being a claim:
+    #    if a window missed more frames than it tested, the instrument spent most of
+    #    that window unable to look, and "zero negatives" describes the minority.
+    #
+    #    In-raid windows only. Loading windows legitimately miss, because the game
+    #    rewrites the player loop during raid load -- failing them would be a check
+    #    that fires on the normal case, which is a check nobody reads.
+    raid = [(n, r) for n, r in windows if r.get("state") == "raid"]
+    if raid and any("clockResidualFrames" in r for _, r in raid):
+        run += 1
+        starved = [
+            (n, r.get("clockResidualFrames", 0), r.get("boundaryMissedFrames", 0))
+            for n, r in raid
+            if r.get("boundaryMissedFrames", 0) > r.get("clockResidualFrames", 0)
+        ]
+        if starved:
+            n, e, m = starved[0]
+            print(f"  FAIL  {len(starved)} in-raid window(s) missed more frames than they "
+                  f"tested, first at line {n}: {e} eligible vs {m} missed -- the assertion "
+                  f"covers a minority of the window")
+            failures += 1
+        else:
+            print(f"  ok    every in-raid window tested more frames than it missed "
+                  f"({len(raid)} window(s))")
+    elif not raid:
+        print("  SKIP  no in-raid windows (state == 'raid') to check coverage on")
+        skipped.append(ESSENTIAL[2])
+
+    # 6. Gamma's third population: frames sampled while the profiler was NOT installed.
     #    Counted in `frames`, absent from boundaryMissedFrames, excluded from
     #    clockResidualFrames -- so no field names it and it only comes out by
     #    subtraction. Non-zero mid-raid means that window's phase totals are partial,
