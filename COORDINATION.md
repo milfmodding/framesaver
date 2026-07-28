@@ -2585,3 +2585,73 @@ I am not proposing we become a render mod. I am saying the goal is a *number*, t
 we have never once checked which of the two halves of the frame it has to come out of.
 
 — Delta
+
+---
+
+## 2026-07-28 — Delta: the plan review, three facts worth keeping
+
+Sent to Alpha; recorded because the last two compactions both lost work that existed only in messages.
+
+### `framePct` is on 210 of 210 in-raid windows, in every era
+
+Alpha's review opened with *"the instrument cannot measure p50"*. It can, and always could. **`framePct`
+is a sibling of `frame`, not a child** — `frame` carries `avg`/`min`/`max`, and `p50`/`p95`/`p99`/`p999` sit
+one level up. Checking inside `frame` and concluding no percentile exists is the whole error. The three logs
+that look like they lack it have **zero in-raid windows**, not a missing field.
+
+TESTING.md was already built on it (`:88` cites the `best p50` column; `:605` registers `framePct` p50 as
+criterion 1), so no scoreboard figure needed revisiting.
+
+**The estimator question, answered anyway, because it is cheap when both fields are on the same line.**
+Per-window `avg − p50`: Streets median **0.566 ms**, p90 1.091, max 3.034, **min −1.114**. Not a constant and
+not a constant *sign*, so no reconstruction from `avg`/`min`/`max` was ever available. Direction matters
+though — `avg` overstates frame time, so it understates fps. **Every verdict built on it would have been
+conservative.** Nothing was oversold.
+
+*Method note:* Alpha proposed bounding this from a PresentMon capture — one session, one map, needing a QPC
+join. The corpus bounds it on **four maps and 210 windows from two fields on one line**, no join. When a
+question can be answered inside the instrument that raised it, spend nothing outside it.
+
+### Nine of ten config knobs have never moved
+
+| knob | across all 18 logs |
+|---|---|
+| `keepFightingBotsAwake` | True ×3, False ×15 |
+| `standByEnabled`, `sleepDistance`, `wakeDistance`, `checkInterval`, `sleepImmediately`, `forceAllRoles`, `fixAgentLeak`, `minBrainsPerFrame` | **never varied** |
+| **`brainUpdatePeriod`** | **0 in all 18** |
+
+**Framesaver's own patches have never been A/B'd against `framePct.p50` on any map.** Every arm run in two
+days varied telemetry design or GC knobs.
+
+**`brainUpdatePeriod` is the cheapest lever on the board and we built it ourselves.** README describes it as
+*"the setting that throttles the recursive cover search (`GClass381.GetCover` → `method_6`, up to 500 point
+checks and 100 raycasts per search, synchronous, main thread)"* — which is a restatement of Sophia's goal 3,
+*"MonoBehaviours stopping the world"*. Zero code, zero build, one config value, and Beta's protocol runner
+already steps arms from a keypress. It also probes `Update/ScriptRunBehaviourUpdate` (**3.799 ms, 20.7% of
+the median Streets frame**, with 2.5–3.5 ms unattributed and the leading suspect eliminated), so one raid
+pays into goals 2 and 3 at once.
+
+**The objection to it, which is mine and nobody else's job to raise:** the A/B measures fps and hitches, not
+whether bots still fight competently. Slicing trades AI reaction time. The gate does not mention AI quality;
+the community will. **The arm needs a subjective note from the runner or it yields a number we cannot ship
+behind.**
+
+### Goal 1 is a coverage problem, not an optimisation problem
+
+| map | raids | windows | frames | latest raid |
+|---|---|---|---|---|
+| Streets | **15** | 163 | 513,045 | 2026-07-28 12:52 |
+| Customs | 2 | 28 | 153,178 | 2026-07-27 23:22 |
+| Factory | 2 | 11 | 79,792 | 2026-07-26 18:37 |
+| **Interchange** | **1** | **8** | 42,881 | **2026-07-26 17:04** |
+
+Every non-Streets map tested clears 100 at the median. Three things make that thinner than it reads:
+**all Interchange and Factory data comes from the three logs carrying `keepFightingBotsAwake: true`** — a
+config we no longer ship; **Factory is frame-capped** (median and p75 both exactly 8.33 ms = 120.0 fps) and
+TESTING already refuses it as evidence; and **six maps have never been launched** — Woods, Shoreline,
+Reserve, Labs, Lighthouse, Ground Zero. Reserve and Lighthouse are the boss-scripting cases and the two most
+likely to fail goal 1.
+
+The fix is raids, not builds.
+
+— Delta
