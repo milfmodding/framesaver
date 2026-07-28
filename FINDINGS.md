@@ -3203,14 +3203,36 @@ same counter. Reading them as one is how a fix and a regression cancel.
 adds `WorstMs` and `SumMs` to each. Nothing about the sampling has changed, so **this build measures the
 defect, it does not fix it.**
 
-Both counters are over *every* frame, so `SumMs / Frames` is a mean over the counted frames — the
-quantity that separates sub-millisecond clock jitter from the −56 to −200 ms mechanism. That separation
-is the entire reason the fields exist, and it is what these predictions are about.
+Each counter's `SumMs` accumulates inside the same branch as its own increment, so the mean is
+`SumMs ÷ that counter's own Frames` — never over the window's `frames`. That mean is the quantity
+separating sub-millisecond clock jitter from the −56 to −200 ms mechanism, and it is what these
+predictions are about.
+
+> #### Overtaken by events — no raid will ever run on `403b1aeb`
+>
+> This registration was written for a build that exists only in `artifacts/`. **The ordering rationale —
+> ship 1+2+3 first so the magnitude fields have a pre-fix baseline — was defeated by the latch shipping
+> the same afternoon, before any raid.** Tonight's binary carries both.
+>
+> | rows | status tonight |
+> |---|---|
+> | 1–3, `frameOverPeriod*` | **testable.** The latch does not touch that counter, and it is registered in registration 2 as *not predicted to move* |
+> | 4–5, `negResidual*` | **moot.** Post-latch the count is 0 by construction, so there is no distribution to have a mean of |
+> | **the confirming conjunction** | **cannot be evaluated.** It needs row 5 |
+>
+> **So the split-`Update` account will not be confirmed or refuted by magnitude, and the pre-fix magnitude
+> distribution can never be collected** — the fix removes the thing it would have measured. Stated here
+> rather than discovered afterwards, because the tempting move later is to read tonight's `frameOverPeriod`
+> magnitudes as though they spoke to the residual account. They do not; they are a different counter.
+>
+> **This is not worth a raid to recover.** The account is better tested by registration 2's A-family table,
+> which compares *shape* against the existing corpus rather than magnitude against a baseline that was
+> never taken. Recording the loss is worth more than spending a run on it.
 
 | field | predicted | why |
 |---|---|---|
-| `frameOverPeriodFrames / totalFrames` | **~50%** | already measured at 50.9% over 28,678 frames. `frame` and `period` bracket nearly the same span, so symmetric sub-ms noise gives a coin flip |
-| `frameOverPeriodSumMs / Frames` | **< 1 ms** | corollary of the above: if the two clocks measure nearly the same interval the mean excess must be small |
+| `frameOverPeriodFrames ÷ frames` | **~50%** | already measured at 50.9% over 28,678 frames. `frame` and `period` bracket nearly the same span, so symmetric sub-ms noise gives a coin flip |
+| `frameOverPeriodSumMs ÷ frameOverPeriodFrames` | **< 1 ms** | corollary of the above: if the two clocks measure nearly the same interval the mean excess must be small |
 | `frameOverPeriodWorstMs` | **tens to hundreds of ms** | the rare frame where a stall lands between BSG's frame boundary and our `Update` sample point |
 | `negResidualFrames / frames` | **low single-digit % or less** — but see the denominator note below, this row is the weak one | `unaccounted` has a *positive* floor — the native inter-frame gap is in no phase — so going negative needs a straddle large enough to overcome it |
 | `negResidualSumMs / negResidualFrames` | **several ms to tens of ms** | same reason: the floor filters out jitter, so what remains should be mechanism-sized |
@@ -3279,7 +3301,7 @@ to them, not built, and it is not worth a second build on its own.
 
 #### The outcomes that would embarrass us, named in advance
 
-- **`negResidualSumMs / Frames` comes out under 1 ms.** Then the negatives are jitter and the split-`Update`
+- **`negResidualSumMs ÷ negResidualFrames` comes out under 1 ms.** Then the negatives are jitter and the split-`Update`
   mechanism was read out of a magnitude-selected population — the spike lines — which is the exact defect
   [the methodology note](#methodology-notes) warns about, committed by the instrument written to avoid it.
   **Beta's item 4 would still be correct** and would still be worth building; it would simply be cosmetic

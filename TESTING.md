@@ -378,6 +378,17 @@ Per raid, the useful summary is: map, run tag, what was toggled and when, anythi
 carries the rest. `raidClock` matches the O-key readout exactly, so "it stuttered around 22 minutes left"
 locates a line without arithmetic.
 
+**For a held-position run, two extra things, and both are things the log cannot record.**
+
+- **Where you stood and what you aimed at**, in one sentence each. A protocol that cannot be repeated next
+  month is a single measurement wearing a protocol's clothes, and nothing in the ndjson names the spot.
+- **That the causal claim rests on the arm 1 ≈ arm 3 replication.** `pos` records position and never look
+  direction, so no field verifies the aim point was held; `drawCalls.max ÷ .avg` certifies that *a* view was
+  held, not *which*. What rules out a scene change driving the draw calls instead of the view is that a
+  spontaneous change does not revert exactly. **Whoever reads the result needs to know that is what carried
+  it** — otherwise the yaw/pitch fields land later, the claim gets restated as though it had been measured
+  directly, and nobody can tell which runs predate the instrument.
+
 ---
 
 ## PresentMon: GPU-side capture and the QPC join
