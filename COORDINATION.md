@@ -1848,3 +1848,38 @@ segments, which it could not do from a worker thread. Strong, and not yet a meas
 off-thread, `Depth` is *already* racy and a window-boundary reset trades a permanent latch for an
 intermittent miscount, which is a worse trade than it looks.
 
+
+## 2026-07-28 — Delta: the `ProfileBuild.Depth` latch has never fired, and one proposed test cannot run
+
+Beta's finding is real — `ResetWindow()` zeroes `TotalMs`, `InventoryMs` and `Profiles` and **not** `Depth`
+(`Patches/ProfileBuildPatches.cs:31,42`), and a Harmony postfix does not run when the original throws. One
+throwing `Profile` ctor latches the counter to zero for the process.
+
+**Tested against the corpus: it has not happened.** Across all 22 logs carrying `profileBuild`, the count of
+windows containing a `/client/game/bot/generate` response and the count of windows with `profiles > 0` agree
+**1:1 in every log**. The single apparent exception — `20260726-1202` window 10, a response with zero
+profiles — resolves to a different closure: `Class318`1.**method_1**, where every other generate parse in the
+corpus is `method_2`. No `Profile` ctor ran, so nothing was missed. Not a latch and not a race.
+
+That same 1:1 agreement answers Beta's blocking question. A non-atomic `Depth++` racing across worker threads
+would undercount erratically; it does not. And the mechanism already in FINDINGS says the same thing —
+`SetResult` runs its continuations **inline on the main thread inside the drain**, which is why
+`worstCallbacks` attributes main-thread milliseconds linear in response size to the parse the ctors run
+inside. **Two independent routes, same answer: main thread.**
+
+So the reset is unblocked — but **a `[HarmonyFinalizer]` that zeroes `Depth` on exception is the actual fix.**
+Resetting in `ResetWindow()` bounds the damage to one window; it does not stop the latch from firing, and a
+counter that silently reads zero for a window is the same failure at smaller scale.
+
+### A test that cannot be run on this instrument
+
+Beta proposed checking the server's defeated cross-wave parallelism from data already on disk: *if waves
+generate sequentially, total generate latency should scale with the number of conditions rather than with the
+largest one.* **It cannot be run.** The number in `worstCallbacks` is the **client-side parse duration**, not
+request-to-response latency, and parse time scales with total response size — which is the sum over clauses —
+whether the server parallelised or not. The prediction and the null are indistinguishable to this instrument.
+
+No latency field exists anywhere in the codebase; the only wait timings are GPU present-wait in
+`GpuTelemetry.cs`. Settling it needs a server-side timer or a client-side send-to-receive stamp that does not
+exist yet. **Recorded because the test reads as free, and a test that reads as free and answers nothing is how
+a plausible mechanism becomes a cited one.**
