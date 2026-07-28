@@ -249,11 +249,16 @@ than the usual mislabel, because `agents.slicing` is precisely the field a reade
 whether the manipulation was live. **Recovery: drop `flushedByProtocol` lines.** They were already excluded for
 being partial windows; that is the weaker reason. Whole windows inside an arm are self-consistent.
 
-**`frames` is not the denominator `tickedSum` and `liveSum` were accumulated under.** `frames` is
-`_periodSamples`, incremented unconditionally; the two sums accumulate one line earlier behind `if (m != null)`.
-They agree in raid and diverge across a load. *Wrong conclusion:* that `tickedSum ÷ frames` is brains-per-frame.
-**Recovery: use `tickedSum ÷ liveSum`** — both share the one gate, so that ratio and the `tickedSum == liveSum`
-self-check are exact by construction. This is the field to read for **which regime bound in a window**: with
+**`frames` is not the denominator `tickedSum` and `liveSum` were accumulated under** — but the divergence has
+**never once occurred**, and the safe denominator was already on the line. `frames` is `_periodSamples`,
+incremented unconditionally, while the two sums accumulate behind `if (m != null)`; `n` is emitted behind that
+same gate, and **`n == frames` on 284 of 284 sample lines across all 18 logs.** So this is a latent hazard with
+zero instances rather than a defect, and it is recorded at that strength deliberately: an entry that reads as a
+live defect when the thing has never happened costs this document the credibility its recoverable entries
+depend on. **Use `n` or `liveSum`, not `frames`, and expect no difference.**
+
+`tickedSum ÷ liveSum` remains the ratio to read, for a different reason than the denominator: it is the field
+that says **which regime bound in a window**. With
 `Minimum brains per frame` at 4 and a Streets roster of 14–29 agents, slicing binds at the top of that range
 and the floor binds at the bottom, so a single arm at `brainUpdatePeriod = 0.1` contains both.
 
@@ -335,6 +340,33 @@ Stated positively, because a document that is all caveats gets read as "unusable
   65 ms). The corpus does not contain the measurement.
 
 ---
+
+## The one rule behind most of the entries above
+
+**A check that reports a pass must also report what it tested**, because otherwise *"nothing failed"* and
+*"nothing was examined"* are the same output — and the second is indistinguishable from the strongest possible
+confirmation.
+
+Four instances on 2026-07-28 alone, and the shape is identical every time:
+
+| the check | what it said | what was true |
+|---|---|---|
+| `negResidualFrames == 0` | latch holds | also what a run produces if the test never ran — hence `clockResidualFrames` as the denominator and the `3 ÷ N` bound |
+| `probe-symbols.py` on `brainsTicked` | `ok` | a *member* was named `_brainsTickedSum`; the key is emitted nowhere |
+| `grep -c … \|\| echo 0` | no candidates | `grep -c` exits 1 on zero, so the fallback fired on the normal case; three existed |
+| `slicing matches arm` on a pre-protocol log | `OK` | zero windows carried an arm label, so every comparison was skipped |
+
+**Two of the four were inside verification tools**, which is where it does the most damage: a tool built to
+catch someone else's error reports a pass, and the pass is trusted precisely because the tool exists.
+
+The countermeasure is mechanical rather than a matter of care. **Print the population beside the verdict, and
+make an empty population a failure rather than a pass** — `UNTESTED`, not `OK`. Then the output cannot claim
+more than it looked at. `analysis/read-slicing-raid.py` does this on every check and refuses to print its
+primary comparison until each one names a non-empty population it examined; the `3 ÷ N` bound in
+`check-boundary-latch.py` is the same rule expressed as a number.
+
+Gamma stated the general form after finding the fourth instance in their own gate. It generalises past this
+project: it is the reason a green test suite that runs no tests is worse than a red one.
 
 ## Verifying a field is in a build: probe the key, not the name
 
