@@ -3620,6 +3620,86 @@ The middle row is the one that must not be quietly skipped. [Beta's own note say
 mis-attributed by one line, not a phantom](COORDINATION.md) — so "A disappears" would be the *surprising*
 result, and it is the one a reader eager for a clean story will expect.
 
+---
+
+## The large-stall family after the latch — three instruments, and one disagrees
+
+**Do not conclude from this section.** It states a contradiction and names the measurement that resolves
+it. The temptation is to pick whichever reading preserves the most existing text, and that is the reason
+the criteria are written before anyone reads them.
+
+`framesaver-20260728-125209-latch.ndjson`, 32 in-raid windows, 79,999 frames, **71 in-raid spike lines over
+100 ms.** They split cleanly on the discriminator already in `Telemetry.cs` — *a stall inside the frame has
+`frame ≈ period`; a stall at the boundary leaves `frame` ordinary while `period` runs long*:
+
+| | n | `unaccounted` | `endToStart` | `gcGen0` |
+|---|---|---|---|---|
+| **in-frame** (`frame ≈ period`) | 12 | median **0.023 ms** | 0.097 | — |
+| **boundary** (`frame` ordinary) | **59** | median **~320 ms** | **0.168** | **0 on all 59** |
+
+### The in-frame twelve are the latch working exactly as registered
+
+`unaccounted` median **0.023 ms** on frames where `period` reaches 760 ms. The stall is inside the loop, a
+phase measures it, and the residual is zero. **That is `accounted ≤ period` holding as an identity on the
+hardest available case**, and it is worth stating separately from the assertion counters because it is the
+same claim tested by content rather than by a counter reading zero.
+
+### The boundary fifty-nine are a three-way disagreement
+
+On a representative line — `raidElapsed` 39.4 s, no collection:
+
+```
+period 340.296   frame 21.822   unaccounted 320.497   endToStart 2.056
+phases: PreLateUpdate 7.584, PostLateUpdate 6.526, Update 5.161  (sum 19.27)
+```
+
+Three instruments cover the interval and **two agree against one**:
+
+- **`period − frame` ≈ `unaccounted`**, median error **0.269 ms** across all 59. So BSG's own frame
+  measurer and our phase sum independently agree the frame's *work* was ~20 ms.
+- **`endToStart` reads 0.168 ms median, 6.06 ms max, and never exceeds 10 ms on any of the 59.**
+
+`endToStart` brackets `EndOfFrame` → `StartOfFrame` and therefore contains the entire out-of-loop interval.
+**If the missing ~320 ms were outside `PlayerLoop()`, it would be inside that bracket.** It is not.
+
+### What this does to the out-of-loop attribution
+
+The 165–402 ms family was attributed to time outside `PlayerLoop()` — *"realistically the Win32 message
+pump"* — on the strength of `gap = endToStart − TimeUpdate − Initialization ≈ unaccounted`, ±0.72 ms on 12
+of 12. **Post-latch that identity fails by ~320 ms and `endToStart` is flat.** Two readings:
+
+1. **The latch changed the alignment, so the two figures are no longer the same interval** and the
+   comparison is invalid rather than the old conclusion wrong.
+2. **The attribution was an artifact of the pre-latch misalignment** — `unaccounted` was being compared
+   against a quantity a frame away from it, and agreement at ±0.72 ms was coincidence of scale.
+
+**If (2), a headline needs withdrawing.** Registered here before either is checked, because the section it
+would withdraw is one of this document's larger claims and the incentive runs one way.
+
+### The measurement that separates them, and it is one field
+
+The three instruments jointly locate the time **inside `PlayerLoop()` but outside all eight top-level
+phases** — the only region none of them covers. That region is the inter-phase gaps: `End(i)` → `Begin(i+1)`.
+
+> **Record the largest inter-phase gap per frame.** The Begin and End markers already take the
+> timestamps; this is eight subtractions and one `max`, emitting `worstPhaseGapMs` and which boundary it
+> fell on.
+
+| result | reading |
+|---|---|
+| a gap ≈ `unaccounted` | the time is between two named phases, and **which** two is the finding — this is a location, not a family |
+| all gaps ~0 | the time is in none of: the eight phases, the inter-phase gaps, or the out-of-loop bracket. **That is an instrumentation defect in `period` itself**, and it voids the boundary family rather than explaining it |
+
+**Do not run this against the existing corpus** — the field does not exist in any log. It is one build and
+one raid.
+
+### Two things that are settled and should not be re-derived
+
+- **`gcGen0` is 0 on all 59.** The large boundary family is entirely non-collection. Whatever it is,
+  garbage collection is not implicated in any of tonight's instances.
+- **It is not an early-raid artifact.** `raidElapsed` runs **39 s to 1,888 s**, median 1,026 s — spread
+  across the whole raid, not clustered at load.
+
 ## Methodology notes
 
 Worth keeping — several of these cost real time to learn.
