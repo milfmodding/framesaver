@@ -10,6 +10,34 @@ chars. The server rule under test is `BotController.cs:356`:
 
 so a single-clause request of `roleXn` yields `max(presetBatch[role], n)` profiles.
 
+READ THIS BEFORE QUOTING ANY RATE OUT OF STEP 4.
+
+`worstCallbacks` is `TopCount = 3` -- the three *slowest* callbacks per window
+(`Patches/AsyncDrainPatch.cs:51`), not every callback. Cost is roughly linear in
+response size, so this sample is selected on the very quantity the Max rule
+inflates. That has a specific consequence:
+
+  * Per-role KB/profile (step 2) is fine. Selecting large responses selects
+    large `generated`, not large KB-per-profile, and the divisor is determined
+    by the rule.
+  * Within-request-shape comparisons (step 4's assaultx3 stock-vs-capped, step 5's
+    shooterBTR control) are fine. Both arms carry the same selection.
+  * **The "batch binds on N% of observations" rate is NOT a population rate.**
+    It is a rate among the slowest three per window, and under a large batch the
+    inflated requests are exactly the ones that become slow enough to be sampled.
+    Anything of the form "the small on-demand path is common" needs a counter
+    that sees every request, not this one.
+
+The provenance of the two fields, from `Patches/AsyncDrainPatch.cs`:
+
+  * The role mix is read off the live request object -- `Class312.Params` ->
+    `Class19<List<WaveInfoClass>>`, then `w.Role` and `w.Limit` per clause
+    (`DescribeWaves`, line 329). It is the request, not a reconstruction.
+  * The char count is the length of the *longest captured string* in the closure
+    (`DescribeRequest`, line 300). For these parse closures that is the response
+    body, and nothing else captured is within orders of magnitude of it -- but it
+    is an inference from closure shape, not a typed field.
+
 Three things this script deliberately does NOT do:
 
   * It does not hard-code which bot.json era a log ran under. That would make

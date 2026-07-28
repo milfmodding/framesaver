@@ -1822,10 +1822,23 @@ Checked 2026-07-28 by Delta against `Community/server-csharp-main` (`Build.props
 matching the running server's `SPT 4.0.13` watermark, so line citations are safe). The brief was to *refute*.
 
 **The `Math.Max` binds, and it is not close.** The worry was that callers always pass a `condition.Limit`
-above the preset, making the default inert. They do not: across 288 single-clause observations the batch
-exceeds the request on **80%**, and under the *shipped* config on **74%** at a median **12.5× / max 15×**
-inflation. The cleanest single comparison is one request either side of the config edit — `assaultx3`,
-stock median **508,660 chars** against capped-5 median **56,497**, a **9.0×** swing on an identical request.
+above the preset, making the default inert. It does not. The cleanest evidence is one request shape either
+side of the config edit — `assaultx3`, stock median **508,660 chars** against capped-5 median **56,497**, a
+**9.0×** swing on an identical request. `Max(45, 3)` is doing exactly what it says.
+
+**But do not quote a *rate* from this corpus, and strike the two that are already in this document.**
+`worstCallbacks` keeps `TopCount = 3` — the three *slowest* callbacks per window
+([`AsyncDrainPatch.cs:51`](Patches/AsyncDrainPatch.cs:51)) — not every callback. Cost is roughly linear in
+response size, so the sample is selected on the very quantity the batch inflates: under a large batch, an
+inflated small request is exactly what becomes slow enough to get sampled. So "the batch exceeds the request
+on 80% of observations" is a fact about the slow tail and not about the raid, and ~~"the small path is **not**
+rare post-fix — `assaultx4`, `marksmanx4` and `shooterBTRx3` requests appear in every post-fix log"~~ rests on
+the same selection: it establishes those requests *occur*, which was never in doubt, and not that they are
+common. **Answering "how often" needs a counter on every request.** `spawn.creates` counts attempts, not
+generate calls, so it is not that counter either — this is a build item, not an analysis one.
+
+The magnitudes are unaffected: `Max(45, 3)` is 15× whenever it happens, and the hardcoded `3` upstream means
+it is the *only* thing that happens on the on-demand path.
 
 **It is a deliberate default, not a bug, and the PR should say so.** [`BotController.cs:356`](../../Community/server-csharp-main/Libraries/SPTarkov.Server.Core/Controllers/BotController.cs:356)
 carries an inline comment — *"Choose largest between value passed in from request vs what's in bot.config"* —
@@ -3003,7 +3016,17 @@ already `true` at every reachable call site in BSG's own code.** Three of them, 
 | `BotsPresets.CreateProfile`, refill after a miss | [`BotsPresets.cs:209`](../../Src/Assembly-CSharp/Assembly-CSharp/BotsPresets.cs:209) | `ChooseProfile(this.List_0, true)` |
 | `BotsPresets.FillCreationDataWithProfiles` | [`BotsPresets.cs:245`](../../Src/Assembly-CSharp/Assembly-CSharp/BotsPresets.cs:245) | `GetNewProfile(data, true)` |
 
-and the third is **dead code**. `BotCreationDataClass.Create` branches on `botCreator as BotsPresets`; the
+and the third is **dead code — confirmed against a live raid, not only by reading.**
+`FillCreationDataWithProfiles` opens with an unconditional `Debug.LogError("BotProfileClient.CreateProfile")`
+([`BotsPresets.cs:242`](../../Src/Assembly-CSharp/Assembly-CSharp/BotsPresets.cs:242)), so a single execution
+would be loud. It appears **zero times** in the 2026-07-28 10:00 session's `errors.log`, a session that
+generated bots. The channel was checked before the absence was believed: BSG's `Debug.LogError` does reach
+that file — the `Locale. Trying to add duplicate` entries filling it are literally
+[`LocaleManagerClass.cs:221`](../../Src/Assembly-CSharp/Assembly-CSharp/LocaleManagerClass.cs:221). (BepInEx's
+own `LogOutput.log` would *not* have served: it carries no Unity-sourced lines at all despite
+`UnityLogListening = true`, so a null result there would have been the instrument, not the finding.)
+
+Why it is dead: `BotCreationDataClass.Create` branches on `botCreator as BotsPresets`; the
 live `IBotCreator` is a `BotCreatorClass` ([`LocalGame.cs:103`](../../Src/Assembly-CSharp/Assembly-CSharp/EFT/LocalGame.cs:103)
 constructs it wrapping `botsPresets` as its `GInterface21`), `BotsPresets`' base `GClass680` implements
 `GInterface21` and **not** `IBotCreator`, and nothing in the assembly derives from `BotsPresets` — so the cast
