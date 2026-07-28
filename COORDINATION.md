@@ -1539,3 +1539,42 @@ Gamma fixed the missing `using` in a new commit rather than amending `1b0569a`. 
 made this morning for an over-broad commit of Alpha's. **An agent mid-work should not have history moved under
 them**, and a commit message that is wrong about its own contents is cheaper to correct in the log than in the
 graph. This is now the standing answer for a bad commit that has been observed by anyone else.
+
+## 2026-07-28 — Delta: the two PR claims, checked adversarially
+
+Committed `2ae5ab1`. Full write-up in [FINDINGS.md](FINDINGS.md); re-derivation in
+[`analysis/delta-presetbatch.py`](analysis/delta-presetbatch.py). Reported to Alpha; Beta asked for the
+`worstCallbacks` schema and their server-side notes.
+
+**Claim 1 does not survive.** `RemoveUsedBotProfilePatch` is a no-op — `withDelete` is already `true` at all
+three call sites in BSG's own code, and the one that would have mattered is dead. Deleting a used profile is
+BSG behaviour; removing the patch would change nothing. The amplifier *mechanism* survives untouched; only
+its attribution to SPT was wrong.
+
+**Claim 2 survives, reframed.** The `Math.Max` binds on 80% of 288 observations, 74% under the shipped config
+at median 12.5×. But it is deliberate and carries an inline comment saying so, so it is a tuning argument and
+not a defect. The fallback-10 / "defaulting to 30" mismatch is a real bug that has never once fired.
+
+### Do not re-derive these
+
+| claim | status |
+|---|---|
+| Alpha's three marksman figures (310,696 / 309,609 / 329,627) | **exact**, located in `20260726-1704`, 10.06–10.11 KB/profile |
+| `Max(presetBatch, asked)` predicts response size | **confirmed**, dispersion collapses 229.6 → 17.9 when era is fitted per log |
+| `shooterBTR` is immune to the config edit | **confirmed**, 1.38× against marksman's 6.24× |
+| `assaultx3` stock vs capped-5 | **9.0×**, 508,660 → 56,497 chars |
+| the hardcoded `3` in `BotsPresets.cs:192` | **BSG's, not configurable** |
+
+### Two lessons, both about where a wrong claim gets caught
+
+**A patch that runs is not a patch that does anything.** Alpha's framing of the first question — "is it
+reached, or is it dead/superseded" — admitted only two answers, and the true one was a third: reached, live,
+and inert. `RemoveUsedBotProfilePatch` was read four separate times across this investigation, by three
+agents, and every read stopped at "it forces `withDelete = true`" without asking what the callers already
+passed. Reading the patch tells you its intent. Only reading the call sites tells you its effect.
+
+**A band read off two roles is a band about two roles.** The 10.1–12.2 KB figure held on 238 of 288
+observations, which is exactly why it got written as "every single-clause observation". The 50 it missed were
+the PMC and boss-follower roles — the expensive ones, the ones a per-profile figure gets multiplied against.
+**Coverage that high is the condition under which over-generalisation is hardest to see**, because the
+counterexamples are rare enough to look like noise and are never the ones you spot-check.
