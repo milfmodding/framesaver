@@ -932,8 +932,17 @@ else. **So no field verifies that you held the aim point**, which is precisely w
 3.21, median 1.63, with only 5 windows at or below 1.15. A fixed view genuinely does drive it to ~1.0, and
 roaming genuinely does not — so ≤ 1.15 certifies a held view without certifying *which* view.
 
-**Proposed build item** — yaw and pitch min/max in the `pos` block, about six lines beside the existing
-per-axis code. Not built here; `Telemetry.cs` is Beta's.
+**Built, tested, and deliberately not deployed for this run.** `pos.look = {samples, yaw:{range,swept},
+pitch:{range,swept}}` exists complete at `artifacts/Framesaver-20260728-look-52d398f-a38db8cc.dll`. It was
+deployed briefly and withdrawn with the no-more-builds-before-the-raid call, so **tonight runs without it
+and the stand-in below is what carries the held-view condition.** Post-raid it is a copy, not a rebuild.
+
+> **The one thing to know about it before reading a `look` field**, because it nearly shipped inverted:
+> **raw yaw min/max reports a perfectly held view as a full 360° sweep.** Yaw wraps, so a view held near
+> the wrap point samples at 359.9 and 0.1 and a naive range spans the circle — healthy-looking, and the
+> exact opposite of the truth on the single reading the field exists to certify. The shipped version
+> accumulates an unwrapped angle relative to each window's first sample instead, with `swept` as the
+> angular analogue of `dist`.
 
 **Its priority changed once the drift was measured, and the argument is now quantitative rather than
 convenience.** The expected manipulation is ~3,300–4,700 draw calls. The bound on natural window-to-window

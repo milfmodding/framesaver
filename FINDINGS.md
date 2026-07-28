@@ -3546,11 +3546,29 @@ Worth keeping — several of these cost real time to learn.
   directly beneath the corrected table it contradicted, and that sentence only reveals itself as wrong
   once you have already read and accepted the table above it. A reviewer scanning the file would take
   them in either order and notice nothing.
+- **A result that is too clean is evidence about the instrument.** Every other detector in this list needs
+  a control someone remembered to add; **this one arrives for free and covers the case where you forgot.**
+  Four separate cases today: a table check flagging ~100% of tables, an exit-status check returning 0 for
+  four different outcomes, a callback scan matching 74 candidates including `keepalive`, and a phase scan
+  reporting zero when three artifacts existed. **The absurd uniformity announced the bug in all four**, and
+  in none of them did the wrong answer look implausible on its own — only the *distribution* of answers did.
+- **A single read of a file another agent is writing is a sample, not a state.** Verifying a restore, the
+  first read returned the superseded binary and the second, two seconds later, the restored one — the copy
+  landed between them. A stale *declaration* has been the recurring failure all day; this is the same
+  failure in the reading direction, and it is faster. **Timestamp the read, and re-read before reporting a
+  disagreement with someone else's declaration** — otherwise the report is a race dressed as a finding.
 - **Text that looks live and is not.** The stale sentence beside the corrected table is the same failure
   as the orphaned `Expand phase` key beside the live one, the dead `proc` field, the any-phase marker
   guard and the validator's false pass. In both document cases **the correct value was present in the same
   file, a few lines away** — so proximity is not the protection it looks like, and a reader resolves the
   contradiction in whichever direction they were already leaning.
+- **Ask what the old check was accidentally preventing.** The actionable form of "tightening a guard can
+  expose a defect the guard's weakness was masking". `MarkersPresent()` requiring *every* phase to have
+  lost its marker meant that by reinstall time there was nothing of ours left to wrap; tightening it to
+  *any* phase made the common case a reinstall over seven intact phases, nesting a layer every five
+  seconds. **Two correct-looking changes composing into a defect neither has alone**, which review does not
+  catch because each is defensible in isolation. It was found by asking what the stricter check does at the
+  reinstall cadence — **and that was luck, not method.** The question above is the method.
 - **Do not write "never" about something that has an artifact.** *"The pre-fix magnitude distribution can
   never be collected"* survived about an hour: three pre-latch builds carry the fields and are attributable
   to commits whose trees were checked. A durable wrong statement in the *closing* direction is worse than
