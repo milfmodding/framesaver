@@ -1126,3 +1126,34 @@ quality; the people who install this will.
 
 The `endToLatch` validation and its `endToStart` control need this raid and no build. **Do not drop
 `endToStart` yet.**
+
+### Two fields land in this build, and both have a reading trap
+
+Gamma's `287f35b` adds `agents.slicing`, `agents.tickedSum` and `agents.liveSum`. They close the "did
+slicing engage" gap above — `slicing` is the same expression the patch branches on, and
+`tickedSum == liveSum` on an arm-2 window means slicing did not engage, measured over every frame of the
+window rather than the last one. Both traps below are about how to *read* them; neither is a data defect.
+
+**1. `frames` is not the denominator these were accumulated under.** `frames` is `_periodSamples`, which
+increments unconditionally; the sums accumulate one line earlier, inside an `if (m != null)`. In raid those
+agree. In a **loading window, or the first window after a raid loads**, `frames` overcounts and
+`tickedSum ÷ frames` understates brains per frame.
+
+> **Use `tickedSum ÷ liveSum`.** It needs no frame count at all — both sums share the one gate, so the
+> ratio is exact by construction and so is the `tickedSum == liveSum` check. The per-frame figure is the
+> one to distrust, and only outside a settled raid.
+
+**2. On the `flushedByProtocol: true` line, the labels and the measurements describe different arms.**
+`ProtocolRunner.Advance()` applies the new step's config values and *then* returns true to trigger the
+flush, so that line carries:
+
+| field | which arm |
+|---|---|
+| `cfg.brainPeriod`, `agents.slicing`, `protocol.arm` | the arm **about to start** |
+| `agents.tickedSum`, `agents.liveSum`, every timing figure | the arm **just ended** |
+
+That line is already marked partial and excluded from averages — but the stated reason for excluding it is
+that it is *short*, and this is a second and worse reason. `slicing` is exactly the field a reader will
+trust as ground truth, and on that one line it is ground truth about the next arm.
+
+**Both are properties of the boundary line only.** Every whole window inside an arm is self-consistent.
