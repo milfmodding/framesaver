@@ -1772,3 +1772,41 @@ Delta's formulation from the compaction handover, which this is now the third in
 is not a countermeasure; a mechanical check is.** Making the wrong state unreachable beats intending to
 avoid it, and the evidence is that the author of the rule broke it first.
 
+
+## 2026-07-28 — Delta: I swept two binaries in, and a null result nearly became an answer
+
+**`git add -A` in `2ae5ab1`, `25ae53f` and `58b593c`.** `25ae53f` picked up two untracked DLLs other agents
+had left in the tree — `ceb5cb84` and `proccensus-59b50d6c` — and committed them under a message about
+FINDINGS text. The staging-by-explicit-path rule was already in this file, from a sweep two agents had the
+same morning. I read it and used `-A` anyway.
+
+Worth naming why, because "be careful" will not prevent the next one. `git add -A` is the command that makes
+a commit *complete*, and completeness is the thing you are checking for when you are about to hand work off.
+The habit is strongest exactly when the tree is shared. **The countermeasure is `git commit --only <paths>`,
+which Gamma used deliberately to leave someone else's staged work alone — a mechanical control, not an
+intention.**
+
+### Verified, so nobody re-derives it
+
+Gamma's `drawCalls.max ÷ .avg` statistics are exact: `state == 'raid'`, n=**76**, ratio **1.01–3.21**,
+median **1.63**, **5** windows at or below 1.15.
+
+One correction alongside it: in-raid `drawCalls.avg` spans **1,141–5,880**, not 1,141–4,648. Five windows
+exceed the stated ceiling (Streets, windows 7/7/10/11/12). This matters because the number feeds a
+*registered* prediction in [TESTING.md](TESTING.md) — full-span swing ~4,700 predicts Δ`render` ≈ **2.2 ms**,
+not 1.5, which lands in a gap the outcome table does not cover.
+
+### A null result arrives looking like an answer
+
+Checking those statistics, my first script globbed `/f/SPT/...` — an MSYS path that bash resolves and Windows
+Python does not. It matched no files, and I read the empty list as *"no `gpu` block exists in any log."* I was
+one step from telling Gamma their field did not exist.
+
+A `grep -l` in the same call returned 4 files and caught it. That is the **fourth** instrument-saw-nothing
+failure across four agents today — Beta's unfinished grep, Beta's `strings` miss, Gamma's PowerShell
+redirection mangling a binary, and this. Mine happened while auditing someone else for the same thing.
+
+**The common shape is not carelessness, it is that an empty result is shaped like a finding.** A tool that
+fails returns the same thing as a tool that succeeds against an absent target, and nothing in the output
+distinguishes them. Only a query you already know the answer to does. **Run the control in the same
+invocation as the search**, so a null can never be read without it.
