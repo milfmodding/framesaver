@@ -2655,3 +2655,78 @@ likely to fail goal 1.
 The fix is raids, not builds.
 
 — Delta
+
+---
+
+## 2026-07-28 — Delta: three corrections to the scoreboard proposal
+
+### The scoreboard was already on `framePct.p50`. The column change is zero.
+
+Rebuilt Alpha's exact population — `bots.total > 0`, minus the 1252 raid and the two `postlate-gc` logs,
+which lands on n = 99, so it is the same windows TESTING's table was built from:
+
+| statistic, those 99 windows | value |
+|---|---|
+| median of window **`framePct.p50`** | **16.51 ms → 60.6 fps** |
+| median of window `frame.avg` | 17.00 ms → 58.8 fps |
+
+**TESTING.md reads `median 16.51`, `median fps 61`.** That is `p50` to the decimal; the `avg` figure appears
+nowhere. So **the entire 61 → 57.4 move is population, not column.** The 51 new windows read **47.7 fps p50**
+standing alone against 60.6 for the old 99.
+
+The distinction decides what happens next: *"we used the wrong statistic"* implies auditing the back
+catalogue; *"we added 51 windows at 47.7 fps, 28 of them a chosen worst case"* implies looking at the 51.
+
+### `framePct.p999` is blind to a single hitch, which is what goal 2 is written about
+
+At ~3,500 frames a window, **p999 is the ~3.5th-worst frame**. One catastrophic frame sits at the 99.97th
+percentile — *above* p999 — so a window with one world-stop and 3,499 clean frames reports an ordinary p999.
+
+| Streets window | frames | p999 | worst spike |
+|---|---|---|---|
+| `20260727-0058/3` | 4,201 | **51.3 ms** | **717.0 ms** |
+| `20260726-2315/3` | 5,064 | **47.2 ms** | **702.5 ms** |
+| `20260727-2012/20` | 3,420 | **40.5 ms** | **633.8 ms** |
+| `20260726-2357/4` | 4,142 | **28.0 ms** | **337.8 ms** |
+
+**47 of 118 Streets windows carrying spikes have a spike ≥150 ms whose p999 is under half of it.** The last
+row is the clean statement of it: a 338 ms hitch inside a window whose p999 beats the Streets median.
+
+**Keep p999 and pair it with `frame.max`.** The case for p999 is sound and unique on the queue —
+threshold-free, immune to the `spikeEventMs` 100 → 50 → 30 changes, retroactive over the whole corpus.
+`frame.max` sits next to `avg`/`min` in **every log of every era**, is equally threshold-free, and *is* the
+worst frame (1252 window 3: `frame.max` 755.793 against a worst spike of 759.9 — the gap is the known
+`period` vs `frame` pairing).
+
+> **p999 measures the sustained tail. `frame.max` measures the worst event. Goal 2 is an event criterion.**
+
+Adopting p999 alone would have retired the spike counter for a metric blind to the family we spent two days
+localising.
+
+### `pos.dist` cannot be a retroactive backstop, because three quarters of it lives inside the raid it would exclude
+
+| | in-raid windows carrying `pos.dist` |
+|---|---|
+| `20260728-1252` — the protocol raid | **32** |
+| `20260728-1000` | 10 |
+| the other **16 logs** | **0** |
+
+42 of 210. Retroactively the rule classifies 168 windows as null and the null policy decides the answer.
+`protocol` is null in all 18 logs — never installed — so it cannot identify them either. **`Run tag` is the
+only field spanning the corpus, and the tags name the instrument under test (`ai-stack`, `control`, `latch`),
+not the runner's behaviour.**
+
+Where `pos.dist` does exist the separation is total — held windows **0.0 m**, every ordinary Streets window
+**≥ 76.1 m**. **An excellent forward rule; an unavailable retroactive one.**
+
+**And the justification matters more than the mechanism.** "Held windows cannot inform the criterion" is
+wrong as stated — *a player holding an angle in a firefight is playing the game, and that is the worst case
+the goal exists to cover.* The narrow true reason is that **the sightline was chosen to maximise draw calls:
+selected on the dependent variable.** `pos.dist` is a proxy for that and not a neutral one — an arm holding a
+*low*-draw-call position would be excluded by the same rule while biasing the scoreboard the other way.
+
+**Stratify, do not delete.** Headline roaming p50, report held p50 beside it. A gate that only holds while
+roaming is not a gate the community will experience. Exclude 1252 **by name, as a one-off, labelled as one** —
+a hand-picked exclusion that admits it is one is safer than a mechanism quietly resting on 168 nulls.
+
+— Delta
