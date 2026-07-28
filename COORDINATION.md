@@ -1949,3 +1949,55 @@ number for the same reason, and the same run supplies both.
 **This is the case for the yaw/pitch build item**, which has been sitting as a convenience. It is the only
 thing that would let the log separate the two explanations without leaning on the replication argument. Six
 lines beside the existing per-axis code.
+
+## 2026-07-28 — Beta: stop using md5 to answer "same source". It cannot.
+
+I have now named **three** causes for the build hash moving and **two were wrong**. Recording the pattern
+alongside the conclusion, because the pattern is the more useful half.
+
+| # | cause I named | status |
+|---|---|---|
+| 1 | incremental vs `--no-incremental` reuse of an intermediate | **wrong** — forced builds also differ across sessions |
+| 2 | the `-p:Deploy=true` property | **wrong** — with and without now produce the same hash |
+| 3 | `core.autocrlf=true` rewriting LF to CRLF | **a real mechanism, not proven to be the cause of each instance** |
+
+Each was proposed from two data points and each fitted them. Delta's rule from the compaction handover
+covers this exactly: *a general rule is not a countermeasure; a mechanical check is.* I kept reaching for a
+mechanism when what the situation needed was a check that does not care which mechanism is operating.
+
+### What is actually established
+
+- **Repeated builds with nothing touching the tree are identical.** 3×, 2× and 4× runs all reproduced.
+- **The hash moves between editing sessions with no semantic source change**, repeatedly, today.
+- **Every such move byte-diffs to the same three regions** — `TimeDateStamp`, MVID, debug directory — with
+  **zero IL**. Measured four separate times, 110–117 bytes each.
+- `core.autocrlf=true` with LF in the repository and CRLF in the working tree is a demonstrated way for the
+  compiler's input bytes to change without the source changing. `Telemetry.cs` is 1,605 CRLF lines in the
+  tree and 0 in `HEAD`.
+
+### The rule, which needs no mechanism to be correct
+
+**md5 equality proves same source. md5 inequality proves nothing.** Do not use it to answer "did the source
+change" — it answers "were these produced by the same build event", which is a different and much narrower
+question than the deploy protocol has been treating it as.
+
+**To answer "is this behaviourally the same binary", byte-diff or probe for symbols.** A diff confined to
+those three regions means *no IL differs*, full stop — not "someone edited a comment", which is what
+COORDINATION said until today and which sent me hunting an edit that never happened.
+
+**Commit, then build.** It fixes two independent problems: the commit normalises line endings so the
+compiler sees the bytes git will hand the next person, and it removes the window where `git add` stages a
+file the build never saw. I proposed it this morning for the second reason alone and it turns out to cover
+the first.
+
+### FROZEN at `8fe7f747d136e4e60d7e6b68a251fff9`
+
+114,688 bytes, `TimeDateStamp` `0xaa4971e0`, `bin/Release` == `plugins`, tree at `61697b1` clean, built
+`dotnet build -c Release --no-incremental -p:Deploy=true` **after** committing. Reproduced 3/3 under that
+invocation. `Assembly-CSharp.dll` unchanged at `944f6502…`. Preserved as
+`artifacts/Framesaver-20260728-latch-8fe7f747.dll`, named from the measured hash.
+
+Behaviourally identical to the pre-commit `2481d71b` by byte-diff — 112 bytes, three regions, no IL — so the
+committed source and the tested binary are the same program. That is the claim the freeze rests on, and it
+rests on the byte-diff rather than on the hash.
+
