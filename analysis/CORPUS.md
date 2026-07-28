@@ -62,6 +62,12 @@ nothing to find. `no in-raid` means the session never reached `state: raid`. **`
 being written when this table was generated**; a live log's counts are partial and its final window has not
 closed. Regenerate the table rather than trusting a `live` row.
 
+> **A `live` log will also make an analysis disagree with itself, silently.** `delta-rederive.py` reported
+> dropping **717 lines in one section and 719 in the next**, from the same corpus in the same run — the live
+> file grew between the two reads. Small enough to look like rounding, large enough to be wrong, and **nothing
+> in the output says a re-read happened.** Any script that touches the corpus more than once in a pass must
+> **snapshot the file list and contents once**, not re-glob per section. Both tools here now do.
+
 ---
 
 ## Defects, stated as what a reader would wrongly conclude

@@ -329,9 +329,15 @@ establish that a given long sample *was* that wait — the phase is simply the f
 anything that blocks the main thread at a frame boundary lands there. Identifying a mechanism that *could*
 explain an observation is not the same as measuring that it did.
 
-A second, distinct family remains open: 150–350 ms spikes confined to the first minute or two of a raid,
+A second, distinct family remains open: 150–350 ms spikes ~~confined to the first minute or two of a raid~~,
 with `TimeUpdate` at zero. All eight top-level Unity phases are instrumented, so this is genuinely time
 outside the player loop rather than a missing marker.
+
+**"Confined to the first minute or two" is withdrawn, 2026-07-28.** Pooled across the whole corpus under the
+threshold and magnitude normalisations, the family is **49 frames — 33 Streets, 16 Customs, median period
+346 ms — and only 22 of 49 (45%) fall inside the first 120 s**, with `raidElapsed` running out to **742 s**.
+It was 58% on a smaller pool and shaky then; at 45% the framing is not defensible and should not be requoted.
+The family is **general in-raid, not early-raid**, and on both maps rather than concentrated on one.
 
 ### `/client/match/local/start` — further corroboration it is not a stall
 
