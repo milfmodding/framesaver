@@ -1078,7 +1078,8 @@ the effect.** Interleaving gives three replications of the contrast, each spanni
 one spanning fifteen, and balances exposure 50/50 instead of ABA's 2:1 control-heavy split.
 
 **Three minutes a block.** `Window seconds` is 60 and a keypress both flushes and resets the timer
-(`Telemetry.cs:405–410` — `Flush(false)` then `_nextWrite = now + 60`), so a block that is a whole multiple
+(the protocol branch in `Telemetry.Sample` calls `Flush(false)` then sets
+`_nextWrite = Time.realtimeSinceStartup + Plugin.TelemetryWindow.Value`), so a block that is a whole multiple
 of 60 s spends nothing on partials: the press closes a *full* window rather than cutting one short. Three
 minutes is three full windows a block — **18 usable windows against the ABA design's 15**, for three more
 minutes of standing still. At 2.5 the press would cut a third window short and ~20% of held time would land
@@ -1142,8 +1143,9 @@ quality; the people who install this will.
 
 ### Arm 4 — fight Kaban's crew at LexOs, slicing on. Last, and not negotiable
 
-**Order.** A firefight would wreck the held-position measurement, so B1–B3 come first and this comes after
-them. It needs the fourth protocol step — after three presses `Advance()` refuses and nothing changes.
+**Order.** A firefight would wreck the held-position measurement, so the six held blocks come first and
+this comes after them. It needs the **seventh** protocol step — after the sixth press `Advance()` refuses
+and nothing changes.
 
 This is two instruments at once, and the first one is the reason it is worth a phase of its own.
 
@@ -1174,7 +1176,7 @@ anywhere it helps most here. **Her observed 5–10 fps degrade in that area is t
 in the held arms plus a win here is a real finding; a null in both is a much stronger negative than the
 held arms could give alone.
 
-**What arm 4 is not.** It is **not comparable to B1/B2/B3 on frame time** — different position, with a
+**What `KABAN` is not.** It is **not comparable to the held blocks on frame time** — different position, with a
 firefight in it, and absolute ms do not transfer across either. Its control is historical: her own prior
 unsliced runs of the same fight. That control **cannot be replicated in-raid**, because killing Kaban's
 crew once leaves no second fight to reverse into. Treat the 5–10 fps figure as remembered rather than
@@ -1253,10 +1255,10 @@ provenance is unambiguous. An armed protocol that nobody presses is inert, but a
 
 **2. Confirm `Brain update period = 0` in `framesaver.ai.perf.cfg`. Removing the ini does not do this.**
 
-> **A protocol step rewrites the config file.** `ProtocolRunner` assigns through `ConfigEntryBase.BoxedValue`,
-> which is BepInEx's ordinary setter — the same path `GcControl` uses to self-disable its knobs at
-> `GcControl.cs:94` and `:143`. With `SaveOnConfigSet` at its default the new value is written to disk.
-> **So whatever the last arm set is still set at the next launch.** End the slicing raid on arm 4 and the
+> **A protocol step rewrites the config file.** `ProtocolRunner` assigns through `ConfigEntryBase.BoxedValue`
+> — BepInEx's ordinary setter, the same path `GcControl` uses when it writes its own knobs back to 0 on
+> failure. With `SaveOnConfigSet` at its default the new value is written to disk.
+> **So whatever the last arm set is still set at the next launch.** End the slicing raid on `KABAN` and the
 > marathon starts with slicing quietly on, across six maps nobody has ever measured, with the ini deleted
 > and `protocol` reporting `null` — every signal saying "no arm applied" while an arm is applied.
 
@@ -1313,11 +1315,23 @@ it replaced. Three minutes gets both, for six more minutes of standing still.
 Report `>= 30 ms` alongside as description, never as a test. The interleaved blocks make the drift
 survivable rather than fatal; they do not make `>= 30 ms` Poisson.
 
-**Count `period`, not `frame`.** The emit gate at `Telemetry.cs:966` tests `periodMs` alone — `frameMs` is
-passed in and never tested. Since `frame` travels one line ahead of `period`, a large frame can sit on a
-line whose period is under threshold and emit nothing. Counting `frame >= T` off the spike stream
-undercounts by about a third, and 8 of 16 windows have a percentile-derived lower bound above their
-observed count.
+**Count `period`, not `frame`.** The emit gate in `Telemetry.Sample` tests `periodMs` alone — `frameMs` is
+passed in and never tested:
+
+```csharp
+if (periodMs >= Plugin.SpikeEventMs.Value && Plugin.SpikeEventMs.Value > 0f)
+```
+
+Since `frame` travels one line ahead of `period`, a large frame can sit on a line whose period is under
+threshold and emit nothing. Counting `frame >= T` off the spike stream undercounts by about a third, and
+8 of 16 windows have a percentile-derived lower bound above their observed count.
+
+> **Quoted rather than cited to a line, deliberately.** This predicate is what the whole `period`-not-
+> `frame` rule rests on, and it has already moved once — it was at `:966` when the rule was written and is
+> sixteen lines lower now, because a *different* field was added above it. **A line number is invalidated
+> by any edit above it, including your own, and nothing warns you.** If someone re-derives this rule from a
+> citation that has since become another statement, the rule looks unsupported and the natural move is to
+> distrust the rule rather than the citation. The predicate travels with the thing; the number does not.
 
 ### Stratify the B2 blocks — they are not one condition
 
