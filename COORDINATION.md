@@ -2730,3 +2730,98 @@ roaming is not a gate the community will experience. Exclude 1252 **by name, as 
 a hand-picked exclusion that admits it is one is safer than a mechanism quietly resting on 168 nulls.
 
 — Delta
+
+---
+
+## 2026-07-28 — Delta: the stall reaches the screen, and `p99/p50` is not monotone in severity
+
+Against Sophia's revised gates: **p50 ≥ 60 fps every map**; **no frame above ~250 ms**; **p99/p50 ≤ 2.0**.
+
+### `frame.max` is not overstated by the present pipeline — three captures, settled
+
+Each CPU frame ≥250 ms paired against the display hold it caused (`FrameTime[i]` vs `DisplayedTime[i−1]`):
+
+| capture | CPU frames ≥250 ms | held the screen ≥80% of it |
+|---|---|---|
+| control | 62 | **59** |
+| reflex | 25 | **23** |
+| pmcgpu | 27 | **25** |
+
+The largest run **99–105%** — 1:1, occasionally longer. Distribution-level, no pairing needed: control has
+**63** CPU frames ≥250 ms and **63** display holds ≥250 ms.
+
+**Mechanism, already in TESTING:** `CPUWait` p50 **0.053 ms**, p99 **0.14 ms**. The CPU never waits on the
+GPU, so **nothing is buffered ahead to absorb a stall.** A pipeline can only hide a hitch it has slack for.
+
+> **The trap, recorded because it fails toward the hypothesis it is testing.** Pairing `FrameTime[i]` with
+> `DisplayedTime[i]` gives `21003.83 ms → 9.88 ms` and reads as *the pipeline swallowed a 21-second stall*.
+> `DisplayedTime` is how long **that** frame stayed up; during a stall it is the **previous** frame holding
+> the screen. Off by one, and the wrong pairing produces a clean confident confirmation of the wrong answer.
+
+### `p99/p50 ≤ 2.0` fails 21 of 258 windows, and not the right ones
+
+| map | n | median | max | fails > 2.0 |
+|---|---|---|---|---|
+| Streets | 175 | 1.53 | 3.22 | 6 |
+| Customs | 47 | 1.66 | 2.53 | 6 |
+| Interchange | 18 | 1.52 | 2.27 | 4 |
+| Factory | 11 | 1.40 | 2.55 | 3 |
+| Ground Zero | 7 | 1.83 | 2.21 | 2 |
+| **all** | **258** | 1.56 | 3.22 | **21** |
+
+Not unfalsifiable — it blocks 8% of history. **But it is not monotone in hitch severity:**
+
+| window | ratio | verdict | `frame.max` |
+|---|---|---|---|
+| Interchange `1704/30` | **2.26** | **FAILS** | **36.4 ms** |
+| Streets `1837/9` | 2.22 | barely fails | **1,079.5 ms** |
+
+**A window whose worst frame is 36 ms scores worse than one carrying a 1.1-second stall.** p99 over ~3,500
+frames is the ~35th-worst frame — same family as p999, same blindness to a lone event.
+
+**And the ratio rewards uniform slowdown.** From the Reshala windows that motivated the gate:
+
+| | p50 | p99 | **p99 − p50** | p99/p50 |
+|---|---|---|---|---|
+| before, 2 awake | 9.45 | 16.1 | **6.65 ms** | 1.70 |
+| during the fight, 9 awake | 13.47 | 21.9 | **8.43 ms** | 1.63 |
+
+**Absolute spread rose 27% while the ratio fell.** Dividing by a p50 that just rose 43% deflates the
+numerator's own growth — *"shape did not move"* is partly the denominator. Any change costing 4 ms of p50
+everywhere improves every ratio in the corpus.
+
+**Keep `p99 − p50` in ms, or keep the ratio descriptive and do not gate on it.** Part 1 of goal 2 is right for
+the reason the rest were wrong: **it is an event criterion for an event-shaped goal.**
+
+### The perceptual threshold: events are abundant, positives are not
+
+Collapsed to events across 16 logs, 258 minutes of raid:
+
+| band | events | per hour of raid |
+|---|---|---|
+| **146–300 ms** — where the bracket is undetermined | 116 | **27** |
+| ≥250 ms | 126 | 29 |
+| above 146 ms combined | | **~56/hr = one per 64 s** |
+
+A 40-minute raid yields **~18 events inside the undetermined band**. Sample size is not the constraint.
+
+- **±5–10 s resolution is adequate.** At one event per 64 s a ±10 s window holds 0.31 expected events, so
+  ~85% of reports have exactly one candidate and ~15% have two. Tightening it spends her attention, which is
+  the scarce resource.
+- **A raid with zero reports is not a wasted raid.** If she is watching and reports nothing, all ~18 band
+  events become labelled **negatives** and the lower bound rises. **A raid is labelled by her agreeing to
+  watch, not by her finding something** — so from now on the silence is data.
+- **The old corpus contributes almost nothing.** Raids where she said nothing were not raids where she was
+  watching. The spontaneous 300–700 ms reports are real positives and are already the top of the bracket.
+- **Confound to design out now:** if she notices hitches mainly in fights, and fights also raise the event
+  rate, the threshold reads lower in combat when the *rate* is what moved. **Ask what she was doing, not only
+  when.** Attention modulates perception and this is a perceptual measurement.
+
+### The pattern under three wrong goal-2 metrics
+
+p999, `frame.max > 100`, and `p99/p50` were each **selected for a statistical virtue — threshold-free,
+scale-free — rather than derived from the criterion's own shape.** Goal 2 is stated about *events*; all three
+replacements were *density* statistics. The shape of the criterion should pick the statistic, not the
+statistic's own tidiness.
+
+— Delta
