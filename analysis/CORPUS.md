@@ -240,6 +240,23 @@ Quoting it as one produced a phantom 40% disagreement with the user's own observ
 16.51 ms against that column's 11.51. **Recovery: read the median columns in
 [TESTING.md](../TESTING.md).**
 
+**On a `flushedByProtocol` line the labels and the measurements describe different arms.**
+`ProtocolRunner.Advance()` applies the step's assignments and increments `StepIndex` *before* returning true,
+and the caller flushes after — so `protocol.arm`, `protocol.step`, `cfg.brainPeriod` and `agents.slicing` name
+the arm **about to start**, while `tickedSum`, `liveSum` and every timing figure describe the arm that just
+**ended**. *Wrong conclusion:* that the arm labelled on that line is the arm measured on it — and this is worse
+than the usual mislabel, because `agents.slicing` is precisely the field a reader takes as ground truth for
+whether the manipulation was live. **Recovery: drop `flushedByProtocol` lines.** They were already excluded for
+being partial windows; that is the weaker reason. Whole windows inside an arm are self-consistent.
+
+**`frames` is not the denominator `tickedSum` and `liveSum` were accumulated under.** `frames` is
+`_periodSamples`, incremented unconditionally; the two sums accumulate one line earlier behind `if (m != null)`.
+They agree in raid and diverge across a load. *Wrong conclusion:* that `tickedSum ÷ frames` is brains-per-frame.
+**Recovery: use `tickedSum ÷ liveSum`** — both share the one gate, so that ratio and the `tickedSum == liveSum`
+self-check are exact by construction. This is the field to read for **which regime bound in a window**: with
+`Minimum brains per frame` at 4 and a Streets roster of 14–29 agents, slicing binds at the top of that range
+and the floor binds at the bottom, so a single arm at `brainUpdatePeriod = 0.1` contains both.
+
 ### Recoverable, but only from outside the ndjson
 
 **`cfg.brainPeriod` is the value *requested*, not the value in force.** It reads `BrainUpdatePeriod.Value`, so
@@ -318,6 +335,27 @@ Stated positively, because a document that is all caveats gets read as "unusable
   65 ms). The corpus does not contain the measurement.
 
 ---
+
+## Verifying a field is in a build: probe the key, not the name
+
+`analysis/probe-symbols.py` replaced an ASCII `grep` that could not see UTF-16 string literals. **It then had a
+hole the same shape, one level up, and it was live in deploy declarations.** Presence in *either* heap answers
+*"is this string in the binary"*, which is not what a declaration asks — it asks *"will this key appear on a
+line"*. A member named `_brainsTickedSum` puts `brainsTicked` in `#Strings`, so the tool answered **ok** for a
+key emitted nowhere. A false **pass**, where the `grep` it replaced gave false failures.
+
+**An emitted JSON key must appear in `#US/utf16`.** That is where the literal written to the line lives; a
+`#Strings/utf8`-only match is a member name and proves nothing about the output.
+
+```
+python analysis/probe-symbols.py --key <dll> slicing tickedSum liveSum   # keys: literal required
+python analysis/probe-symbols.py       <dll> ResetForRaid                # members: #Strings is correct
+```
+
+`--key` refuses a `#Strings`-only match and prints `NOT A KEY` rather than `MISSING`, because those are
+different facts and collapsing them is how the hole opened. Found by Gamma, 2026-07-28 — the second failure
+inside this verification tool, and the argument for fixing the tool rather than noting the hazard: a rule about
+how to read output depends on someone remembering to read it that way.
 
 ## Re-deriving the numbers
 
