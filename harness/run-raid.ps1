@@ -111,6 +111,81 @@ function Test-AlreadyRunning {
     $busy
 }
 
+function Show-MismatchCase {
+    <#
+      A stamp mismatch has two causes with opposite remedies, and the operator
+      cannot tell them apart from the hashes alone:
+
+        stale approval   the deploy moved on and nobody has verified it
+        stale deploy     the approved build is not the one on disk
+
+      Which it is follows from ancestry plus whether any *build input* differs.
+      A commit that changes only docs moves the stamp without moving any IL, so
+      "the commits differ" and "the program differs" are not the same question.
+    #>
+    param([string] $Approved, [string] $Deployed)
+
+    Push-Location $RepoDir
+    # Windows PowerShell wraps a native command's stderr in an ErrorRecord, and
+    # under 'Stop' that is terminating - so git explaining itself would abort the
+    # diagnosis. This function runs only when something is already wrong, which
+    # is the worst possible place to throw.
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $known = $true
+        foreach ($c in @($Approved, $Deployed)) {
+            # --verify --quiet prints nothing on a bad ref, so there is no stderr
+            # to wrap in the first place.
+            $null = & git rev-parse --verify --quiet "$c^{commit}"
+            if ($LASTEXITCODE -ne 0) { Note "commit $c is not in this repo"; $known = $false }
+        }
+        if (-not $known) {
+            Note 'cannot classify the mismatch without both commits.'
+            return
+        }
+
+        $inputs = @(& git diff --name-only "$Approved..$Deployed" -- '*.cs' '*.csproj' 2>$null)
+        $inputs += @(& git diff --name-only "$Deployed..$Approved" -- '*.cs' '*.csproj' 2>$null)
+        $inputs = @($inputs | Sort-Object -Unique)
+
+        & git merge-base --is-ancestor $Approved $Deployed 2>$null
+        $approvedIsOlder = ($LASTEXITCODE -eq 0)
+        & git merge-base --is-ancestor $Deployed $Approved 2>$null
+        $deployedIsOlder = ($LASTEXITCODE -eq 0)
+
+        if ($inputs.Count -eq 0) {
+            # Deliberately says nothing about which side is newer. With no build
+            # input differing the two builds are the same program, so the
+            # direction does not change the remedy - and naming a direction here
+            # would be asserting more than the evidence carries.
+            Note 'no .cs or .csproj differs between them - the two builds are the'
+            Note 'same program, whichever is newer. Nothing material changed.'
+            Note 'Re-verify and rewrite harness/GO; -Force is defensible here.'
+        }
+        elseif ($approvedIsOlder) {
+            Note "$($inputs.Count) build input(s) differ and the deployed build is NEWER:"
+            $inputs | ForEach-Object { Note "  $_" }
+            Note 'STALE APPROVAL with real code changes - nobody has verified what is'
+            Note 'on disk. Do not -Force this one; get it verified.'
+        }
+        elseif ($deployedIsOlder) {
+            Note "$($inputs.Count) build input(s) differ and the deployed build is OLDER:"
+            $inputs | ForEach-Object { Note "  $_" }
+            Note 'STALE DEPLOY - the approved build is not the one installed.'
+            Note 'Deploy the approved artifact rather than overriding.'
+        }
+        else {
+            Note 'the two commits are unrelated - neither is an ancestor of the other.'
+            Note 'Do not proceed on either; work out where each binary came from.'
+        }
+    }
+    finally {
+        $ErrorActionPreference = $prevEap
+        Pop-Location
+    }
+}
+
 function Invoke-PreFlight {
     Head 'pre-flight'
 
@@ -140,7 +215,12 @@ function Invoke-PreFlight {
             Ok "built from commit $stamp"
             $want = $ExpectCommit
             if (-not $want -and (Test-Path -LiteralPath $GoFile)) {
-                $want = (Get-Content -Raw -LiteralPath $GoFile).Trim()
+                # Trim the BOM explicitly. Set-Content -Encoding utf8 on Windows
+                # PowerShell writes one, and a BOM survives .Trim() - so an
+                # approval file written by the obvious command would fail to
+                # match a commit it names correctly. Delta hit the same trap in
+                # bot.json today, in the other direction.
+                $want = (Get-Content -Raw -LiteralPath $GoFile).Trim([char]0xFEFF, ' ', "`t", "`r", "`n")
             }
             if (-not $want) {
                 Warn 'no expected commit given and no harness/GO file - not checked'
@@ -150,7 +230,10 @@ function Invoke-PreFlight {
             }
             else {
                 Bad "approved commit is $want but the deployed plugin is $stamp"
-                Note 'either the approval is stale or the deploy is - do not guess'
+                # Telling someone not to guess without handing them what they
+                # need in order not to is not a check, it is an obstacle. The
+                # data is one git command away, so classify the mismatch.
+                Show-MismatchCase -Approved $want -Deployed $stamp
             }
         }
     }
