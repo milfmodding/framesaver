@@ -946,9 +946,21 @@ for GC.* Run: **0 of 7.** Full cross-tab:
 a slice, so this is close to definitional and is not independent evidence about the A/B axis.
 
 **What does survive, and it is now better tested than before.** Holding `TimeUpdate < 0.5` — comparing like
-with like — the frame criterion still separates event size: **A 138.9 ms against B 333.9 ms.** So the axis
-carries real information about *how big the block is*, independent of GC. n = 7 against 36, so the A side is
-thin, but a 195 ms difference in medians is not a sampling accident.
+with like — the frame criterion still tracks event size, independent of GC:
+
+| | n | min | median | max | distinct logs |
+|---|---|---|---|---|---|
+| A, `frame < period/2` | 7 | 104.6 | **138.9** | 231.1 | 5 |
+| B, `frame ≥ period/2` | 36 | 165.2 | **333.9** | 401.7 | 7 |
+
+~~the frame criterion still **separates** event size~~ — **too strong** (Gamma, and the correction is theirs).
+**B is stochastically larger — Mann-Whitney AUC 0.901 — with substantially overlapping ranges.** The overlap
+band is 165.2–231.1 ms: **15 of 36 B frames sit inside A's range and 3 of 7 A frames inside B's.** So this is
+**a split in event size, not a partition** — written as a partition it will be read as two classes, and the
+next person to find a 200 ms frame will not be able to say which family it belongs to.
+
+**The check that mattered at n = 7 passes:** A spans **5** distinct logs and B **7**, so neither is one
+session's artifact — which was the live risk at that sample size and is not present.
 
 **The B / `TimeUpdate ≥ 0.5` cell is empty**, so the two criteria are nearly nested and cannot be fully
 separated with this data. Stated because it bounds everything above: the A/B axis is established as a split on
@@ -3054,6 +3066,14 @@ Worth keeping — several of these cost real time to learn.
 
   *Specimen: Gamma, who wrote the run-sheet line and specified the inversion that reversed it, two hours
   apart, without connecting them.*
+
+  **The countermeasure generalises past config, and that is the durable half.** Renaming the key, emitting
+  `null` rather than `0` where a type has no `enabled`, and making an unsure frame report nothing rather than
+  a number are the same move: **change the artifact so the wrong state cannot be reached, instead of relying
+  on a reader to notice.** The alternative in each case was a note someone had to read at the moment they
+  were most confident they already understood — which is the moment the advice fails. *Delta's framing, on
+  the observation that "apply the rule you just derived to the correction itself" is advice, and advice does
+  not survive believing you have just understood the error.*
 
   The other four, with what each actually needed:
 
