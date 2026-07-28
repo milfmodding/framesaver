@@ -83,8 +83,13 @@ profile and `http.json`; every other captured argument passes through untouched.
   hard stop rather than a choice made for you.
 - **It never stops a process by name.** Only the server it started is stopped,
   by PID — a second server you started deliberately is left alone.
-- **It does not verify the server is healthy**, only that it answers
-  `/launcher/server/version`. A server that starts and then breaks looks fine here.
+- **It does not verify the server is healthy**, only that the port accepts a TCP
+  connection. A server that starts listening and then breaks looks fine here.
+  It is a TCP connect rather than an HTTP probe deliberately: SPT serves over
+  Kestrel HTTPS with a self-signed certificate, and `Invoke-WebRequest` rejects
+  that by default — so an HTTPS probe would report "not ready" forever against a
+  perfectly healthy server, and a check that reports the wrong thing is worse
+  than no check.
 
 ## Teardown
 
