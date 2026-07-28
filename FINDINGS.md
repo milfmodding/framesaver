@@ -3531,6 +3531,69 @@ consumes is the window that closed at the most recent boundary. If item 4 also l
 boundary, the alignment changes and this needs re-deriving **before** the raid, not after. Beta owns that
 decision and has been asked.
 
+##### Resolved 2026-07-28 by Delta, and it is a fourth outcome none of the three rows covers
+
+**The attribution stands. The identity does not, and the assumption above is why.**
+
+`framesaver-20260728-125209-latch.ndjson` first reads as the attribution collapsing: `endToStart` is
+**0.2 ms median** on all 47 in-raid spikes with `unaccounted ≥ 100`, against a median `unaccounted` of
+336.7. The field is not dead — 35 lines exceed 10 ms and the maximum is **453.65 ms**. So the question is
+where the gap went, not whether it exists.
+
+| offset | `endToStart` within 5 ms of that spike's `unaccounted` |
+|---|---|
+| i−2 | 0 / 47 |
+| **i−1** | **22 / 47** |
+| i+0 | **0** / 47 — 12 / 15 in the pre-latch `0923` log |
+| i+1 | 0 / 47 |
+
+**The 25 misses are not failures, and the separation is what proves it.** Time between the spike and the
+line before it:
+
+| | n | median | max |
+|---|---|---|---|
+| matched | 22 | **33.6 ms** | 47.4 ms |
+| unmatched | 25 | **1,469 ms** | 11,096 ms |
+
+Perfectly disjoint. Every match has the immediately preceding frame on the previous line; every miss has no
+adjacent line at all, because that frame was never emitted as a spike. **There is nothing for the 25 to have
+matched. It is 22 of 22 among the cases where the test could succeed** — and 47% is the wrong way to report
+it, in the same family as every other denominator error in this document.
+
+One event, two lines, two clocks (four representative pairs, all identical in shape):
+
+| | `frame` | `period` | `unaccounted` | `endToStart` |
+|---|---|---|---|---|
+| i−1 | **386.4** | 34.1 | 0.0 | **352.4** |
+| i+0 | 30.5 | **382.8** | **352.4** | 0.15 |
+
+`endToStart` travels with `frame`; `unaccounted` travels with `period`.
+
+**Against the registration: all three rows fail.** The same-line three-term form cannot fit —
+`endToStart[N]` is 0.15 where `unaccounted[N]` is 352, and subtracting positive quantities cannot bridge
+that. The next-line form fails for the same reason, since it also keeps `endToStart` on line N. The
+collapsed no-subtraction form *does* fit numerically — but **offset by one line**, which is not the row that
+was written. The outcome table anticipated three ways to be wrong about the latch's position and none about
+the fields moving relative to each other.
+
+**And the document said so in advance.** The assumption immediately above named this exact case — *"if item
+4 also latches `endToStart` at the boundary, the alignment changes and this needs re-deriving before the
+raid, not after."* Item 4 shipped, the raid ran, and it was not re-derived. **The registration did its job:
+it made the surprise legible instead of letting a 324 ms disagreement read as a refutation.** What it could
+not do is enforce its own precondition.
+
+Two consequences that land elsewhere in this document:
+
+- **`frame > period` on these events is the i−1 half of the pair, not an independent anomaly.** Every one of
+  the 22 shows `frame` large with `period` ordinary on the earlier line and the exact inverse on the later
+  one. Rates computed on the `unaccounted ≥ 100` population exclude the i−1 lines entirely.
+- **One stall emits two spike lines.** Any rate counted per spike line over-counts this family by up to 2×,
+  and not by a constant factor, since whether the i−1 line clears a given cut depends on its frame time.
+  Anything comparing spike rates between arms needs re-deriving per *event*.
+
+Which anchor is *correct* is not settled here — only that the two agreed before the latch and do not now.
+Re-derivation in [`analysis/delta-endtostart-alignment.py`](analysis/delta-endtostart-alignment.py).
+
 #### Acceptance criterion — read this before reading the zero
 
 **A zero is only a result if the denominator is large.** `negResidualFrames: 0` is the registered
