@@ -87,8 +87,26 @@
     </Reference>
   </ItemGroup>
 
+  <!--
+    Deploying is opt-in. This target used to copy unconditionally, which made
+    every build a deploy - so a verification build of a compile fix replaced a
+    binary another agent had declared frozen, and nobody had broken any rule.
+    A freeze that any build can break is a note, not a control.
+
+    Both outcomes are announced, because the failure mode this replaces is a
+    silent overwrite and the obvious wrong fix is a silent no-op: running the
+    game against a stale plugin while believing you had just built it.
+
+      dotnet build -c Release                     compiles only
+      dotnet build -c Release -p:Deploy=true      compiles and deploys
+  -->
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BepInExDir)\plugins\" />
+    <Copy Condition="'$(Deploy)' == 'true'"
+          SourceFiles="$(TargetPath)" DestinationFolder="$(BepInExDir)\plugins\" />
+    <Message Condition="'$(Deploy)' == 'true'" Importance="high"
+             Text="Framesaver: DEPLOYED to $(BepInExDir)\plugins\" />
+    <Message Condition="'$(Deploy)' != 'true'" Importance="high"
+             Text="Framesaver: built, NOT deployed. Add -p:Deploy=true to copy into plugins." />
   </Target>
 
 </Project>
