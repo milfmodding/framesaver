@@ -3062,6 +3062,16 @@ Worth keeping — several of these cost real time to learn.
   data, staging work before committing. **The check is not a safe place to stop thinking**, and the practical
   consequence is the one the day already demonstrated repeatedly: these were caught by a second person
   re-deriving from source or raw logs, never by the author re-reading their own work.
+
+  **The asymmetry is in the role, not the reasoner** (Delta, 2026-07-28). A reviewer arrives already knowing
+  what the work concluded, which is the cheapest possible position from which to check it — so a run of
+  catches says nothing about who is more careful, and reading it that way would make the next reviewer
+  reluctant to look foolish. Every agent on this project was both specimen and catcher within the same day,
+  several times inside corrections they had written for earlier errors.
+
+  **So the thing worth keeping is not any individual catch: it is that nobody defended a number once it was
+  checked.** That is what made a day with this many defects cost zero runs, and it is the only part of the
+  practice that has to survive contact with being wrong in public.
 - **A label is not a caveat. A qualifier that lives anywhere except the number will be dropped by the first
   person who quotes it.** Two figures in this document were misread this way four days apart, and **neither
   was a measurement fault** — both numbers were correct, and in both cases the qualification was sitting in
