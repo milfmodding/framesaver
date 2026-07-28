@@ -40,11 +40,24 @@ it that way is the same error as the `best p50` misquote below, one day later.
 | | **4.85** | 6.53 | 8.21 |
 
 `corr(awake, render) = +0.187`, so it barely tracks bot count — which is the property that makes it a floor
-and the intercept never had. A 10 ms budget therefore leaves **under 5.2 ms for the entire update side**,
-against a current `gameUpdate` of 6.5–24.5 ms.
+and the intercept never had.
 
-**Correct statement of the criterion: *consistent* 100+ on Streets is not reachable — 1 window in 99 — which
-is what the criterion said. "Impossible" was too strong and licensed a different decision.**
+~~*A 10 ms budget therefore leaves under 5.2 ms for the entire update side, against a current `gameUpdate` of
+6.5–24.5 ms.*~~ **Withdrawn 2026-07-28 — this reproduced the defect it replaced, and so did the other
+candidate replacement.** Both subtract or sum **window averages** (`render` min 4.85, `gameUpdate` min 6.50)
+and apply the result to a **percentile** target. The distribution is right-skewed — median `avg − p50` gap is
+0.58 ms — so any floor built that way is violated by observed p50s: **3 of 99 Streets windows sit below
+11.35 ms**, and the minimum is 9.47 ms. A floor that observed data goes below is not a floor, which is exactly
+why the intercept was struck. *Two* proposed replacements had the same shape, arriving inside the correction
+for it.
+
+**The criterion needs no arithmetic and nothing can violate it: 1 window in 99 reaches 100 fps on Streets.**
+Stated in one statistic, on the population the criterion is about. *Consistent* 100+ is therefore not
+reachable — which is what the criterion said. "Impossible" was too strong and licensed a different decision.
+
+The render composition below still stands on its own terms — it is a statement about what `render` is made of,
+not a bound on the frame — but **do not recombine component minima into a frame-level floor.** If a bound is
+wanted, build it from the same statistic on the same population, or quote the population directly.
 
 ~~*render is largely outside what a Harmony mod reaches.*~~ **Also wrong, and it was never tested before
 being written.** `render` is *by construction* the `PostLateUpdate` phase on the main thread —
