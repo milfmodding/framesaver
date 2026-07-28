@@ -1704,3 +1704,71 @@ costs nothing — it was never validated, never run, and its source state is rea
 now twice, and the opt-in deploy change Alpha has in flight removes the mechanism rather than the habit,
 which is the better fix.
 
+
+## 2026-07-28 — Beta: the build hash is a function of the build command, and my last entry named the wrong cause
+
+Correcting [the entry above](#2026-07-28--beta-the-freeze-hash-was-not-a-function-of-the-source) within the
+hour. Its conclusion holds and is now better supported; the **mechanism it named is too narrow**.
+
+### FROZEN at `85db183d3c92bef579e4f6333508e596`
+
+113,664 bytes, `TimeDateStamp` `0xaa405713`, `bin/Release` == `plugins`, tree at `58b593c`, **clean**. Built
+`--no-incremental -p:Deploy=true` from committed source with nothing outstanding, so the
+binary-to-commit pairing is true by construction rather than by timing. Preserved as
+`artifacts/Framesaver-20260728-58b593c-deploy-85db183d.dll`.
+
+Replaces `85742532`, which was built against an **uncommitted** `Framesaver.csproj` and which therefore no
+commit reproduces. It was behaviourally identical — byte-diff against a current build is 110 bytes in
+`TimeDateStamp`, MVID and the debug directory, identical size, zero IL — but "no commit reproduces it" is the
+state Alpha warned about, and it costs one build to leave.
+
+### The mechanism: an MSBuild property changes the hash
+
+Measured, on a tree with **no `.cs` change whatsoever**:
+
+| invocation | md5 |
+|---|---|
+| `--no-incremental`, four separate runs | `0f373edb…` **all four** |
+| `--no-incremental -p:Deploy=true` | `85db183d…` |
+
+Four consecutive forced builds are byte-identical, so the compiler is deterministic. **Adding one MSBuild
+property moves the hash.** The previous entry attributed the movement to incremental-vs-forced reuse of an
+intermediate; that was a guess that fitted two data points, and this fits better and is directly measured.
+
+**The rule that survives, and it is the one already written down:** the hash is a function of the source *and
+the build command*. Declare a freeze with a **fixed, written-out invocation** — for this project
+`dotnet build -c Release --no-incremental -p:Deploy=true` — because varying the command varies the identity
+of a binary nobody changed.
+
+### The byte-diff signature does NOT mean "comment-only", and the earlier entry says it does
+
+[The 01:43 reproducibility entry](#reproducibility-test--run-2026-07-28-0143-deterministic-but-the-hash-is-source-text-sensitive)
+concludes: *"A diff confined to `0x88`, the MVID and the debug directory is a comment-only rebuild."*
+
+**That is false and it is now the load-bearing correction.** Today that exact signature was produced with
+**zero source change of any kind** — twice. What the signature actually means is **"no IL differs"**, which
+is the useful claim and the one worth acting on. It has at least three causes: a comment edit, a different
+build command, and an uncommitted-input difference. Reading it as "someone edited a comment" would send the
+next person looking for an edit that never happened.
+
+**Use it to answer "is this behaviourally the same binary", never to answer "what changed".**
+
+### I mislabelled a second artifact, one hour after writing the rule against it
+
+`Framesaver-20260728-58b593c-noinc-0f373edb.dll`, containing `85db183d`. I typed the expected hash into the
+`cp` and measured afterwards — the identical shape as this morning's `ceb5cb84` mislabel, committed by me
+after I had written *"name artifacts from the hash you measured"* in this file.
+
+**A rule I had written, agreed and published failed to survive one hour.** That is the point, not the
+mistake: the rule asked me to remember something at the exact moment I was thinking about something else.
+Replaced with a form that cannot be got wrong, because the name is *derived* from the measurement:
+
+```sh
+H=$(md5sum bin/Release/Framesaver.dll | cut -d' ' -f1 | cut -c1-8)
+cp bin/Release/Framesaver.dll "artifacts/Framesaver-<date>-<commit>-<tag>-$H.dll"
+```
+
+Delta's formulation from the compaction handover, which this is now the third instance of: **a general rule
+is not a countermeasure; a mechanical check is.** Making the wrong state unreachable beats intending to
+avoid it, and the evidence is that the author of the rule broke it first.
+
