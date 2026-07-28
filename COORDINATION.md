@@ -2161,3 +2161,42 @@ Found by asking what the stricter check does at the reinstall cadence — which 
 would have found it reliably: what was the old check accidentally preventing?** Gamma's formulation, and it
 generalises to every guard we tighten.
 
+
+## 2026-07-28 — Beta: Shutter exists, and it is not in this repository
+
+**`F:\SPT\Mods\Shutter`** — a separate git repo, `133499d` onward. A **server** mod, built and
+**deliberately not deployed**; `user\mods\` holds only LootingBots and SAIN.
+
+Recorded here because it would otherwise exist only in its own history and in messages, which is the exact
+failure this file was rewritten to fix this morning.
+
+**Separate repo on Alpha's reasoning, not merely tidiness:** Framesaver is being open-sourced with its
+telemetry corpus, and a server mod in that history would have to be explained or excised at release.
+
+### What it is for
+
+It measures `/client/game/bot/generate` end to end, which **neither existing instrument can see**:
+
+- **The server's own timer measures setup only.** `GenerateBotWaves` stops its `Stopwatch` after
+  `Task.WhenAll`, which completes once each `Task.Run` has *constructed* an unmaterialised PLINQ query.
+  `GenerateBotWave` ends with a bare `;` under the comment `// Materialise parallel query into data` and
+  **no materialising call** — verified in Sophia's fork (`gaylatea-framesaver`, `ee6cc390`), which is the
+  PR target, rather than in `Community/server-csharp-main`.
+- **The client cannot fill the gap.** `worstCallbacks` records *parse* duration, which scales with response
+  size whether the server parallelised or not — Delta's refutation of a test Beta proposed, and it was right.
+
+Two nested brackets give the split: `setupMs` (`BotController.Generate`) is what the server's own timer
+reports; `totalMs` (`BotCallbacks.GenerateBots`) includes enumeration and serialisation; the difference is
+generation. Per-condition role/limit make Delta's abandoned question answerable from the only side it can
+be: **does cost scale with the number of conditions or with the largest one?**
+
+### "Placing the files is deploying, on a delay"
+
+Alpha's rule and it is sharper than the one it replaced. Server mods load at **server start**, and Sophia
+launches the server routinely before a raid without connecting that to a deploy decision — so there is no
+gate between the file landing and the mod running, **because the gate is an action taken for an unrelated
+reason.** Same shape as "a build is a deploy", one layer out, and worse in consequence: a misbehaving
+server mod does not degrade telemetry, it breaks bot generation for the raid.
+
+Deploy is therefore opt-in (`-p:Deploy=true`), matching `Framesaver.csproj`.
+
