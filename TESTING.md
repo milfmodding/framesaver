@@ -491,12 +491,35 @@ One launch, **two Streets raids, no restart between them.** The knob A/B below r
 
 ### Before launch — four deploy checks
 
-1. md5 of `bin/Release` and `plugins` **match each other**
+1. md5 of **`plugins` and the artifact named in the freeze declaration** match each other
+
+   > ~~md5 of `bin/Release` and `plugins` match each other.~~ **Retired 2026-07-28**, agreed by all three
+   > agents. Since `524eb5d` made deploying opt-in (`-p:Deploy=true`), a verification build leaves
+   > `bin/Release` holding a binary that was never deployed — so the two are **supposed** to diverge and
+   > the check fires on the normal case. A check that fires on the normal case is a check nobody reads,
+   > which is the same reason the `Assembly-CSharp` *mtime* clause was replaced by a hash.
+   >
+   > `bin/Release` is now out of the check entirely. Leave an abandoned build sitting there rather than
+   > copying the approved binary over it: **a second location that looks authoritative is worse than an
+   > obviously stale one.**
+
 2. `TimeDateStamp` **high bit set** — check the bit, not the value; the value moves with content and that is determinism working
-3. **changed-file list** announced — a hash change alone cannot distinguish a comment from a behaviour change
+3. **The commit, read out of the binary** — `python analysis/build-provenance.py <path>`. The SDK stamps
+   HEAD-at-build-time into `AssemblyInformationalVersion`, so provenance is *measured* rather than typed.
+   Then `git diff <stamp>..HEAD -- '*.cs' '*.csproj'` must be **empty**.
+
+   > **Empty is sufficient, not necessary.** A comment-only commit makes it non-empty while changing no
+   > IL. When it is non-empty, read the diff — a comment-only hunk is verifiable from source, unlike the
+   > byte-diff signature, which has at least three causes and does *not* mean "someone edited a comment".
+
 4. **no build input newer than the deployed binary** — sources, `.csproj`, *and* `Assembly-CSharp.dll`. This is the only check that catches a stale binary
 
 Then hash `Assembly-CSharp.dll` and record it. Hash it again after the launch.
+
+**None of these establish that what is on disk now is what was approved.** They are statements about an
+artifact and stay true indefinitely; freshness is a statement about a moment and expires on the next
+build. That is what [the pre-raid provenance read](#before-you-raid-confirm-the-deployed-binary-is-the-approved-one)
+is for, and it is the only check here that cannot go stale, because it runs at the moment of use.
 
 ### Settings
 
