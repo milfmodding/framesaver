@@ -8,9 +8,18 @@ counter never running, which is what clockResidualFrames exists for.
 
 Usage:  python check-boundary-latch.py <log.ndjson> [more.ndjson ...]
 
-Exit 0 if every check passes, 1 otherwise. Checks that cannot run (field absent,
-because the log predates the latch) are reported as SKIP and do not fail the run --
-a missing field is a log from an older build, not a defect in this one.
+Three exit states, not two:
+
+  0  every essential check ran and passed
+  1  an essential check failed
+  2  an essential check could not run -- the log predates the latch, or the fields
+     are absent for some other reason
+
+The third state exists because the first version of this script returned 0 on a
+pre-latch log: both latch checks skipped, the incidental nesting check ran and
+passed, and the summary line read like a validated latch. A log with real data in
+it passed while an empty file correctly failed, so the failure got EASIER to hit
+the more data you had. "I could not look" must never render as "it is sound".
 """
 
 import json
@@ -33,15 +42,22 @@ def load(path):
                 yield number, row
 
 
+# Checks 1 and 2 validate the latch and are the reason this script exists. Check 3
+# would run against any log ever written, so it must not be able to carry a pass on
+# its own.
+ESSENTIAL = ("negative-residual assertion", "boundary tracks StartOfFrame")
+
+
 def check(path):
-    """Return (failures, checks_run) for one log."""
+    """Return (failures, ran, skipped_essential) for one log."""
     windows = list(load(path))
     if not windows:
-        print(f"  SKIP  no window lines carrying negResidualFrames")
-        return 0, 0
+        print("  SKIP  no window lines carrying negResidualFrames")
+        return 0, 0, list(ESSENTIAL)
 
     failures = 0
     run = 0
+    skipped = []
 
     # 1. The assertion itself. Zero by construction once the latch lands.
     eligible = sum(r.get("clockResidualFrames", 0) for _, r in windows)
@@ -61,6 +77,7 @@ def check(path):
             print(f"  ok    negResidualFrames 0 of {eligible} eligible frames")
     else:
         print("  SKIP  clockResidualFrames absent (log predates the latch)")
+        skipped.append(ESSENTIAL[0])
 
     # 2. The latch must sit on the frame boundary. SPT's StartOfFrame fires once per
     #    frame, so the two counts track each other; a divergence means the marker we
@@ -82,6 +99,7 @@ def check(path):
             print("  ok    boundaryFires tracks startOfFrameFires")
     else:
         print("  SKIP  boundaryFires absent (log predates the latch)")
+        skipped.append(ESSENTIAL[1])
 
     # 3. Nesting detector. Install() strips prior markers so a reinstall cannot wrap
     #    its own output; if that ever regresses, our marker types show up as children
@@ -116,7 +134,7 @@ def check(path):
         share = (100.0 * missed / total) if total else 0.0
         print(f"  info  {missed} boundary-missed frames ({share:.2f}% of {total})")
 
-    return failures, run
+    return failures, run, skipped
 
 
 def main(argv):
@@ -126,22 +144,32 @@ def main(argv):
 
     total = 0
     ran = 0
+    missing = []
     for path in argv[1:]:
         print(path)
         try:
-            failures, run = check(path)
+            failures, run, skipped = check(path)
         except IOError as exc:
             print(f"  ! {exc}")
             return 2
         total += failures
         ran += run
+        missing.extend(skipped)
 
-    if ran == 0:
-        print("\nNo checks could run -- every field was absent. This is not a pass.")
+    if total:
+        print(f"\nFAILED: {total} failure(s) across {ran} check(s) run.")
         return 1
 
-    print(f"\n{total} failure(s) across {ran} check(s) run.")
-    return 1 if total else 0
+    # Before the pass. An essential check that did not run cannot be outvoted by
+    # incidental ones that did - that inversion is the bug this script had.
+    if missing:
+        names = ", ".join(sorted(set(missing)))
+        print(f"\nINCONCLUSIVE: the latch could not be validated - {names} did not run. "
+              f"{ran} incidental check(s) passed, which says nothing about the latch.")
+        return 2
+
+    print(f"\nPASSED: {ran} check(s), including every essential one.")
+    return 0
 
 
 if __name__ == "__main__":
