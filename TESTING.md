@@ -637,3 +637,137 @@ The two knobs are companions: one gives the collector **longer** slices, the oth
 neither moves spike size or count, that is a real result and not a failed experiment — it means the extra cost
 is Boehm's **sweep**, which is unconditionally stop-the-world and scales with heap size rather than live set.
 No scheduling knob can touch that, and the only remaining lever is allocation volume.
+
+---
+
+## The held-position A/B — the procedure, for the person standing there
+
+Every cross-window comparison in the corpus carries position as an unmeasured confound. **No window in
+either 2026-07-28 raid was positionally stable**: distance travelled runs **76–244 m per window**, and the
+quietest window on record still covers 76 m. Holding position does not happen by accident, and
+`corr(distanceTravelled, p50) = −0.306` at n=10 means distance is a **comparability filter, not a
+predictor** — it says which windows may be compared, not what the frame rate will be. The negative sign is
+the kind of number that gets quoted backwards; it does not mean moving makes the game faster.
+
+Two protocols. **A** makes any intervention A/B readable. **B** is the one still owed on goal 1, and it is
+the only experiment on the list that converts an observational correlation into an intervention.
+
+Neither needs a build. Both need you to stand still, which is the expensive part.
+
+### Choosing the spot — once, and then write it down
+
+Not a specific location, because the spot has to survive being described to a future session:
+
+- **A long sightline down a street with buildings in it.** This is where 60 fps fails, so it is where the
+  measurement is worth taking. A courtyard or an interior gives a clean run of numbers about a case nobody
+  is complaining about.
+- **Somewhere you can hold for ten minutes** — a corner, doorway or rooftop with one approach. Not a spawn,
+  not a hot extract.
+- **Under two minutes from spawn**, so the raid timer is never the reason an arm was cut short.
+- **A fixed aim point**: a sign, an antenna, a specific window — something you can re-acquire *exactly*
+  after looking away. Protocol B depends on it and so does arm 3 of any later session.
+
+Write the spot and the aim point into the run notes in one sentence each. A protocol that cannot be
+repeated next month is a single measurement wearing a protocol's clothes.
+
+### Protocol A — one position, one view, one knob
+
+Sequence, for a knob with a baseline and a test value:
+
+| step | what | duration |
+|---|---|---|
+| 1 | reach the spot, settle on the aim point, **stop moving** | — |
+| 2 | **arm 1**, knob at baseline | **3 min** |
+| 3 | open F12, change the knob, close it — **without moving the feet** | ~15 s |
+| 4 | **arm 2**, knob at test value | **3 min** |
+| 5 | revert the knob the same way | ~15 s |
+| 6 | **arm 3**, back at baseline | **3 min** |
+
+Windows are 60 s, so three minutes gives three windows per arm and you **discard the first one of each**.
+Two reasons, and both are silent if ignored:
+
+- **A knob changed mid-window lands in a window that reports the new value on a line whose frames are
+  mostly from the old arm.** `cfg` is stamped when the line is written. The contaminated window is
+  labelled as the *new* arm, which is the worst possible place for it.
+- **The F12 overlay is a large IMGUI draw**, so the window you open it in has extra render and UI cost that
+  belongs to neither arm.
+
+Arm 3 is not optional. It is the only thing that separates a knob effect from a drift over nine minutes —
+heat, a bot wave arriving, the collector's heap growing. If arm 3 does not return to arm 1, **the run
+measured time, not the knob**, whatever arm 2 showed.
+
+### Protocol B — one position, two views, no knob at all
+
+The render decomposition rests on `render = 5.266 + 0.000467 × drawCalls` fitted across 38 windows in which
+**both the position and the view were changing**. That is an observational slope and the caveat travels
+with it. This replaces it with an intervention, at the same spot, in five minutes:
+
+| step | what | duration |
+|---|---|---|
+| 1 | stand on the spot, aim at the **long sightline** | **2 min** |
+| 2 | **turn on the spot** to face a near wall — feet do not move | **2 min** |
+| 3 | turn back to the aim point | **2 min** |
+
+Nothing is configured, nothing is toggled. The only variable is which way you are looking.
+
+#### Registered prediction — written before Protocol B has ever run
+
+Observed draw calls span 1,141–4,648 across the corpus, so a sightline-to-wall swing should move roughly
+**3,300 draw calls**. At the fitted slope that predicts:
+
+> **Δ`render` p50 ≈ 1.5 ms** between the two views, and `gameUpdate` unchanged.
+
+| outcome | reading |
+|---|---|
+| **Δ ≈ 1.5 ms** | the slope is causal; "79% of Streets render is a constant draw calls do not reach" stands, and the reachable ceiling really is ~1.4 ms |
+| **Δ ≫ 3 ms** | draw calls proxy something larger — culling, shadow casters, overdraw. The 1.4 ms figure is an *under*estimate and the lever is bigger than we have been saying |
+| **Δ ≈ 0** | the observational slope was position and content, not submission. The draw-call lever does not exist and `render` is fixed cost |
+| **`gameUpdate` moves too** | the view is driving more than rendering — visibility or LOD work on the CPU side — and neither the slope nor the split can be read until that is separated |
+
+**Δ ≈ 0 is a good result and should be reported as one.** It retires the draw-call line of enquiry with a
+measurement instead of leaving it as a caveat on a regression, and it costs five minutes to get. The
+temptation afterwards will be to describe it as a failed experiment; it is the opposite.
+
+### Pass criteria — read from the log afterwards, never judged in the moment
+
+| check | field | pass |
+|---|---|---|
+| **position held** | `pos` — largest of the three axis spans | **≤ 1 m** |
+| **no pacing** | `pos.dist` | **≤ 5 m per window** |
+| **view held** | `gpu.render.drawCalls.max ÷ .avg` | **≤ 1.15** |
+| **arms comparable** | `bots.awake` | within **±2** across arms |
+| **arm labelled right** | `cfg.*` | first window after every change discarded |
+
+**The bounding box is the criterion, not `dist`.** `dist` sums a per-frame distance over ~3,000 frames a
+window, so its floor grows with frame count and it will read non-zero standing perfectly still; the box
+does not accumulate. `dist` is kept because it catches the one thing a box misses — pacing a small circle,
+which returns a tidy box and a large path.
+
+**These two thresholds are bounds, not measurements.** Nobody has ever stood still with this instrument
+running, so there is no measured noise floor and the first held window *is* the calibration: record its
+`dist` and box and replace these numbers with what they actually read. The placement is not delicate — the
+quietest roaming window on record is 76 m against a 5 m bound, more than an order of magnitude of daylight.
+
+**`bots.awake` is the combat check.** Standing still on Streets draws fire, and a bot shooting at you is a
+different CPU workload from a bot patrolling. Consistent is fine; *different between arms* is not.
+
+### What the log cannot check, and what stands in for it
+
+`pos` records position and never look direction — `SamplePosition` reads `player.Position` and nothing
+else. **So no field verifies that you held the aim point**, which is precisely what Protocol B turns on.
+
+`drawCalls.max ÷ .avg` is the stand-in, and it works: across 76 in-raid windows the ratio runs 1.01 to
+3.21, median 1.63, with only 5 windows at or below 1.15. A fixed view genuinely does drive it to ~1.0, and
+roaming genuinely does not — so ≤ 1.15 certifies a held view without certifying *which* view.
+
+**Proposed build item, not built** — `Telemetry.cs` is Beta's and the freeze belongs to them: add yaw and
+pitch min/max to the `pos` block, about six lines beside the existing per-axis code. It would make "the aim
+point was held" a direct reading instead of an inference, and it would let Protocol B's two arms be
+identified from the log rather than from the run notes. Cheap, and the next held-position run is the one
+that would use it.
+
+### If there is only time for one thing
+
+**Protocol B.** Protocol A makes future comparisons valid; Protocol B answers an open question about goal 1
+today, needs no config changes, and takes six minutes. It is also the cheaper failure: a botched Protocol A
+wastes an intervention, while a botched Protocol B wastes six minutes of standing still.

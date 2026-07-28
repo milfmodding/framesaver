@@ -1293,7 +1293,21 @@ inter-frame gap and be invisible to every phase marker — which is **refuted tw
 native rather than managed, and the family it was meant to explain went *down* (12 frames → 1) on the raid with
 far more movement, which is the opposite of what asset-streaming faults predict.
 
-### `proc` is dead and needs a P/Invoke
+### ~~`proc` is dead and needs a P/Invoke~~ — fixed 2026-07-28, and the fix is mostly the guard
+
+**Now read through `psapi.GetProcessMemoryInfo`** with `PROCESS_MEMORY_COUNTERS_EX`, which also yields
+`PageFaultCount` — so the queued page-fault item closes as a side effect rather than as separate work. Its
+precondition was *"if `notResidentMb` moves on the stall frames"*, and that could never have been evaluated:
+the field it was conditioned on was the dead one.
+
+**The substantive part of the change is not the P/Invoke.** A failed or zero read now emits
+`{"err": "pinvoke" | "call" | "zero"}` and never a number, because the defect was never that the value was
+wrong — it was that **a dead field and a real zero are the same bytes from inside the log**, and nothing in
+the corpus could have distinguished them. A consumer that reads `proc.wsMb` without checking `err` gets a
+`KeyError`, which is the intended failure: loud beats plausible. Window deltas are `null` rather than `0` on
+the first window of a run, for the same reason at smaller stakes.
+
+The original diagnosis, kept because the reasoning is what generalises:
 
 `proc.wsMb`, `privMb` and `notResidentMb` read **0** in every window of every run. The process demonstrably has
 tens of GB resident, so this is a dead field rather than a real zero. Almost certainly Unity's Mono not
