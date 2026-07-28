@@ -3547,6 +3547,22 @@ where the gap went, not whether it exists.
 | i+0 | **0** / 47 — 12 / 15 in the pre-latch `0923` log |
 | i+1 | 0 / 47 |
 
+**With a shuffled-`endToStart` null under it** — Alpha's addition, and a better argument than the adjacency
+split alone. Restricted to temporally adjacent pairs and to spikes where the question is meaningful:
+
+| log | offset | matched | coincidence baseline |
+|---|---|---|---|
+| `1252` post-latch | **i−1** | **22 / 22 = 100%** | **0.0%** |
+| `1252` post-latch | i+0 | 0 / 47 = 0% | 0.0% |
+| `0923` pre-latch | **i+0** | **12 / 15 = 80%** | **0.4%** |
+
+**The cut is what makes the null informative, and it is worth stating why.** Run against *all* in-raid
+spikes instead, the same test gives 99.3% at i−1 against a **99.0%** baseline, and 98.9% at i+0 against
+**98.8%** — because almost every ordinary spike has `unaccounted` and `endToStart` both near zero, where a
+±5 ms tolerance matches everything. A baseline that swings from 0.4% to 99% between populations of the same
+phenomenon is not telling you the logs differ. **It is telling you the cut is wrong**, and the instability
+of the null is the cheapest available signal for that.
+
 **The 25 misses are not failures, and the separation is what proves it.** Time between the spike and the
 line before it:
 
