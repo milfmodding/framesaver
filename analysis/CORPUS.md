@@ -55,12 +55,19 @@ one column rather than two.
 | `20260727-232106-ai-stack` | **empty** | — | 100 | — | 0 | — | — | — |
 | `20260727-232217-control` | complete | C | 100 | PreLateUpdate | 2 | TarkovStreets, bigmap | 12/28 | 8/76 |
 | `20260728-092354-postlate-gc` | complete | C | **30** | **all 8** | 1 | TarkovStreets | 0/11 | 2/24 |
-| `20260728-100048-postlate-gc` | **live** | C | **30** | **all 8** | 1 | TarkovStreets | 0/4 | 1/6 |
+| `20260728-100048-postlate-gc` | complete | C | **30** | **all 8** | 1 | TarkovStreets | 0/9 | 2/13 |
 
 **`state` matters and is a snapshot.** `empty` means zero sample and zero spike lines — an aborted launch,
 nothing to find. `no in-raid` means the session never reached `state: raid`. **`live` means the file was still
 being written when this table was generated**; a live log's counts are partial and its final window has not
 closed. Regenerate the table rather than trusting a `live` row.
+
+> **That instruction has already been needed once, which is the argument for it.** The row for
+> `20260728-100048` shipped as `live` at `0/4` and `1/6`. The session then ended, and regenerating gave
+> `complete` at **`0/9` and `2/13`** — the slip count doubled and the `animCulled` count more than doubled.
+> Nothing was wrong with the original row; it was simply a measurement of a file that was not finished. **A
+> partial row does not announce itself as partial once the numbers are quoted somewhere else**, which is why
+> the `state` column exists at all.
 
 > **A `live` log will also make an analysis disagree with itself, silently.** `delta-rederive.py` reported
 > dropping **717 lines in one section and 719 in the next**, from the same corpus in the same run — the live
@@ -110,9 +117,27 @@ phenomenon, or that a negative residual is meaningful. **Recovery: the affected 
 
 **Rate varies 0%–33% across logs at identical threshold, so this is a property of the *run*, not of the
 instrument** — it tracks how often the `Update`-phase stall occurs, which moves with mod stack and map.
-The high rates are all small-`n` logs; among the five with `n ≥ 30` the range is **0.0%–14.3%**, and the
-era-C 30 ms logs sit inside it at 8.3%. **There is no build-related trend**, and the unfiltered rate
-suggests one only because it is 1.9× inflated at the lower threshold.
+The high rates are all small-`n` logs; among the five with `n ≥ 30` the range is **2.9%–14.3%**
+(~~0.0%–14.3%~~ — no `n ≥ 30` log reads zero; the zeroes are all in logs of 3 and 5 lines), and the era-C
+30 ms logs sit inside it. ~~**There is no build-related trend**~~ — **the corpus cannot support that claim;
+see below** — and the unfiltered rate suggests one only because it is 1.9× inflated at the lower threshold.
+
+> **Unresolved, not resolved, and the distinction is load-bearing.** Two agents each read a phantom
+> regression into the era-C logs and each corrected the other, which makes "no trend" feel like the
+> hard-won answer. It is not. It is the absence of one. Pooling both 2026-07-28 logs — same build, same
+> map, same threshold, which is the one cross-log pooling this corpus permits — gives **4 of 37, 10.8%**
+> against the control's **8 of 76, 10.5%**. Fisher exact **p = 1.000**; Wilson 95% CI **[4.3%, 24.7%]**
+> against **[5.4%, 19.4%]**.
+>
+> **The design is nearly blind in both directions.** At n = 37 the observation would have to reach **8 of
+> 37 — a 2.1× regression — before its interval excludes the control**, and below the baseline **only 0 of
+> 37 separates at all**. So every outcome from 1 through 7 reads identically, and nothing short of total
+> elimination registers as a fix. Quoting 10.8% as evidence of no regression and quoting it as evidence of
+> improvement are the same error in opposite directions.
+>
+> **If this is reopened, what it needs is more in-raid spike lines, not more analysis of these 37.** Every
+> derivation anyone has run against them is already in this corpus, and
+> [power-check.py](power-check.py) prints the interval arithmetic above.
 
 > **The limit of that recovery, and it is the reason the defect matters at all.** Self-identification finds
 > the **source** line and never the **destination**. The mechanism moves time from line N to line N+1: N is
@@ -174,6 +199,10 @@ Stated positively, because a document that is all caveats gets read as "unusable
 - **Rate comparisons across a threshold change.** `spikeEventMs` is 100 for every log except `20260728-*` at
   30. Spike *counts* and *rates* do not join across that boundary; normalise to `period ≥ 100` first. This
   caught two agents in one day.
+- **Whether any build changed the line-pairing slip rate.** Not a defect in the data — a power limit. The
+  two era-C 30 ms logs carry **37** qualifying lines pooled, and at that n a **2.1× regression** is the
+  first thing separable from the control while only *total elimination* separates below it. The rate is
+  reportable; a *comparison* of rates across builds is not, and no filter fixes that.
 - **Absolute millisecond figures across maps.** Standing rule, and it now extends to attribution *ratios*:
   Streets attributes 10 of 11 collection frames to a phase, Customs 13 of 25.
 - **Live set versus heap size.** `GC.GetTotalMemory(false)` reports heap-including-free-blocks, so every
@@ -211,3 +240,14 @@ transitively closed over base types — 585 declaring one directly and 174 inher
 It applies **both** normalisations together because either alone is misleading, snapshots the corpus once so a
 live log cannot make it disagree with itself, and prints a warning naming any log that may still be growing.
 **Re-run it after any session ends** — a `live` row's counts are partial by definition.
+
+> **It forces UTF-8 on stdout, and it did not always.** Reading was UTF-8 from the start; writing was left to
+> the platform, and a default Windows console is cp1252. So the documented workflow — run it, paste the
+> output over the table body — replaced every em-dash in the `empty` and `no in-raid` rows with a mojibake
+> byte. **Following the instructions corrupted the file the instructions were for**, and only in the rows
+> with no data to draw the eye.
+
+`analysis/power-check.py` answers what a rate comparison in this corpus could have detected, given the number
+of qualifying lines a log actually contains. It exists because "no build-related trend" was asserted here from
+data that cannot separate a 2× change, and a power figure is the difference between *no effect* and
+*no measurement*.

@@ -17,7 +17,15 @@ handful of lines with nothing in its output to say so.
 import json
 import os
 import glob
+import sys
 import datetime
+
+# The table contains em-dashes, and a default Windows console is cp1252. Without
+# this the documented workflow -- run it, paste the output over the table body --
+# silently replaces every em-dash with a mojibake byte. Reading was already
+# UTF-8; only writing was left to the platform.
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 LOGS = r'F:\SPT\SPT4.0.13\BepInEx\plugins\Framesaver-logs'
 
