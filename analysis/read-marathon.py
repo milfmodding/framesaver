@@ -50,11 +50,26 @@ TARGET_FPS = {'tarkovstreets': 60.0}
 DEFAULT_TARGET = 100.0
 HITCH_MS = 100.0
 EXEMPT_MAPS = ('lighthouse', 'rezervbase')   # Zryachiy, Gluhar
+# Several maps have more than one LocationId and the variants are not aliases of
+# convenience -- they are different scenes. Ground Zero ships `sandbox` and
+# `sandbox_high` (the level-20+ variant) and Factory ships day and night.
+#
+# The first version of this table had `sandbox` only, and the very first leg of the
+# first marathon came back as `sandbox_high`. Ground Zero would have printed under
+# its raw id, been missing from the coverage delta, AND been listed as "still never
+# launched" in the same report that measured it. Caught by checking the live log at
+# leg 1 rather than waiting for the whole sweep -- the cheapest possible moment, and
+# the only reason it is a comment instead of a wrong conclusion.
 KNOWN = {
-    'tarkovstreets': 'Streets', 'bigmap': 'Customs', 'factory4_day': 'Factory',
+    'tarkovstreets': 'Streets', 'bigmap': 'Customs',
+    'factory4_day': 'Factory (day)', 'factory4_night': 'Factory (night)',
     'interchange': 'Interchange', 'woods': 'Woods', 'shoreline': 'Shoreline',
     'rezervbase': 'Reserve', 'laboratory': 'Labs', 'lighthouse': 'Lighthouse',
-    'sandbox': 'Ground Zero',
+    'sandbox': 'Ground Zero', 'sandbox_high': 'Ground Zero (high)',
+}
+# Coverage is about the PLACE, so variants collapse here and only here.
+FAMILY = {
+    'sandbox_high': 'sandbox', 'factory4_night': 'factory4_day',
 }
 ALREADY_MEASURED = ('tarkovstreets', 'bigmap', 'factory4_day', 'interchange')
 
@@ -152,19 +167,33 @@ def main(argv):
     # carries all of it, so refusing every per-map verdict would discard the early
     # legs to protect against a confound that barely touches them. The honest form
     # is to name which legs are exposed rather than to fail the whole run.
-    exposed_from = None
+    # TWO INDEPENDENT FACTS, TWO VARIABLES, and they were one variable for three
+    # revisions of this file. `exposed_from is None` was made to mean both "a repeated
+    # map measured the drift" and "too few legs for late-leg exposure to matter", so
+    # the summary line reported drift MEASURED on a one-leg log that had measured
+    # nothing. Third appearance of the vacuous-pass shape in this one file, and each
+    # time it came back through a patch that fixed the symptom.
+    exposed_from = None      # first leg carrying an unquantified session-age term
+    drift_measured = False   # a map was played twice, so the term is bounded
     print('\n4. session-age control ', end='')
     if not repeats:
         cut = max(1, len(ls) // 3)
-        exposed_from = cut + 1
+        exposed_from = cut + 1 if cut + 1 <= len(ls) else None
         print('NONE - no map was played twice')
-        print('                       session-age drift is UNTESTED, not absent. '
-              'Legs 1-%d carry little of' % cut)
-        print('                       it; legs %d-%d carry an unquantified term '
-              'and are marked below.' % (exposed_from, len(ls)))
-        print('                       This is a caveat, not a gate failure - '
-              'the exposure is uneven.')
+        if exposed_from is None:
+            print('                       only %d leg(s), so there is no late-leg '
+                  'exposure to mark - but' % len(ls))
+            print('                       session-age drift is still UNTESTED '
+                  'rather than absent.')
+        else:
+            print('                       session-age drift is UNTESTED, not '
+                  'absent. Legs 1-%d carry little of' % cut)
+            print('                       it; legs %d-%d carry an unquantified '
+                  'term and are marked below.' % (exposed_from, len(ls)))
+            print('                       This is a caveat, not a gate failure - '
+                  'the exposure is uneven.')
     else:
+        drift_measured = True
         for m, idx in repeats.items():
             vals = []
             for i in idx:
@@ -187,14 +216,14 @@ def main(argv):
 
     # ---- 3. the scoreboard ----------------------------------------------
     print('\n5. per leg, steady state only (>= %.0f s into the leg)\n' % STEADY_S)
-    print('%-4s %-13s %-5s %-9s %-8s %-11s %-9s %s'
+    print('%-4s %-19s %-5s %-9s %-8s %-11s %-9s %s'
           % ('leg', 'map', 'n', 'p50 fps', 'target', 'verdict', 'worst ms',
              'awake min/med'))
     for i, l in enumerate(ls):
         e = eligible(l)
         name = KNOWN.get(l['map'], l['map'])
         if not e:
-            print('%-4d %-13s %-5d %s' % (i + 1, name, 0, 'no steady-state windows'))
+            print('%-4d %-19s %-5d %s' % (i + 1, name, 0, 'no steady-state windows'))
             continue
         f = fps(e)
         med = st.median(f)
@@ -207,7 +236,7 @@ def main(argv):
         mark = ''
         if exposed_from is not None and (i + 1) >= exposed_from:
             mark = '  *session-age untested'
-        print('%-4d %-13s %-5d %-9.1f %-8.0f %-11s %-9.1f %d / %.0f%s'
+        print('%-4d %-19s %-5d %-9.1f %-8.0f %-11s %-9.1f %d / %.0f%s'
               % (i + 1, name, len(e), med, target, verdict,
                  st.median(mx) if mx else float('nan'),
                  min(awake), st.median(awake), mark))
@@ -230,7 +259,7 @@ def main(argv):
     print('Read relatively. An absolute floor is not the exemption: '
           '`Keep nearest snipers awake`\nis 2, so ~2 is expected everywhere, and '
           'a player is never far from every bot.\n')
-    print('%-13s %-11s %-13s %s'
+    print('%-19s %-11s %-13s %s'
           % ('map', 'min awake', 'snipersAwake', 'excess over snipers'))
     excess = {}
     for i, l in enumerate(ls):
@@ -241,7 +270,7 @@ def main(argv):
         sn = st.median([d.get('snipersAwake') or 0 for d in e])
         ex = lo - sn
         excess.setdefault(l['map'] in EXEMPT_MAPS, []).append((l['map'], ex))
-        print('%-13s %-11d %-13.0f %+.0f%s'
+        print('%-19s %-11d %-13.0f %+.0f%s'
               % (KNOWN.get(l['map'], l['map']), lo, sn, ex,
                  '   <- exempt boss expected' if l['map'] in EXEMPT_MAPS else ''))
     if True in excess and False in excess:
@@ -257,9 +286,10 @@ def main(argv):
               'comparison and\nthe floor above says nothing about the exemption.')
 
     # ---- 5. coverage delta ----------------------------------------------
-    new = sorted(set(l['map'] for l in ls) - set(ALREADY_MEASURED))
-    still = [n for k, n in KNOWN.items()
-             if k not in set(l['map'] for l in ls) | set(ALREADY_MEASURED)]
+    played = set(FAMILY.get(l['map'], l['map']) for l in ls)
+    new = sorted(played - set(ALREADY_MEASURED))
+    still = sorted(set(KNOWN[k] for k in KNOWN
+                       if FAMILY.get(k, k) not in played | set(ALREADY_MEASURED)))
     print('\n7. coverage            newly measured: %s'
           % (', '.join(KNOWN.get(m, m) for m in new) or 'none'))
     print('                       still never launched: %s'
@@ -282,9 +312,13 @@ def main(argv):
     # gate written to prevent vacuous passes, found by reading its own output.
     # Fifth instance of that rule today and the second inside a tool that states
     # it.
-    if exposed_from is None:
+    if drift_measured:
         print('\nGate passed: clean sweep, one config, and session-age drift '
               'MEASURED via the repeated map.')
+    elif exposed_from is None:
+        print('\nGate passed on config and cleanliness only. Session-age drift is '
+              'UNTESTED\nrather than absent - there are simply too few legs yet '
+              'for it to bite.')
     else:
         print('\nGate passed on config and cleanliness only. Session-age drift is '
               'UNTESTED:\nlegs %d-%d carry an unquantified term. Not a failure, '
