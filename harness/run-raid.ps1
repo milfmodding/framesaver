@@ -60,6 +60,7 @@ $LauncherExe = Join-Path $ServerDir 'SPT.Launcher.exe'
 $ClientExe   = Join-Path $InstallDir 'EscapeFromTarkov.exe'
 $PluginDll   = Join-Path $InstallDir 'BepInEx\plugins\Framesaver.dll'
 $ConfigFile  = Join-Path $InstallDir 'BepInEx\config\framesaver.ai.perf.cfg'
+$ProtocolFile = Join-Path $InstallDir 'BepInEx\config\framesaver.protocol.ini'
 $LogDir      = Join-Path $InstallDir 'BepInEx\plugins\Framesaver-logs'
 $BepInExLog  = Join-Path $InstallDir 'BepInEx\LogOutput.log'
 $ProfileDir  = Join-Path $ServerDir 'user\profiles'
@@ -345,6 +346,47 @@ function Invoke-PreFlight {
             $line = Select-String -LiteralPath $ConfigFile -Pattern "^$([regex]::Escape($key)) =" |
                     Select-Object -First 1
             if ($line) { Note ($line.Line.Trim()) } else { Warn "config key missing: $key" }
+        }
+
+        # This one IS enforced, because a protocol step writes the config to disk.
+        # ProtocolRunner assigns through ConfigEntryBase.BoxedValue and
+        # SaveOnConfigSet is on by default, so the LAST arm of a protocol run
+        # persists after the game closes. End a slicing raid on its treatment arm
+        # and the next run starts with slicing silently applied - with the ini
+        # removed, `protocol` reading null and every other signal saying "no arm".
+        #
+        # That is the state-without-history shape: the config is not corrupt, it
+        # is a correct record of a decision made in a previous session, and
+        # nothing in the run that inherits it can tell. Enforced rather than
+        # reported because its cost is a whole run measured under a setting nobody
+        # chose - and the run most exposed is a map sweep over maps that have
+        # never been measured at all, where there is no prior number to disagree
+        # with it.
+        $bp = Select-String -LiteralPath $ConfigFile -Pattern '^Brain update period =' |
+              Select-Object -First 1
+        $hasProtocol = Test-Path -LiteralPath $ProtocolFile
+        if (-not $bp) { Warn 'config key missing: Brain update period' }
+        else {
+            $val = ($bp.Line -split '=', 2)[1].Trim()
+            $zero = ($val -as [double]) -eq 0
+            if ($zero) {
+                Note "Brain update period = $val"
+            } elseif ($hasProtocol) {
+                # A protocol is installed, so a non-zero value is plausibly its
+                # arm 1 or a leftover its arm 1 will overwrite. Say so and move on.
+                Warn ("Brain update period = $val with a protocol installed - " +
+                      "expected if an arm sets it, stale from a previous run if not")
+            } else {
+                Bad ("Brain update period = $val and NO protocol is installed - " +
+                     "slicing would be silently on for this whole run")
+                Note 'set it to 0, or install a protocol that states its own arms'
+            }
+        }
+        if ($hasProtocol) {
+            $steps = @(Select-String -LiteralPath $ProtocolFile -Pattern '^\s*\[').Count
+            Note "protocol installed: $steps step(s) - the log must agree"
+        } else {
+            Note 'no protocol installed - `protocol` will read null'
         }
     }
 
