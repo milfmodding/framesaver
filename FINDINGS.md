@@ -873,6 +873,40 @@ than a real family. That is an instrumentation defect, and it is a better result
 **The run is void, not negative, if `gap` is large on ordinary frames too.** That is the pairing-drift failure
 mode below, and it produces exactly the signature being hunted.
 
+##### The axis is not GC and not raid phase — it is whether BSG's measurer registered the block
+
+Added 2026-07-28, Delta, after auditing a grouping I had drawn myself. All 64 in-raid residual-dominant spike
+frames across every log, split **before** looking at collections:
+
+| | n | period, median | carrying a collection | `TimeUpdate` ≥ 0.5 ms |
+|---|---|---|---|---|
+| **A** — `frame < period / 2` | 28 | **130.5 ms** | **14 of 28** | 21 of 28 |
+| **B** — `frame ≥ period / 2` | 36 | **333.9 ms** | **0 of 36** | **0 of 36** |
+
+**Within A, collection status makes no difference to period at all** — 128.5 ms with, 140.5 ms without. So the
+axis is A versus B, and it is neither of the two divisions anyone had been using: not early-versus-late raid,
+and not GC-versus-not.
+
+**This retires a test that looked like evidence.** A comparison of period between collection and
+non-collection frames gave "with-collection is 77 ms *shorter*", read as ruling out an additive merge. It does
+not: the effect is the A/B split wearing a GC label, and it disappears on conditioning. **The tightened
+version of that test was worse** — the tightening criterion is met by 0 of 14 collection frames, so applying
+it to one arm only deleted the 14 non-collection frames nearest the other arm (median 140.5 ms) and widened
+the gap from 77 to 205 ms. **An asymmetric filter anti-correlated with the outcome always widens the gap**,
+and "tightening made the effect larger, so the filter was not doing the work" inverts the check.
+
+**What survives is a presence statement rather than a distribution shift**, which is why it is worth more:
+collections occur in A only, 14 of 28, and in B **never**, 0 of 36. Entanglement stated rather than hidden —
+B also has `TimeUpdate < 0.5 ms` on 0 of 36 and collection frames carry the 3.02 ms slice, so the absence is
+partly downstream of that. B is *defined* on `frame`/`period`; the `TimeUpdate` property is *observed*. It is
+one fact, not two.
+
+**So the merge question reduces to whether the A/B criterion means anything**, and
+[the mechanism behind it is withdrawn](#corrected-2026-07-28-delta--the-separation-is-real-the-mechanism-i-attached-to-it-is-not).
+`endToStart` is the instrument for exactly that: **if A and B read the same `gap`, the criterion is an
+artifact and they are one family.** Register the prediction on this axis rather than on GC status — B ~330 ms,
+A ~130 ms with a 3.02 ms slice inside the half that collects.
+
 #### The corrected finding is stronger than the one it replaces
 
 This is not a retreat. The published claim was about a **phase** — "collections land in `TimeUpdate`" — and
