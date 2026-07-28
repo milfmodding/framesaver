@@ -27,6 +27,15 @@
       "preconditionWas": "Depends on whether item 4 also latches endToStart at the frame boundary. If it does, the alignment changes and this needs re-deriving BEFORE the raid.",
       "resolvedBy": "Delta, 2026-07-28",
       "resolvedNote": "Not re-derived before the raid - the precondition failed, which is why this gate exists. Resolved after the fact: all three registered outcome rows fail and the answer is a fourth, the two fields moving one line apart relative to each other. 22/22 at a 0.0% coincidence baseline post-latch, 12/15 at 0.7% pre-latch."
+    },
+    {
+      "id": "endtolatch-one-term",
+      "claim": "unaccounted[N] ~= endToLatch[N], same line, no subtraction and no index shift",
+      "source": "FINDINGS.md, 'Registered before the next raid - the one-term form, and the old field as its control'",
+      "precondition": "resolved",
+      "preconditionWas": "Requires endToStart to still emit in the same build as its control. Without the field being replaced still present, a fix and a silent regression produce identical output.",
+      "resolvedBy": "Gamma registered 0c9b954; Beta confirms both fields emit in build e6abe58c",
+      "resolvedNote": "Two rows must both hold: endToLatch[N] vs unaccounted[N] agree to well under 1 ms, AND endToStart[N-1] vs unaccounted[N] reproduces the 0.035 ms match. The second is the control - if it fails, tonight's pairing was a property of that raid rather than of the instrument. Drop endToStart once validated, not before."
     }
   ]
 }
