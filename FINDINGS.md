@@ -3739,14 +3739,54 @@ of 12. **Post-latch that identity fails by ~320 ms and `endToStart` is flat.** T
 **If (2), a headline needs withdrawing.** Registered here before either is checked, because the section it
 would withdraw is one of this document's larger claims and the incentive runs one way.
 
+### Tested: the disagreement appears only after the latch, and movement does not explain it
+
+Alpha proposed the mechanism — `period` is latched at phase-0 Begin while `_endToStartMs` is written in
+`OnStartOfFrame()`, which sits in `EarlyUpdate` *after* that latch — and named its own falsification: **if
+an earlier log shows the same disagreement, the mechanism is wrong.** Run against every pre-latch log:
+
+| | lines with `unaccounted` > 100 ms | `endToStart` median | identity holds |
+|---|---|---|---|
+| **pre-latch** | 17 | **326.850 ms** | **13 of 17** |
+| **post-latch** | 47 | **0.211 ms** | **0 of 47** |
+
+**The disagreement is exclusive to the post-latch build.** So the mechanism survives its own test.
+
+**But that comparison was confounded, and the confound had to be removed before it meant anything.** All 17
+pre-latch cases come from two *roaming* raids (mean 168 m per window); tonight was the first held-position
+raid. A movement-dependent family — asset streaming is the obvious candidate — would produce exactly this
+contrast with no instrument change at all.
+
+**Removed by a within-log control**, same build, same latch, tonight's raid split on its own `pos.dist`:
+
+| | windows | boundary spikes | `endToStart` median | max |
+|---|---|---|---|---|
+| moving (`dist` > 20 m) | 4 | 4 | **1.635 ms** | 4.992 |
+| held (`dist` = 0) | 28 | 43 | **0.210 ms** | 6.059 |
+
+**Movement does not restore the large `endToStart`.** So *"tonight's stalls are a different, movement-free
+family"* is refuted within a single log, and the difference tracks the build rather than the regime.
+
+**One structural objection stands unresolved and must travel with this.** `endToStart` brackets
+`EndOfFrame` → `StartOfFrame`; our End marker fires *after* `EndOfFrame`, and the latch fires *before*
+`StartOfFrame`. So the out-of-loop gap is a **subset** of the `endToStart` interval, and a superset cannot
+read smaller than what it contains. **Either an ordering assumption above is wrong, or `period` is not the
+interval it is taken to be.** The mechanism explains the *contrast* and does not explain the *magnitude*.
+
 ### The measurement that separates them, and it is one field
 
 The three instruments jointly locate the time **inside `PlayerLoop()` but outside all eight top-level
 phases** — the only region none of them covers. That region is the inter-phase gaps: `End(i)` → `Begin(i+1)`.
 
-> **Record the largest inter-phase gap per frame.** The Begin and End markers already take the
-> timestamps; this is eight subtractions and one `max`, emitting `worstPhaseGapMs` and which boundary it
-> fell on.
+> **Emit the two latch-adjacent intervals explicitly, not just the inter-phase gaps:**
+> `latchToFirstBegin`, `lastEndToLatch`, and `worstPhaseGapMs` with the boundary it fell on. **Those three
+> plus the eight phase totals must tile `period` exactly** — so whichever is large names the location, and
+> if none is, the sum itself indicts `period`.
+
+The refinement over "largest inter-phase gap" is the analysis above: the region inside `period` but outside
+the `endToStart` bracket is **the frame's own body**, which the phases already claim to cover. So the
+instrument has to be able to say *"the phases and the gaps together do not add up"*, not merely *"here is
+the biggest gap between two of them"*.
 
 | result | reading |
 |---|---|
