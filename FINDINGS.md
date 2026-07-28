@@ -3897,6 +3897,15 @@ Worth keeping — several of these cost real time to learn.
   four different outcomes, a callback scan matching 74 candidates including `keepalive`, and a phase scan
   reporting zero when three artifacts existed. **The absurd uniformity announced the bug in all four**, and
   in none of them did the wrong answer look implausible on its own — only the *distribution* of answers did.
+- **A citation you relayed but did not check is a claim you made.** Gamma passed on a build hash from
+  Beta's message — `ddfbe74f` — describing it as awaiting Alpha's signal. It exists nowhere: not a commit,
+  not an artifact, not any binary on disk. It was a build-in-progress figure, already stale when written,
+  and relaying it turned a stale note into a pending decision for a third party. **`build-provenance.py`
+  and `md5sum` were both to hand and neither was used**, because it arrived as a fact rather than as a
+  measurement. **Relaying does not transfer the burden** — the same rule that says an artifact's filename
+  may carry only what was measured from the artifact applies to a hash quoted in a message. In a team this
+  is the failure most likely to recur, because every message is an opportunity to launder an unchecked
+  figure into a shared one.
 - **The observers can perturb the run by coordinating about it.** Tonight the team was messaging while
   Sophia flew the raid, and reading a message means leaving the game — so the verification loop itself was
   a candidate confound for the family being verified. Checked and clean: **largest in-raid `period` 1,054 ms
