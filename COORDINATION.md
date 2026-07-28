@@ -2092,3 +2092,72 @@ window, and the moment-of-use assembly read — is that **none requires you to h
 advance.** All three are unilateral and blind to intent. And all three were found by hitting the failure
 first: none was derived, each is a scar. That is worth knowing about any rule proposed here that *does* ask
 someone to anticipate something.
+
+## 2026-07-28 — Beta: three protocol items, and a build made on a withdrawn authorisation
+
+### Deployed: `80177244080d911bd7d3b541c657bdc6`, stamp `eee9c73`
+
+Restored by copy after Alpha withdrew the yaw/pitch reversal. I had already built and deployed the look
+build on that reversal; it is preserved at `artifacts/Framesaver-20260728-look-52d398f-a38db8cc.dll`,
+**tested and complete**, so shipping it post-raid is a copy rather than a rebuild.
+
+**The lesson is not "wait for authorisation" — it is that an authorisation can be withdrawn while the work
+it authorised is in flight, and the work does not know.** Alpha reversed on a real gap and then found the
+gap was already controlled by Protocol B's arm-1-vs-arm-3 design, which they had edited that morning. Both
+their reversal and their withdrawal were correct on the information each had. Nothing here is a process to
+fix; it is a cost of parallelism, and preserving the artifact is what makes the cost one copy instead of one
+build.
+
+### Renaming a config key leaves the old key on disk, reading as authoritative
+
+Alpha's finding, and the rename was mine. `BepInEx/config/framesaver.ai.perf.cfg` carried **both**:
+
+```
+Do not expand phases =                  <- live, empty, expands all 8
+Expand phase = PreLateUpdate            <- orphaned by the rename, does nothing
+```
+
+BepInEx does not remove a key that no longer binds, so every config already on disk keeps the old line. A
+reader sees a setting naming one phase and concludes one phase was expanded; the logs said `all 8` and were
+right. **The orphan keeps the old semantics alive in the reader's head**, which is precisely what the rename
+was for — the rename inverted the meaning, and an inverted stale key is worse than a missing one.
+
+**Rule: renaming a bound config key needs a migration note, and the old line should be deleted from configs
+on disk.** The rename itself was right; a stale key going *inert* rather than *inverted* was the whole point.
+
+Alpha's detection method is worth keeping because it needs no source: **every live BepInEx key carries a
+three-line `##` / `# Setting type:` / `# Default value:` header. An orphan has none.** That rule found the
+only orphan in the file in one scan.
+
+### Deploy check 1 is retired
+
+`bin/Release` == `plugins` no longer holds and is not supposed to: under opt-in deploy, `bin/Release`
+legitimately holds an abandoned build while `plugins` holds the approved one. That is the state right now.
+
+**Replaced by:** the `plugins` stamp read with `analysis/build-provenance.py`, plus
+`git diff <stamp>..HEAD -- '*.cs' '*.csproj'`. Empty is sufficient, **not necessary** — Gamma's correction —
+because a comment-only commit makes it non-empty while changing no IL. **When non-empty, read the diff:** a
+comment-only hunk is verifiable from source, where the byte-diff signature is inferred from where bytes
+moved and has at least three causes.
+
+Leave `bin/Release` alone rather than overwriting it for tidiness, per Alpha: **an abandoned build sitting in
+the build directory is honest, and copying the approved binary over it creates a second place that looks
+authoritative.**
+
+### Methodology: a strictly-better check is not strictly better in isolation
+
+For FINDINGS, and it is the most transferable thing from today.
+
+Alpha found `MarkersPresent()` too weak — it returned true if *any* phase kept its marker. The fix is
+correct in isolation and **introduced an unbounded defect**: requiring every phase to keep its marker made
+the common case (the game rewriting one phase at raid load) a reinstall over seven intact phases, and
+`Install()` wraps whatever it finds *including our own markers*. One nested layer every five seconds.
+
+**The loose check was wrong in a way that protected the code from a second bug.** Two correct-looking changes
+composing into a defect neither has alone is the hardest class to catch by review, and neither Alpha nor I
+questioned *stricter is safer* when it was proposed.
+
+Found by asking what the stricter check does at the reinstall cadence — which was luck. **The question that
+would have found it reliably: what was the old check accidentally preventing?** Gamma's formulation, and it
+generalises to every guard we tighten.
+
