@@ -873,6 +873,26 @@ than a real family. That is an instrumentation defect, and it is a better result
 **The run is void, not negative, if `gap` is large on ordinary frames too.** That is the pairing-drift failure
 mode below, and it produces exactly the signature being hunted.
 
+**A third outcome, added before the run once the pairing guard shipped.** `endToStart` emits `null` when the
+`EndOfFrame`/`StartOfFrame` pairing is not 1:1 on a frame, so an anomalous loop iteration reads as *no answer*
+rather than as a number:
+
+| `endToStart` on the block family | reading |
+|---|---|
+| large `gap` | the block is in the native inter-frame interval |
+| small `gap` | it is in neither the phases nor the gap — the residual is an artifact |
+| **mostly `null`** | **the pairing is not 1:1 during the block — a loop-iteration anomaly, not merely a stall** |
+
+**Nulls concentrated on the family and absent on ordinary frames is a positive result**, and a different one
+from either registered outcome. Recorded now so it cannot be rationalised into one of them afterwards, and so
+a column of nulls is not read as a broken instrument.
+
+**Read the BepInEx log before any number.** `FrameGapArmed` is emitted nowhere — not on the line, not in
+`cfg`, not in the header — so `null` covers *both* "never armed" and "pairing invalid this frame", and only
+the absence of the `inter-frame gap not armed` warning separates them. That is the
+[log-not-data failure](#open) work-queue item 4 exists for, occurring in the field built so that a `null` and
+a zero could not be confused. One `cfg` line fixes it, after the run.
+
 ##### The axis is not GC and not raid phase — it is whether BSG's measurer registered the block
 
 Added 2026-07-28, Delta, after auditing a grouping I had drawn myself. All 64 in-raid residual-dominant spike
