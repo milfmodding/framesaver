@@ -2,6 +2,7 @@
 """Check whether a built assembly actually contains the fields you think it does.
 
 Usage:  python probe-symbols.py <assembly.dll> <name> [name ...]
+        python probe-symbols.py --key <assembly.dll> <key> [key ...]
 
 Exit 0 if every name is present, 1 otherwise.
 
@@ -24,9 +25,31 @@ the binary" — the strongest possible wrong claim about a build.
 Caught when `windowSec` probed 0 in a declaration that had already been sent.
 Fifth instrument-saw-nothing failure of 2026-07-28, and the first one inside a
 verification tool rather than an analysis.
+
+**--key EXISTS BECAUSE THE FIX ABOVE LEFT A HOLE THE SAME SHAPE.** Presence in
+either heap answers "is this string in the binary", which is NOT the question a
+deploy declaration asks. It asks "will this key appear on a line". A member named
+`_brainsTickedSum` puts `brainsTicked` in #Strings, so the default mode answers
+`ok` for a key that is emitted nowhere — a false PASS this time, where the grep it replaced
+gave false FAILs. Found by Gamma on 2026-07-28, one level up from the failure this
+file was written for, and inside the same tool.
+
+**An emitted JSON key must appear in #US/utf16**, because that is where the string
+literal written to the line lives. A #Strings-only match is a member name and
+proves nothing about the output. So `--key` passes only on a #US/utf16 match and
+says explicitly when it is refusing a member-name-only match.
+
+Use `--key` for anything you expect to read back out of an ndjson. Use the default
+mode for methods, types and members — `ResetForRaid` is correctly #Strings-only.
 """
 
 import sys
+
+# The refusal line carries an em-dash and a default Windows console is cp1252,
+# which turns it into a replacement byte. A verification tool whose failure output
+# is mojibake is harder to read at exactly the moment it matters.
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 
 def probe(data, name):
@@ -40,11 +63,18 @@ def probe(data, name):
 
 
 def main(argv):
-    if len(argv) < 3:
+    args = argv[1:]
+    key_mode = False
+    if args and args[0] == "--key":
+        key_mode = True
+        args = args[1:]
+
+    if len(args) < 2:
         print(__doc__)
         return 2
 
-    path = argv[1]
+    path = args[0]
+    names = args[1:]
     try:
         with open(path, "rb") as handle:
             data = handle.read()
@@ -52,11 +82,22 @@ def main(argv):
         print(f"  ! {exc}")
         return 2
 
-    print(f"{path}  ({len(data)} bytes)")
+    print(f"{path}  ({len(data)} bytes)"
+          f"{'   [--key: literal required]' if key_mode else ''}")
     missing = 0
-    for name in argv[2:]:
+    for name in names:
         heaps = probe(data, name)
-        if heaps:
+        literal = "#US/utf16" in heaps
+        if key_mode and not literal:
+            if heaps:
+                # The distinction that matters, stated rather than implied: this
+                # is not absence, it is a member name being mistaken for output.
+                print(f"  NOT A KEY {name:20s} {', '.join(heaps)} only — a "
+                      f"member name, not an emitted literal")
+            else:
+                print(f"  MISSING {name:22s} in neither heap")
+            missing += 1
+        elif heaps:
             print(f"  ok    {name:24s} {', '.join(heaps)}")
         else:
             print(f"  MISSING {name:22s} in neither heap")
@@ -64,10 +105,11 @@ def main(argv):
 
     print()
     if missing:
-        print(f"{missing} name(s) MISSING — the binary does not contain them.")
+        what = "key(s) not emitted" if key_mode else "name(s) MISSING"
+        print(f"{missing} {what} — do not declare these as present.")
         return 1
 
-    print(f"all {len(argv) - 2} name(s) present.")
+    print(f"all {len(names)} {'key(s)' if key_mode else 'name(s)'} present.")
     return 0
 
 
