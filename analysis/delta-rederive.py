@@ -31,6 +31,22 @@ ARTIFACT_MS = 60_000
 # toward `accounted`. An absent phase is a threshold, not a zero.
 PHASE_EMIT_FLOOR = 0.5
 
+# Spike lines exist only above each log's own `spikeEventMs`, so two logs with
+# different thresholds hold different populations and their rates do not join.
+# The corpus is 100 ms everywhere except the 2026-07-28 runs at 30.
+#
+# This is read from each header rather than passed in, deliberately. A caller
+# who must remember to state the era is a caller who will forget -- the same
+# reasoning as renaming a config key when its meaning inverts, instead of
+# documenting the hazard. Pooling normalises to the floor below and says what
+# it dropped.
+POOL_FLOOR_MS = 100.0
+
+# A clock-disagreement magnitude cut. The split-Update mechanism's signature is
+# -56 to -200 ms; below a millisecond is ordinary jitter, and pooling the two
+# moves the headline by ~4x.
+CLOCK_CUT_MS = 1.0
+
 
 def load(path):
     for line in open(path, encoding="utf-8"):
@@ -92,10 +108,69 @@ def ols(rows, y):
     return beta, 1 - resid / total
 
 
+def spike_threshold(path):
+    """Each log's own `spikeEventMs`. None if the header is missing."""
+    for o in load(path):
+        if o.get("type") == "header":
+            return o.get("spikeEventMs")
+    return None
+
+
 def in_raid_spikes(path):
+    """Every in-raid spike line in one log, at that log's native threshold.
+
+    Safe to use within a log. NOT safe to pool across logs -- use pooled().
+    """
     return [o for o in load(path)
             if o.get("type") == "spike" and o.get("state") == "raid"
             and "unaccounted" in o and o.get("period", 0) <= ARTIFACT_MS]
+
+
+_POOL_CACHE = []
+
+
+def pooled(verbose=True):
+    """In-raid spike lines across every log, normalised so rates are comparable.
+
+    Cross-log pooling at native thresholds mixes populations: a 30 ms log admits
+    frames a 100 ms log never recorded, which inflates any rate computed over
+    the union. Two agents hit this on the same day, in opposite directions.
+
+    Prints what it dropped, because a filter validated against what it keeps is
+    not validated.
+
+    Cached after the first call, and that is not an optimisation. A log being
+    written by a live game grows between calls, so two sections of one report
+    read different corpora and disagree with each other by a line or two -- a
+    difference small enough to look like a rounding artifact and large enough
+    to be wrong. Observed: sections 5 and 6 dropped 717 and 719 lines from the
+    same "corpus" on the same run. One snapshot per process.
+    """
+    if _POOL_CACHE:
+        return _POOL_CACHE
+
+    keep, dropped, eras = [], 0, {}
+    for path in logs():
+        th = spike_threshold(path)
+        eras[th] = eras.get(th, 0) + 1
+        for o in in_raid_spikes(path):
+            if o["period"] >= POOL_FLOOR_MS:
+                o["_thresh"] = th
+                keep.append(o)
+            else:
+                dropped += 1
+    if verbose:
+        print("  pooling %d in-raid spike lines at period >= %.0f ms; dropped %d"
+              % (len(keep), POOL_FLOOR_MS, dropped))
+        print("  thresholds present in corpus: %s"
+              % ", ".join("%s ms x%d" % (k, v) for k, v in sorted(
+                  eras.items(), key=lambda kv: (kv[0] is None, kv[0]))))
+        if dropped:
+            print("  (the dropped lines exist only in sub-%.0f ms-threshold logs"
+                  " and have no counterpart in the rest of the corpus)"
+                  % POOL_FLOOR_MS)
+    _POOL_CACHE.extend(keep)
+    return _POOL_CACHE
 
 
 def windows():
@@ -183,15 +258,14 @@ def forward_direction_all_logs():
 def unexplained_family():
     section("5. The non-GC residual family (no collection, no drain, no wait)")
     found = []
-    for path in logs():
-        for s in in_raid_spikes(path):
-            if not is_residual_dominant(s) or s.get("gcGen0", 0) != 0:
-                continue
-            phases = s.get("phases") or {}
-            if "TimeUpdate" in phases or s.get("frame", 0) <= 0.7 * s["period"]:
-                continue
-            s["_map"] = s.get("map", "")
-            found.append(s)
+    for s in pooled():
+        if not is_residual_dominant(s) or s.get("gcGen0", 0) != 0:
+            continue
+        phases = s.get("phases") or {}
+        if "TimeUpdate" in phases or s.get("frame", 0) <= 0.7 * s["period"]:
+            continue
+        s["_map"] = s.get("map", "")
+        found.append(s)
     print("frames: %d" % len(found))
     for name in sorted({s["_map"] for s in found}):
         print("  %-16s %d" % (name, sum(1 for s in found if s["_map"] == name)))
@@ -211,14 +285,13 @@ def unexplained_family():
 def timeupdate_modes():
     section("6. TimeUpdate is trimodal; the middle mode is the GC slice")
     buckets = {"<0.5": [0, 0], "2.9-3.2": [0, 0], ">10": [0, 0], "other": [0, 0]}
-    for path in logs():
-        for s in in_raid_spikes(path):
-            tu = (s.get("phases") or {}).get("TimeUpdate", 0)
-            key = ("<0.5" if tu < PHASE_EMIT_FLOOR else
-                   "2.9-3.2" if 2.9 <= tu <= 3.2 else
-                   ">10" if tu > 10 else "other")
-            buckets[key][0] += 1
-            buckets[key][1] += 1 if s.get("gcGen0", 0) > 0 else 0
+    for s in pooled():
+        tu = (s.get("phases") or {}).get("TimeUpdate", 0)
+        key = ("<0.5" if tu < PHASE_EMIT_FLOOR else
+               "2.9-3.2" if 2.9 <= tu <= 3.2 else
+               ">10" if tu > 10 else "other")
+        buckets[key][0] += 1
+        buckets[key][1] += 1 if s.get("gcGen0", 0) > 0 else 0
     for key in ("<0.5", "2.9-3.2", ">10", "other"):
         n, gc = buckets[key]
         print("  TimeUpdate %-9s n=%3d   of which a collection completed: %d"
