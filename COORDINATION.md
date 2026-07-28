@@ -1494,3 +1494,48 @@ additional reason is the one above — **item 4 needed a design change, and it n
 injector rather than before.** Had the four shipped as one build, the fix would have gone out attached to
 the counters that were supposed to prove it, and a worse defect would have looked like a noisy fix.
 
+
+---
+
+## 2026-07-28, afternoon — the freeze was never enforceable, and the collision was Alpha's
+
+Two failures inside the first hour after compaction. Both structural, neither anyone's carelessness, and the
+second one invalidated a control we adopted *yesterday* to fix a different instance of the same thing.
+
+### A build is a deploy, so a freeze cannot be held by convention
+
+`Framesaver.csproj:91` — the `PostBuild` target copies `$(TargetPath)` into `$(BepInExDir)\plugins\` on
+**every** build. So Beta declared `403b1aeb` frozen and stopped building, and Gamma's *verification* build of
+an unrelated compile fix silently replaced the frozen plugin with `fb9a0ee6`. Nobody violated the protocol.
+The protocol asked people not to do something the build system does unasked.
+
+**A freeze that any build can break is a note, not a control.** The fix is to gate the copy behind a property
+defaulting off, so deploying becomes a thing you choose. Until then, "frozen at `<md5>`" means *"I intend not
+to build"*, which is worth much less than it sounds and worth stating at its real value.
+
+Note the direction of travel. Yesterday's version of this was Alpha signalling GO against a superseded
+binary — a stale *reader*. Today's is a stale *declaration*: the hash was true when written and false when
+read, and the message carrying it was accurate at send time. **Freeze-then-verify fixed the reader and left
+the writer exposed**, because both halves assumed the binary only changes when someone means it to.
+
+### Alpha dispatched two agents into one file and did not notice
+
+Beta got `Telemetry.cs` for queue items 1–4. Gamma got `Telemetry.cs` for the `proc` P/Invoke. Same
+dispatch, minutes apart, no overlap check. Beta's `1b0569a` then swept Gamma's in-flight work under a message
+describing none of it, and the committed tree did not build.
+
+**Staging by explicit path cannot catch this and was never able to.** That rule was adopted after two agents
+swept each other with `git add -A`; it makes staging atomic *per file*, which is exactly the granularity that
+fails when both agents are inside one file. Gamma's own note reaches for "announce the file before touching
+it" — right, and worth having, but it puts the burden on the two people who each had no way to know a second
+assignment existed. **The only party who could see the conflict was the one who created it.**
+
+So the rule is Alpha's, not theirs: **assign by file, not by topic, and serialise when two topics share a
+file.** Assigning by topic when two topics share a file is assigning a conflict and calling it parallelism.
+
+### Fix forward, do not rewrite
+
+Gamma fixed the missing `using` in a new commit rather than amending `1b0569a`. Correct, and the same call was
+made this morning for an over-broad commit of Alpha's. **An agent mid-work should not have history moved under
+them**, and a commit message that is wrong about its own contents is cheaper to correct in the log than in the
+graph. This is now the standing answer for a bad commit that has been observed by anyone else.
