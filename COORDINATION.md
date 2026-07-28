@@ -2001,3 +2001,25 @@ Behaviourally identical to the pre-commit `2481d71b` by byte-diff — 112 bytes,
 committed source and the tested binary are the same program. That is the claim the freeze rests on, and it
 rests on the byte-diff rather than on the hash.
 
+
+### Pointer: Protocol B's self-calibrating floor lives in `64ac832`
+
+Gamma's rewrite of the manipulation check — why it stopped being an absolute number and became a multiple of
+the run's own within-arm drift — landed inside `64ac832`, whose message is about a pre-raid provenance check
+and says nothing about it. Recorded here because the reasoning is the part worth finding later and the commit
+log will not lead anyone to it. Text is at [TESTING.md](TESTING.md) around the "wrong population" heading.
+
+**One refinement, from the same drift numbers that broke the old floor.** Within-arm Δ is measured between
+*adjacent* windows; between-arm Δ spans a whole arm. Drift grows with separation — measured, adjacent median
+570 against two-apart median 962, a 1.69× growth — so **the within-arm estimate systematically understates the
+noise present in a between-arm comparison, and a gate built on it is biased toward passing.**
+
+The fix is already in the protocol. **Arm 1 and arm 3 are the same position and the same view, separated by
+two arms** — a same-view Δ at *longer* separation than arm1↔arm2. Within-arm underestimates the relevant
+noise; arm1↔arm3 overestimates it. **They bracket it.** Gate on arm1↔arm3: conservative, already collected,
+and it needs no assumption about how drift scales with time. With a gate that conservative, 3× is more than
+the argument requires; 2× is defensible.
+
+That is the second job step 3 has turned out to do. Note it also means arm1↔arm3 gates the run *and* serves
+as the replication check — correlated, but in the safe direction: a run that drifted badly fails both, and
+both answers are "re-run".
