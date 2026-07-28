@@ -1883,3 +1883,29 @@ No latency field exists anywhere in the codebase; the only wait timings are GPU 
 `GpuTelemetry.cs`. Settling it needs a server-side timer or a client-side send-to-receive stamp that does not
 exist yet. **Recorded because the test reads as free, and a test that reads as free and answers nothing is how
 a plausible mechanism becomes a cited one.**
+
+### The byte-diff signature: what it actually means, stated once
+
+COORDINATION said from 01:43 that *"a diff confined to `0x88`, the MVID and the debug directory is a
+comment-only rebuild."* Beta corrected it after that signature appeared twice with no source change. The
+correction named a different build command as the second cause. **There is a third and it is far more common:
+any commit by anyone.**
+
+The SDK stamps the current git commit into `AssemblyInformationalVersion`, so every build embeds
+`0.1.0+<sha>` twice — UTF-8 in the metadata blob heap, UTF-16 in the Win32 version resource. Those are two of
+the byte regions in that signature. A docs commit, a coordination note, a `.md` fix: each moves the md5 with
+zero IL difference. In a repo with four agents committing, that is the *usual* reason two builds disagree, not
+an edge case.
+
+So the signature means **"no IL differs"** and nothing more specific. Read as "someone edited a comment" it
+sends the next person hunting an edit that never happened; read as "someone passed a different build flag" it
+sends them to a command line that was identical. **Both narrower readings have now cost a check.**
+
+The rule that replaces all of it: **ask the binary which commit it came from** —
+`python analysis/build-provenance.py <dll>`. It holds across any invocation, survives a wrong filename, and
+needs no discipline from the reader. Four artifacts were misnamed on 2026-07-28 and none of them had to be.
+
+**Its limit, which is why ordering is still the load-bearing half:** the stamp records HEAD at build time, not
+tree cleanliness. `403b1aeb` reports `3bf008f` and its `Telemetry.cs` matched no commit. So the sequence
+stays **commit, then build, then record** — that makes the correspondence hold by construction, and the stamp
+only lets a later reader verify it.
