@@ -2938,6 +2938,19 @@ Worth keeping — several of these cost real time to learn.
   being measured, which reads as confirmation. Sample each quantity at the rate its **shortest event** demands
   rather than picking one rate for the instrument, keep the high-rate path off any locking API, and **A/B the
   sampler itself** against the known replicate spread before trusting a trace.
+
+  **Generalised 2026-07-28 on a second instance, which is what makes it a rule rather than a story about a
+  sampler.** Expanding every player-loop phase adds ~140–200 timer reads per frame, and those reads are
+  charged **inside the top-level phase totals they report** — so `render` gains 3.5–5 µs across the expansion
+  boundary, a real and reproducible increase that is entirely the instrument. Different instrument, same
+  property: the sampler's cost would have *lengthened the span it measured*; the profiler's lands *inside the
+  number it produces*. Both biased toward the effect being hunted.
+
+  > Before trusting an instrument, ask **where its own cost is charged.** If the answer is "inside the number
+  > it produces", the bias has a direction — and the direction is usually toward the effect being looked for.
+
+  Neither case is large enough to matter here (0.05–0.08% of a frame). The point is that the sign is knowable
+  in advance and is not random, so it can be stated before the data rather than argued about after it.
 - **A stop-the-world pause cannot be observed from inside the process it stops.** Boehm suspends every managed
   thread, so a background sampler is suspended too and can see nothing *within* a collection. What it can see
   is the **gap in its own timestamp series**, which is the pause. That inverts the design: the pause duration
