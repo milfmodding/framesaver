@@ -893,6 +893,15 @@ the absence of the `inter-frame gap not armed` warning separates them. That is t
 [log-not-data failure](#open) work-queue item 4 exists for, occurring in the field built so that a `null` and
 a zero could not be confused. One `cfg` line fixes it, after the run.
 
+**Two things about the coming logs that are the instrument, not the game.** `Expand phase` became the
+blocklist `Do not expand phases`, blank by default, so **all eight top-level phases expand** where the
+previous fifteen logs expanded `PreLateUpdate` only. Child-level series therefore **do not join across that
+boundary**; top-level phases and `unaccounted` still do, since `accounted` sums only non-child slots. And
+every child adds a Begin/End pair — roughly 140–200 extra QPC reads per frame, **3.5–5 µs landing inside the
+top-level totals**. Against a 200–330 ms family that is nothing, and against `render` at 6.5 ms it is
+0.05–0.08% — but it is not zero, and it is in the direction that reads as a regression. Do not report a few
+microseconds of `render` growth across this boundary as one.
+
 ##### The axis is not GC and not raid phase — it is whether BSG's measurer registered the block
 
 Added 2026-07-28, Delta, after auditing a grouping I had drawn myself. All 64 in-raid residual-dominant spike
