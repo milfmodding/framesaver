@@ -36,6 +36,15 @@
       "preconditionWas": "Requires endToStart to still emit in the same build as its control. Without the field being replaced still present, a fix and a silent regression produce identical output.",
       "resolvedBy": "Gamma registered 0c9b954; Beta confirms both fields emit in build e6abe58c",
       "resolvedNote": "Two rows must both hold: endToLatch[N] vs unaccounted[N] agree to well under 1 ms, AND endToStart[N-1] vs unaccounted[N] reproduces the 0.035 ms match. The second is the control - if it fails, tonight's pairing was a property of that raid rather than of the instrument. Drop endToStart once validated, not before."
+    },
+    {
+      "id": "slicing-primary-metric",
+      "claim": "PRIMARY: count of spike lines with periodMs >= 30, pooled per arm, compared with an exact conditional binomial. SECONDARY, reported always: the same count at periodMs >= 100. Neither is a per-window median and neither is a t-test.",
+      "source": "Gamma's power analysis, 2026-07-28; registered before the brain-slicing raid",
+      "precondition": "resolved",
+      "preconditionWas": "Requires (a) slicing to actually engage, which ModCompat.SuppressSlicing blocks whenever BigBrain is present and Defer to other AI mods is true, and (b) a declared primary metric with a stated detectable effect size, because the 100 ms count cannot resolve an ordinary effect at the arm lengths a person will stand still for.",
+      "resolvedBy": "Beta set Defer to other AI mods = false before ModCompat latches, and deployed 4867afb emitting agents.slicing / tickedSum / liveSum; Alpha verified all three in probe-symbols --key mode and moved GO",
+      "resolvedNote": "WHY 30 AND NOT 100. >=100 ms events run 2.2 per window, so a 5-minute arm holds ~11 and can only detect a 4.5x change at 80% power - an ordinary real effect would read as 'no effect'. At >=30 ms the same raid gives ~380 per window, ~1900 per 5-minute arm, resolving a few percent. The fix is the threshold, not the arm length, because nobody stands still for the 40 minutes that >=100 ms would need to reach 1.55x. COUNT period, NOT frame: the emit gate at Telemetry.cs:966 tests periodMs alone while frameMs is passed and never tested, and since frame travels one line ahead of period a large frame can sit on a line whose period is under threshold and emit nothing - counting frame >= T off the spike stream undercounts by about a third, and 8 of 16 windows have a percentile-derived lower bound that exceeds their observed count. Re-thresholding at analysis time is what makes the corpus rule about 100/50/30 irrelevant rather than violated. ARM 2 STRADDLES A KNEE: at 23 agents and 17.1 ms frames the computed perFrame is 4 and Minimum brains per frame is 4, so slicing binds above ~30 agents and the floor binds below ~15, and Streets moves across that range within a raid. Arm 2 is therefore not one condition - stratify its windows by tickedSum/liveSum, which reads which side bound per window, rather than assuming it was sliced throughout."
     }
   ]
 }
