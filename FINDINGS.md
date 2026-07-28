@@ -3414,6 +3414,28 @@ which is the shape this project has now hit four times.
 The degenerate case is caught in code. **The nearly-degenerate case is the one that slips through**, because
 it looks exactly like a pass and arrives with a plausible-looking number beside it.
 
+##### There is a third population, and it is derivable rather than named
+
+Read against the shipped `61697b1` rather than against the spec. `Sample()` has **three** paths, not two:
+the boundary fired; the profiler is installed but the boundary did not fire (`boundaryMissedFrames`, early
+return, no spike line); and **the profiler is not installed at all**, in which case `period` falls back to
+being measured in `Sample()` so the spike lines survive — but `CountClockDisagreement`'s `!Installed` guard
+still returns before `clockResidualFrames`.
+
+**So the third population is counted in `frames`, is absent from `boundaryMissedFrames`, and is excluded
+from `clockResidualFrames`.** It has no field of its own. It is recoverable by subtraction:
+
+> `uninstalled ≈ frames − boundaryMissedFrames − clockResidualFrames − 1` *(the −1 being the run's first
+> frame, dropped by the `periodMs > 0` guard)*
+
+**In a healthy in-raid window this should be ≈ 0.** Non-zero mid-raid means the profiler was uninstalled
+for part of the window, and that window's phase totals are partial — which no other field says.
+
+The consequence for anyone computing a rate: **`negResidualFrames ÷ (frames − boundaryMissedFrames)` is
+wrong**, because that denominator still contains uninstalled frames on which the residual test never ran.
+`clockResidualFrames` is the denominator; it exists precisely so this subtraction does not have to be
+trusted to a reader.
+
 **And validate the validator against a pre-latch log before trusting its green.** As first written it
 passed `20260728-100048` — both latch checks skipped for want of the fields, an incidental check ran, exit
 0. An empty file failed correctly while a file with real data in it passed, so the failure got *easier* to
