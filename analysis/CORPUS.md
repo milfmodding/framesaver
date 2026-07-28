@@ -195,6 +195,29 @@ ratio only across windows of similar `frames`.** The threshold survives its inte
 held view drives the ratio to ~1.0 by having no view change at all, not by sampling less — but it is
 calibrated on ~60 s windows and **must not be transported to a partial one.**
 
+**`unaccounted` cannot be recomputed from the emitted `phases`, and the discrepancy is worst where someone
+would go to check the instrument.** All eight top-level phases are accumulated; only those ≥ 0.5 ms are
+*emitted*. `accounted += phase[i]` runs **before** the drop test (`Telemetry.cs:1070` against the filter at
+`1074`), so **`unaccounted` on the line is correct** — but a spike line typically shows 3 to 6 phases, not 8.
+
+Across 14,790 in-raid spike lines:
+
+| | median |
+|---|---|
+| hidden sub-0.5 ms phases | **0.417 ms** |
+| naive `period − Σ(emitted phases)` | **0.473 ms** |
+| **true `unaccounted`** | **0.017 ms** |
+
+*Wrong conclusion:* that the residual is ~0.5 ms on ordinary frames, or that `unaccounted` is broken. **A
+28× overstatement on ordinary lines and 0.1% on the 71 large ones** — so the error is negligible exactly
+where the findings live and severe exactly where a sceptic would sanity-check. Someone recomputing by hand
+gets 0.473 against a true 0.017 and concludes the instrument is defective.
+
+**Recovery: use the emitted `unaccounted`; never re-derive it from `phases`.** And the general form, because
+this is the more dangerous shape of the two: **a hazard that makes a healthy instrument look defective to
+the person checking it is worse than one that corrupts a result** — a corrupted result is wrong about one
+thing, while a discredited instrument takes every other number in the file with it.
+
 **`gpu.vram` reads a string on the first window of each GPU-carrying log.** Initialisation, not failure.
 *Wrong conclusion:* that the `overBudget` regression guard is absent. **Recovery: skip window 0** — the field
 is live in 14 of 15 windows in the most recent log.

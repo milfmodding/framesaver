@@ -3509,8 +3509,34 @@ fits at ±0.72 ms on 12 of 12. After the latch the window closes at the *first* 
 out-of-loop interval a line reports is the one **after** its own phases — while the `TimeUpdate` and
 `Initialization` inside the matching `endToStart` belong to the frame that starts the next window.
 
-> **Registered form:** `unaccounted[N] ≈ endToStart[N] − TimeUpdate[N+1] − Initialization[N+1]`, with the
-> subtrahends taken from the **following** window line.
+> ~~**Registered form:** `unaccounted[N] ≈ endToStart[N] − TimeUpdate[N+1] − Initialization[N+1]`, with the
+> subtrahends taken from the **following** window line.~~
+
+**Wrong, and wrong in the index — superseded by data before it could be evaluated.** The observed relation
+is `unaccounted[N] ≈ endToStart[N−1]`: **no subtraction, and the shift runs the other way.** I derived the
+subtrahends onto the *following* line; they belong nowhere, because `TimeUpdate` and `Initialization` are
+~0 in both regimes, and the `endToStart` that matches is on the *preceding* line. Getting the direction of
+a shift backwards inside a correction *about* a shift is the same failure as the sign error two sections
+above, and it is the reason the field is being replaced rather than re-indexed.
+
+##### Registered before the next raid — the one-term form, and the old field as its control
+
+Beta's `endToLatch` closes the same gap **at the latch**, so the span ends where the period ends and the
+pairing is structural rather than temporal. Registered now, before it has produced a line:
+
+> **`unaccounted[N] ≈ endToLatch[N]`, same line, no subtraction and no index shift.**
+
+**Both fields emit for one run**, which is what makes the registration testable rather than merely
+plausible — the run has to show *two* things:
+
+| | expected | if it fails |
+|---|---|---|
+| `endToLatch[N]` vs `unaccounted[N]`, same line | agree to well under 1 ms | the latch pairing is not what it is claimed to be, and this is not a fix |
+| `endToStart[N−1]` vs `unaccounted[N]` | **reproduces tonight's 0.035 ms** | tonight's pairing was a property of that raid rather than of the instrument, which would weaken the resolution above as well |
+
+**The second row is the control and it is the reason not to drop `endToStart` in the same build.** Without
+the field being replaced still present, a fix and a silent regression produce identical output — the same
+argument as shipping the latch paired with the counters that prove it. Drop it once validated, not before.
 
 Three readings, and the first is the one that would be missed:
 
