@@ -127,17 +127,74 @@ Regressing p50 on awake bots over those same 99 windows, pooled across 13 raids 
 **p50 = 13.25 + 0.402 × awake, r = 0.737** — against `13.5 + 0.507 × awake` from a single 33-window raid.
 **The intercept replicates to 2%**, which is the load-bearing half.
 
-- **The intercept is 13.25 ms — 75 fps with every bot asleep.** Every sleeping-bot fix attacks the *slope*.
-  Nothing built so far touches the intercept.
+- ~~**The intercept is 13.25 ms — 75 fps with every bot asleep.** Every sleeping-bot fix attacks the *slope*.
+  Nothing built so far touches the intercept.~~
 - **60 fps on Streets needs awake ≤ 8.5 bots**, and the median window runs 8 awake. That is exactly why it
   sits on the edge: the fixes have brought it to the boundary and it wobbles across.
-- **100 fps needs 10 ms total, which is below the intercept alone.** Reaching it at 8 awake bots would need
-  the intercept down to 6.8 ms — removing 6.4 ms from a frame whose largest known component is `render` at
-  4.67 ms and whose largest *unattributed* one is `ScriptRunBehaviourUpdate` at 2.5–3.5 ms. Zeroing the whole
-  unattributed block and running zero awake bots gives ~98 fps.
+- ~~**100 fps needs 10 ms total, which is below the intercept alone.** Reaching it at 8 awake bots would need
+  the intercept down to 6.8 ms.~~
 
-So Streets is an **intercept problem**, and no amount of further sleeping-bot work reaches it. State that
-before spending raids on the slope.
+~~So Streets is an **intercept problem**, and no amount of further sleeping-bot work reaches it.~~
+
+##### Corrected 2026-07-28, Delta — the intercept is not identified, and it is not a floor
+
+The regression reproduces exactly (n=99, `13.25 + 0.402 × awake`, r = 0.737). **Both things built on it do not.**
+
+**1. `awake` and `asleep` are 95% collinear, so the intercept depends on which one is in the model.**
+`corr(awake, asleep) = −0.954`, because `total` barely moves (16–27). They are near enough one variable with
+a sign flip:
+
+| model | R² | intercept | awake | asleep |
+|---|---|---|---|---|
+| `p50 ~ awake` | 0.543 | **13.25** | +0.402 | — |
+| `p50 ~ asleep` | 0.468 | 21.79 | — | −0.376 |
+| `p50 ~ awake + asleep` | 0.547 | **10.78** | +0.510 | **+0.114** |
+
+**The two readings imply opposite strategies.** "Intercept 13.25 and nothing touches it" says further
+sleeping-bot work is pointless; "10.78 plus 0.114 ms per sleeping bot" says there is ~1.7 ms of headroom at
+the median 15 asleep. **The data cannot arbitrate** — R² gains 0.004, and at r = −0.954 the decomposition is
+unstable. Neither model is preferred by fit.
+
+**And "the intercept replicates to 2%" was doing work it cannot do.** The single-raid fit `13.5 + 0.507`
+matches the one-variable model's *intercept* **and** the two-variable model's *slope*. Both halves
+"replicate", to different models, so replication does not break the tie either.
+
+**2. A regression intercept is a conditional mean, not a floor — and nine windows beat it.** Nine of 99 sit
+below 13.25 ms, and they are the *low-awake* windows rather than outliers — awake counts 2, 2, 2, 3, 3, 3,
+7, 7, 7. The best is **9.47 ms = 106 fps, on Streets, at 7 awake bots**.
+
+So *"100 fps on Streets is arithmetically out of reach"* is **false**. What survives is
+**"a *consistent* 100+ is not reachable"** — 1 window of 99 — which is what the criterion
+[elsewhere in this document](#the-same-column-produced-every-other-maps-headline-and-the-medians-disagree-there-too)
+already says. "Impossible" and "not consistently achievable" license different decisions.
+
+> **Do not requote 9.47 ms as reachable.** It is a best-of window and it is a counterexample to an
+> impossibility claim, nothing more. Reading it as a typical figure is precisely the `best p50` error this
+> section exists to correct — one day later, in the paragraph correcting it.
+
+**3. Location is why no amount of extra windows can rescue it.** This document's first methodology rule is
+that [location dominates everything on Streets](#methodology-notes) and cross-window comparison is
+near-meaningless unless position is held. This regression *is* cross-window comparison on Streets, pooled
+over 99 windows, 13 raids and several mod stacks. It bundles location cost into a constant and then reads the
+constant as physical. That is a structural limit, not a sample-size one.
+
+##### What replaces it: Streets is bounded by `render`, and that bound is real
+
+Same 99 windows, `render` = `frame.avg − gameUpdate.avg`:
+
+| | min | p25 | median | p75 | max |
+|---|---|---|---|---|---|
+| Streets `render` | **4.85** | 6.02 | 6.53 | 7.01 | 8.21 |
+
+**99 of 99 windows above 4.85 ms, and `corr(awake, render) = +0.187`** — so it barely tracks bot count, which
+is the property that makes it a floor and the one the intercept never had. A 10 ms budget leaves **under 5 ms
+for the entire update side**, against a current `gameUpdate` of 6.5–24.5 ms.
+
+The strategic conclusion is unchanged — further sleeping-bot work has limited headroom and a consistent
+100 fps on Streets is not reachable client-side. It now rests on 99 of 99 observations of a quantity that
+does not move with bot count, instead of on an unidentified coefficient with nine counterexamples in the same
+table. **`render` is not, however, unreachable — see
+[the `render` correction](#render-is-the-postlateupdate-phase-and-the-write-off-was-wrong).**
 
 #### The same column produced every other map's headline, and the medians disagree there too
 
@@ -544,10 +601,50 @@ whether a cap is active changes how that field must be read.
 | **DXGI VRAM** (`CameraClass.GetVRamUsage`) | **Live and free.** Answered its question: not a factor. Keep as a regression guard. |
 | **`FrameTimingManager`** | **Unavailable.** Frame Timing Stats is a baked player setting and this build lacks it. The vendor-neutral path is closed; PresentMon is the route. |
 
-**Draw-call submission is not a cost here.** `graphicsMultiThreaded` is false and the game is D3D11, so ~4k
-draw calls per frame looked like a plausible main-thread driver-submission bottleneck. It is not:
-`corr(drawCalls, p50) = +0.06`. Awake bots do drive submission — `corr(awakeBots, drawCalls) = +0.74` — it
-simply costs nothing measurable. Recorded so nobody re-derives the theory from the draw-call number alone.
+### ~~Draw-call submission is not a cost here~~ — corrected 2026-07-28: it is, and the figures did not reproduce
+
+The original entry read: *"`corr(drawCalls, p50) = +0.06`. Awake bots do drive submission —
+`corr(awakeBots, drawCalls) = +0.74` — it simply costs nothing measurable."*
+
+**Neither figure reproduces on any population anyone can construct.** Swept across draw calls avg/max and
+`setPass`, against `p50`/`frame`/`gameUpdate`, in-raid and all-states, pooled and GPU-session-only, by two
+sessions independently. Nearest approaches to `+0.06` are `+0.004` and `+0.129`; nearest to `+0.74` is
+`+0.623`. **The population was never stated, which is the whole defect** — the entry compares two numbers
+whose denominators are unknown.
+
+**Stated population for the replacement: Streets, in-raid, windows carrying a `gpu.render` block, all logs,
+n = 38.** The GPU-session subset (n = 22) is given where it differs.
+
+| | n = 38 | n = 22 |
+|---|---|---|
+| `corr(drawCalls, p50)` | **+0.351** | +0.262 |
+| `corr(awakeBots, drawCalls)` | **+0.338** | +0.493 |
+| `corr(render, drawCalls)` | **+0.717** | +0.615 |
+| …partialling out `awakeBots` | **+0.683** | +0.501 |
+| `corr(render, awakeBots)` partialling out draw calls | **+0.116** | +0.236 |
+
+**Submission is a real cost, correctly sized, and it is not bot count in disguise.** Once draw calls are in
+the model, bot count adds almost nothing. The regression is
+
+> `render = 5.266 + 0.000467 × drawCalls` — **0.47 µs per draw call**, a normal single-threaded D3D11
+> submission cost, consistent with `graphicsMultiThreaded: false`.
+
+**But correlation is not share, and only share decides whether it is a lever.** Draw calls span **4.1×**
+across those windows (1,141–4,648) while `render` spans only **5.63–7.81 ms**. So **79% of Streets render is a
+constant draw calls do not reach**, and the proportional part is **1.4 ms of 6.6**. Eliminating submission
+entirely — impossible — buys ~1.4 ms. Real, worth having, not a route to 100 fps.
+
+The old conclusion was directionally wrong and the old reason was right: draw calls are a poor predictor of
+*frame time*, because render is 40% of the frame and bot-driven variance dominates the rest. **Predicting
+frame time and predicting render are different questions, and the entry answered the first while being read
+as answering the second.**
+
+Caveats that must travel with this: n = 38, observational, and **location is not held on the one map where
+[location dominates everything](#methodology-notes)**. `drawCalls` also indexes everything view-dependent —
+culling, shadow passes, batching — so a partial correlation cannot separate submission from any other
+on-screen cost, and the 0.47 µs agreement with a known submission figure is suggestive rather than decisive.
+**More observational windows cannot strengthen this**; it needs the `PostLateUpdate` expansion or a
+fixed-position A/B that moves draw calls without moving what is drawn.
 
 ### Open: why is it stop-the-world at all?
 
@@ -1207,9 +1304,47 @@ spawns of headroom per request.
 
 **This is not a BSG problem, it is an SPT one, and it is fixable in config.**
 `SPT_Data/configs/bot.json` → `presetBatch` sets how many bots the server generates per request:
-`assault: 45`, `cursedAssault: 50`, `pmcBot: 40`, `marksman: 30`. At ~41 KB per generated bot, a batch of
-45 assault bots *is* the 1.84 MB response. Lowering the batch does not reduce total work — it splits the
-same work into pieces small enough to fit in a frame. Batch 10 predicts ~140 ms; batch 5, ~70 ms.
+`assault: 45`, `cursedAssault: 50`, `pmcBot: 40`, `marksman: 30`. ~~At ~41 KB per generated bot~~ — **the
+41 KB figure is wrong by ~4×; see below.** Lowering the batch does not reduce total work — it splits the same
+work into pieces small enough to fit in a frame.
+
+#### Per-profile size is ~10.5 KB, and the generation rule is confirmed
+
+**Measured 2026-07-28 from `worstCallbacks`, which carries the role mix and response size per callback.** The
+server generates `Math.Max(presetBatch[role], requested)` per role clause
+([`BotController.cs:356`](../../SPT4.0.13/Src/Server), fallback 10 for a missing role) — so **dividing a
+response by the number of bots *requested* over-states per-profile size by exactly the inflation factor.**
+That is where 41 KB came from.
+
+Divide by the number *generated* instead and it is flat. Three single-clause marksman requests, **same log,
+same raid, stock batch 30**:
+
+| request | generated under `Max` | chars | **KB per profile** |
+|---|---|---|---|
+| `marksmanx3` | 30 | 310,696 | **10.1** |
+| `marksmanx17` | 30 | 309,609 | **10.1** |
+| `marksmanx32` | 32 | 329,627 | **10.1** |
+
+**An 11× range in requested count, identical per-profile size to three significant figures.** The rule
+predicts the response size, not merely fits it.
+
+It holds across roles and across the batch change. `assaultx3` and `assaultx8` on stock batch 45 give 11.0 and
+10.7 KB per profile; the same requests after `bot.json` was capped to 5 give 10.2–12.2. **Every single-clause
+observation in the log set lands at 10.1–12.2 KB per profile, spanning batch 45 → 5 and requests of 1 → 32.**
+
+**This dissolves the 42–137 KB puzzle.** At batch 5 a small request generates 5 profiles ≈ **55 KB**, and
+multi-clause requests give more — so the post-fix range is exactly what the rule predicts, and there was never
+a discrepancy to explain. The predictions above should read **batch 10 ≈ 105 KB and ~40 ms; batch 5 ≈ 55 KB and
+~20 ms**, at the measured 4.04 ms per profile.
+
+**And the inflation is worst exactly where the small on-demand path fires.** `Max(45, 3)` is **15× waste** on a
+3-bot request; `Max(45, 44)` is none on a full wave. The small path is **not** rare post-fix — `assaultx4`,
+`marksmanx4` and `shooterBTRx3` requests appear in every post-fix log including the control run. So capping
+`presetBatch` is worth upstreaming: at stock config each of those costs 45 profiles ≈ 180 ms of main-thread
+construction to deliver 3 bots, and at batch 5 it costs 5 ≈ 20 ms.
+
+**Corollary for anyone reading response size as a proxy: do not.** Response bytes tell you `Max(batch, asked)`,
+not how many bots the raid wanted. `profileBuild.profiles` counts profiles built per window directly.
 
 Note the client-side budget is useless here for the same reason it was useless generally: one response is
 one callback.
@@ -2755,6 +2890,14 @@ Worth keeping — several of these cost real time to learn.
   the [`animCulled`](#refuted--do-not-re-tread) failure generalised: an instrument structurally unable to see
   the thing it is looking for is worse than a missing instrument, because it produces evidence. **Ask what an
   instrument cannot see before asking what it found.**
+
+  **A truncated search is a silent omission with a byline.** A `grep` for `presetBatch` across SPT's server
+  was piped through `head -20`, the output was flooded by twenty-odd locale JSON files, and the `.cs` hits
+  were pushed off the end — from which it was concluded that the C# rewrite had dropped the code path
+  entirely. The path is at `BotController.cs:356`. The instrument could not show everything, what it did show
+  agreed with an interesting hypothesis, and nothing about the output looked wrong. **When a search result is
+  dominated by one file type, exclude it and re-run rather than reading the first twenty lines** — the count
+  of matches is the tell, exactly as an extreme hit rate is for a filter.
 
   **Two of the four were sitting in this document, in the proposal that raised the question.** The original
   sketch specified `GetComponents<MonoBehaviour>()` on a bot at spawn and again on a corpse — the narrowest

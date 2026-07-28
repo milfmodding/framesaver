@@ -109,11 +109,46 @@ spawn fix:
 | stop-the-world collections | 35 | 128.4 ms | `gcGen0 > 0`; `frame ≪ period` on the residual half |
 | **unnamed, no collection** | **12** | **201.9 ms** | no `gcGen0`, no drain, `TimeUpdate` absent, `frame ≈ period` |
 
-The second is **larger per event**, is CPU-side by PresentMon, and has never had a name or a cause. Nine of
-twelve fall inside the first 83 seconds of a raid, with three at 430, 431 and 722 s that the stage-1
-"first minute or two" framing does not cover. It is the open second family from stage 1, and it had been
-absorbed into the GC finding by a bucket boundary until 2026-07-28. **Eliminating in-raid hitches requires
-both.**
+The second is **larger per event**, is CPU-side by PresentMon, and has never had a name or a cause. It had
+been absorbed into the GC finding by a bucket boundary until 2026-07-28. **Eliminating in-raid hitches
+requires both.**
+
+**Scoped across all 15 logs it is bigger than the control run showed: 36 frames, 20 on Streets and 16 on
+Customs, across 7 logs, period to 402 ms (median 334).** Only 58% fall inside the first 120 s and the latest
+is at 742 s, so stage 1's *"confined to the first minute or two"* must be widened rather than reused. Three
+hypotheses are dead — not a present/GPU wait (`CPUWait` median 0.077 ms against `CPUBusy` of 203 ms), not
+ALT-Tab or focus loss (`PresentMode` is `Hardware: Independent Flip` on every one and either side; the whole
+182,845-row capture holds 10 `Composed: Flip` rows, none nearby), and not shader compilation, which happens
+at draw time inside `PostLateUpdate` — and that phase reads an ordinary 3.8–15.3 ms on all of them.
+
+**The time sits between the last `PostLateUpdate` subsystem of frame N and the first `TimeUpdate` subsystem of
+frame N+1 — outside `PlayerLoop()` entirely.** Realistically the Win32 message pump. The instrument is
+correspondingly cheap: SPT already brackets that interval, inserting `EndOfFrame` last in `PostLateUpdate` and
+`StartOfFrame` first in `EarlyUpdate` (`CustomPlayerLoopSystemsInjector.cs:15–16`). A `Stopwatch` across those
+two events captures native gap + `TimeUpdate` + `Initialization`; the latter two are already measured, so
+subtraction yields the gap. **Two event subscriptions, one spike-line field, no Harmony patch and no
+obfuscated types** — so none of the JIT-resolution exposure. **This is sequenced above work-queue item 1**: it
+costs a fraction of the off-thread sampler and closes the last unexplained in-raid family, which is goal 2,
+where the sampler serves loading.
+
+### Work-queue item 6 is promoted — the collector demonstrably slices
+
+Item 6 (`GC time slice ms`, `Drive incremental GC ms`) sat last on the argument that if the extra cost is
+Boehm's *sweep* then no scheduling knob can touch it. **That premise is now wrong.** `TimeUpdate` on in-raid
+spike frames is trimodal across all logs — **< 0.5 ms on 136 frames, 2.9–3.2 ms on 69, > 10 ms on 73**, and
+three others. Baseline `TimeUpdate` is 0.094 ms and the header reports `timeSliceNs: 3000000`. **The middle
+mode is the 3 ms incremental slice, observed 69 times**, and the thirteen residual-plus-collection frames read
+3.01–3.27 ms with twelve of them within 0.06 ms of each other.
+
+So candidate 2 as usually stated — *"only marking is incremental, nothing schedulable is happening"* — is
+refuted: slicing is visible in the data. That gives the knob a **falsifiable prediction rather than an
+open-ended trial: raise the slice and the middle mode must move.** If it moves, the knob is live and the
+instrument is confirmed at once. If the mode does not move at all, that is a far sharper negative than "the
+knob did nothing", which is the outcome item 6 was demoted for producing.
+
+It also reopens the reading of those thirteen frames: they carry a **normal** 3.02 ms slice *and* 80–218 ms of
+residual, so "the collection *is* the residual" is no longer the only interpretation. Independence is refuted
+either way — expected coincidence 0.01 against 13 observed — but the direction is open.
 
 ## Status
 
@@ -421,8 +456,22 @@ Then hash `Assembly-CSharp.dll` and record it. Hash it again after the launch.
 | Run tag | include the threshold, e.g. `build1-spike30` |
 | `Spike event ms` | **30**, deliberately. A working GC slice turns one 110 ms pause into several ~30 ms ones, so the small pauses *are* the success signal — at 100 ms success and no-effect look identical. **Spike counts from this run do not join to 2026-07-27** |
 | Both GC knobs | **0** for the first two windows |
-| `Expand phase` | **`PostLateUpdate`** — see below. Costs `PreLateUpdate`'s children for this run; accepted |
+| `Expand phase` | **blank.** See the inversion warning below — this is now a blocklist, and blank expands everything including `PostLateUpdate` |
 | V-Sync | off |
+
+> ### `Expand phase` inverted 2026-07-28 — read this before setting it
+>
+> It is now a **blocklist**: entries name the phases *not* to expand, and **blank expands everything**.
+>
+> **Setting it to `PostLateUpdate` now BLOCKS `PostLateUpdate`** — the exact opposite of what this run needs,
+> and it would look like a successful run producing no render decomposition. Leave it **blank**.
+>
+> **An existing `.cfg` carries `PreLateUpdate` from the allowlist era.** Under the new meaning that blocks
+> `PreLateUpdate` rather than selecting it, so the animation-pass breakdown disappears unless the value is
+> cleared. **Clear it.**
+>
+> The old note below — "costs `PreLateUpdate`'s children for this run" — no longer applies: a blocklist
+> expands every phase at once, so nothing is traded away.
 
 **`Expand phase` must be set at the menu before the raid loads. Setting it in-raid does nothing.**
 `ShouldExpand` is read only inside `PlayerLoopProfiler.Install()`, which runs at `Awake` and thereafter only

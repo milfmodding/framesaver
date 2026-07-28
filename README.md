@@ -89,6 +89,13 @@ a presentation wait. See [FINDINGS.md](FINDINGS.md), "GPU-side telemetry — sta
 | `gcDrive` | sample | counters for `Drive incremental GC ms`. `pending` is the diagnostic: how often `CollectIncremental` still had work outstanding. **Never yet exercised — both GC knobs have only ever run at 0.** |
 | `cfg.gcTimeSliceMs` / `gcDriveMs` / `gcSliceApplied` | sample | the two GC experiment knobs, per the rule that any option changing behaviour belongs in `cfg`. |
 
+**A phase missing from `phases` means `< 0.5 ms`, not zero.** `Telemetry` adds every top-level phase to
+`accounted` and *then* drops it from the JSON if it is under 0.5 ms, so the residual arithmetic is correct
+while the field silently disappears. Read an absent phase as "below threshold", never as "did not run" — and
+note the asymmetry that makes it easy to misread: `TimeUpdate` absent is the normal case in raid (median
+0.065 ms), so its *presence* is the signal. Same shape as `gcPhase`, which is also omitted rather than
+emitted empty.
+
 **Two fields are known-defective and must not be used:** `initHeapDeltaMb` (reads 6,900 MB inside a 208 MB
 container on one raid; internally consistent on another, so flagged rather than removed), and `state`, which
 reports `loading` at the menu because `CurrentState()` gates `Menu` on `GameWorld` being absent and the world
