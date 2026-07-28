@@ -976,6 +976,26 @@ first output is under test.
 > it. This is the cheapest possible way to bring a new field into service: put it in a run whose
 > manipulation already exercises it, and let the run decide.
 
+#### `drawCalls` stays the arm-boundary marker tonight, and `look` does not get that job
+
+Protocol B changes no config, so **something has to delimit the arms**, and the temptation with `look`
+newly live is to promote it — it is the more direct measurement of the thing that actually changes.
+
+**Do not, and the reason is not caution.** If `look` both defines the arms *and* is the field under test,
+there is no independent signal left to catch a defect in it: a mis-segmentation would silently regroup
+every window before any other criterion is computed, and each arm would then look internally consistent
+because `look` drew the boundaries. **That is the same circularity as a manipulation check doubling as the
+arm label** — the instrument under test must not define the populations it is judged on.
+
+`drawCalls.max ÷ .avg` keeps the job for a positive reason as well: a straddling window reads high because
+it genuinely contains two views, which is the same physical fact Protocol B manipulates. It is not a proxy
+standing in for `look`; it is a second consequence of the same cause.
+
+> **So the two are compared, and the comparison is the validation.** The windows `drawCalls` flags as
+> straddling should be the windows `look` flags as high-`swept`. **Agreement promotes `look` for future
+> runs. Disagreement is a finding either way** — and the held-position criteria say which instrument to
+> distrust, because a runner who drifted fails `pos`, while a runner who held fails nothing else.
+
 > **The one thing to know about it before reading a `look` field**, because it nearly shipped inverted:
 > **raw yaw min/max reports a perfectly held view as a full 360° sweep.** Yaw wraps, so a view held near
 > the wrap point samples at 359.9 and 0.1 and a naive range spans the circle — healthy-looking, and the
