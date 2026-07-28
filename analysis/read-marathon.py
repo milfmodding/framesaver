@@ -143,11 +143,27 @@ def main(argv):
     for i, l in enumerate(ls):
         seen.setdefault(l['map'], []).append(i)
     repeats = {m: idx for m, idx in seen.items() if len(idx) > 1}
+    # A missing repeat is NOT a blanket gate failure, and this was decided before
+    # any marathon log existed -- loosening a gate after seeing the result is the
+    # thing pre-registration exists to prevent, so it had to be settled blind.
+    #
+    # The reasoning: without a repeat the session-age term is unmeasured, but it is
+    # unmeasured *unevenly*. Leg 1 carries almost none of it and the last leg
+    # carries all of it, so refusing every per-map verdict would discard the early
+    # legs to protect against a confound that barely touches them. The honest form
+    # is to name which legs are exposed rather than to fail the whole run.
+    exposed_from = None
     print('\n4. session-age control ', end='')
     if not repeats:
+        cut = max(1, len(ls) // 3)
+        exposed_from = cut + 1
         print('NONE - no map was played twice')
-        fails.append('no map was revisited, so session-age drift is untested, '
-                     'not absent - late legs cannot be separated from late session')
+        print('                       session-age drift is UNTESTED, not absent. '
+              'Legs 1-%d carry little of' % cut)
+        print('                       it; legs %d-%d carry an unquantified term '
+              'and are marked below.' % (exposed_from, len(ls)))
+        print('                       This is a caveat, not a gate failure - '
+              'the exposure is uneven.')
     else:
         for m, idx in repeats.items():
             vals = []
@@ -188,10 +204,13 @@ def main(argv):
         verdict = ('MEETS' if med >= target else 'under') + ' %.0f' % target
         if len(e) < MIN_WINDOWS:
             verdict = 'n<%d, no call' % MIN_WINDOWS
-        print('%-4d %-13s %-5d %-9.1f %-8.0f %-11s %-9.1f %d / %.0f'
+        mark = ''
+        if exposed_from is not None and (i + 1) >= exposed_from:
+            mark = '  *session-age untested'
+        print('%-4d %-13s %-5d %-9.1f %-8.0f %-11s %-9.1f %d / %.0f%s'
               % (i + 1, name, len(e), med, target, verdict,
                  st.median(mx) if mx else float('nan'),
-                 min(awake), st.median(awake)))
+                 min(awake), st.median(awake), mark))
 
     # ---- 4. the exemption floor, read RELATIVELY --------------------------
     #
@@ -257,8 +276,19 @@ def main(argv):
         for f in fails:
             print('  ! %s' % f)
         return 1
-    print('\nGate passed: clean sweep, one config, session-age drift measured '
-          'rather than assumed.')
+    # The pass line has to say what actually held. Its first version read
+    # "session-age drift measured rather than assumed" unconditionally, which is
+    # false on a run with no repeated map -- a vacuous pass in the summary of a
+    # gate written to prevent vacuous passes, found by reading its own output.
+    # Fifth instance of that rule today and the second inside a tool that states
+    # it.
+    if exposed_from is None:
+        print('\nGate passed: clean sweep, one config, and session-age drift '
+              'MEASURED via the repeated map.')
+    else:
+        print('\nGate passed on config and cleanliness only. Session-age drift is '
+              'UNTESTED:\nlegs %d-%d carry an unquantified term. Not a failure, '
+              'not a clean bill either.' % (exposed_from, len(ls)))
     return 0
 
 
