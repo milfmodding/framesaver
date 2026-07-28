@@ -546,6 +546,32 @@ Also gives a second knob data point at a larger heap.
 A run that halves the hitches and costs 8 fps is a real result. Which side of that trade to take is a
 judgement call, not a measurement — but *"did the hitches go away"* alone cannot see the price.
 
+### Two things in this run's output that are the instrument, not the game — read before any number
+
+`Expand phase` became the blocklist `Do not expand phases`, blank by default, so **all eight top-level phases
+expand** where the previous fifteen logs expanded `PreLateUpdate` only. Verified against the live
+`framesaver.ai.perf.cfg`: line 118 `Do not expand phases = ` blank, and the orphaned `Expand phase =
+PreLateUpdate` at line 125 binds to nothing, so the old allowlist value cannot reach the new blocklist
+semantics.
+
+1. **Child-level series do not join to the previous fifteen logs** — different child name set. Top-level
+   phases and `unaccounted` still join, since `accounted` sums only non-child slots.
+2. **Top-level phases will read a few µs higher, and it looks like a regression.** Every child adds a
+   Begin/End pair — roughly 140–200 extra QPC reads per frame — landing **inside** the top-level totals.
+   `render` gains **3.5–5 µs, 0.05–0.08%**. Nothing against a 200–330 ms family, but real, reproducible, and
+   in the direction of the effect being looked for. **Do not report it as a regression, and do not compare
+   `render` across the expansion boundary at µs resolution.**
+
+**This is not a new class of artifact — it is [the observer-effect note](FINDINGS.md#methodology-notes) in a
+second instrument.** That entry was written about the off-thread GC sampler: *an instrument is not free of
+observer effect, and the direction of its bias flatters the hypothesis.* The sampler's cost would have
+lengthened the span it measured; the profiler's cost lands inside the phase totals it reports. Same principle,
+different instrument, and the second instance is what makes it a rule rather than a story about one sampler.
+
+**The generalisation that follows:** before trusting any instrument, ask **where its own cost is charged.**
+If the answer is "inside the number it produces", the bias has a direction and the direction is usually
+toward the effect being hunted.
+
 ### After the launch — one rebuild, free answer
 
 Rebuild from unchanged sources. **If the hash matches build 1's, whatever the launch rewrote in
