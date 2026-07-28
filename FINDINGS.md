@@ -3260,6 +3260,19 @@ into whichever camp the reader already occupied.
 `negResidualFrames ÷ frames` can be computed — it is simply conditioned differently from
 `frameOverPeriodFrames ÷ frames`, which is the whole content of the amendment above.
 
+##### Fixed in the next build — the amendment applies to `403b1aeb` only
+
+Beta shipped the counter: **`clockResidualFrames`** on the window line, incremented *after* both guards,
+so `negResidualFrames ÷ clockResidualFrames` is the rate this section says cannot be computed. Rows 1 and
+4 return to full status from that build onward, and the boundary latch adds `boundaryMissedFrames`
+alongside it, so the eligible population is readable rather than inferred.
+
+**This paragraph is kept rather than deleted because the corpus is not re-run.** Every log written by
+`403b1aeb` and earlier carries the defect, so the amendment is the rule for reading them — and *"the
+denominator was fixed later"* is not a licence to compute the rate from a log that predates the fix. The
+correction and the data it applies to have different lifetimes, which is the whole reason
+[CORPUS.md](analysis/CORPUS.md) exists.
+
 **One int would fix it properly** — a counter incremented where the residual test is actually evaluated,
 giving `negResidual` a denominator of its own. `Telemetry.cs` is Beta's and `403b1aeb` is frozen; proposed
 to them, not built, and it is not worth a second build on its own.
