@@ -197,8 +197,10 @@ calibrated on ~60 s windows and **must not be transported to a partial one.**
 
 **`unaccounted` cannot be recomputed from the emitted `phases`, and the discrepancy is worst where someone
 would go to check the instrument.** All eight top-level phases are accumulated; only those ≥ 0.5 ms are
-*emitted*. `accounted += phase[i]` runs **before** the drop test (`Telemetry.cs:1070` against the filter at
-`1074`), so **`unaccounted` on the line is correct** — but a spike line typically shows 3 to 6 phases, not 8.
+*emitted*. In `EmitSpikeEvent`, `accounted += phase[i]` runs **before** the `< 0.5d` `continue`, in the same
+loop — so **`unaccounted` on the line is correct** while a spike line typically shows 3 to 6 phases, not 8.
+*(Cited by structure rather than line number: both sites have already moved once today, and a stale line
+reference is the same failure this file exists to catalogue.)*
 
 Across 14,790 in-raid spike lines:
 

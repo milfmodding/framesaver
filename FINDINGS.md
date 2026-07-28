@@ -3897,6 +3897,15 @@ Worth keeping — several of these cost real time to learn.
   four different outcomes, a callback scan matching 74 candidates including `keepalive`, and a phase scan
   reporting zero when three artifacts existed. **The absurd uniformity announced the bug in all four**, and
   in none of them did the wrong answer look implausible on its own — only the *distribution* of answers did.
+- **The observers can perturb the run by coordinating about it.** Tonight the team was messaging while
+  Sophia flew the raid, and reading a message means leaving the game — so the verification loop itself was
+  a candidate confound for the family being verified. Checked and clean: **largest in-raid `period` 1,054 ms
+  against 10–60 s of reading time**, with the only multi-second periods being load screens. **The reason it
+  had to be checked is that a positive result would have contaminated retroactively** — every session in
+  which anyone looked at a message, including the ones already analysed.
+  **This is not a check to add. It is a fact to know**, because the countermeasure is recognising that the
+  loop exists at all: no rule about instruments or staging or defaults reaches a confound introduced by the
+  act of reviewing.
 - **A state observed without its history reads as a defect.** Alpha's, and it is a different family from
   silence or from stale text: a *correct* observation producing a confident wrong conclusion because the
   missing information was elsewhere rather than absent. A scan reporting no candidates when three existed;
