@@ -3789,7 +3789,36 @@ family"* is refuted within a single log, and the difference tracks the build rat
 read smaller than what it contains. **Either an ordering assumption above is wrong, or `period` is not the
 interval it is taken to be.** The mechanism explains the *contrast* and does not explain the *magnitude*.
 
-### The measurement that separates them, and it is one field
+### RESOLVED — the stall is out of loop, measured, and reported one line early
+
+Alpha answered the objection by applying the pairing to the **magnitude** rather than only to the match
+count, and it reproduces here on the population where it can be tested:
+
+| adjacent pairs, n = **22** | |
+|---|---|
+| median `endToStart` on line **i−1** | **338.96 ms** |
+| median abs difference from `unaccounted`(i) | **0.035 ms**, max 1.09 |
+
+```
+i-1   frame  386.4   period   34.1   unacc    0.0   endToStart 352.4
+i+0   frame   30.5   period  382.8   unacc  352.4   endToStart   0.146
+```
+
+**The superset is not reading smaller than its content — it is reading the correct value on the correct
+line**, while `unaccounted` reports the same stall one frame later. `endToStart`, `unaccounted` and BSG's
+`frame` agree to a fraction of a millisecond.
+
+**So the out-of-loop attribution stands. There is no missing 320 ms, and nothing needs withdrawing.** The
+defect is *which line reports it*, not what it is.
+
+**Population, stated because the last figure of this kind was wrong for exactly this reason.** 47 boundary
+lines have `unaccounted > 100 ms`. **22** have a spike line for the immediately preceding frame, and the
+identity holds on all 22. The other **25** have no predecessor line, so they are **untestable rather than
+disconfirming** — the preceding frame did not cross the spike threshold and its `endToStart` was never
+emitted. A per-window `endToStart` accumulator would cover those 25 without needing a spike line at all,
+which is the argument for building it that survives this resolution.
+
+### ~~The measurement that separates them, and it is one field~~ — withdrawn, the case that motivated it is closed
 
 The three instruments jointly locate the time **inside `PlayerLoop()` but outside all eight top-level
 phases** — the only region none of them covers. That region is the inter-phase gaps: `End(i)` → `Begin(i+1)`.
