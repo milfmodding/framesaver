@@ -1265,3 +1265,101 @@ Three outcomes after the launch, and each says something different:
 | hash **changed**, rebuild produces a different hash | the rewrite reached something we bind to. The deployed binary is genuinely stale against its references and every prior run's comparability needs re-examining. |
 
 Recording it before the data exists so it cannot be fitted afterwards.
+
+---
+
+## 2026-07-28 — Beta: build state at context compaction
+
+Written because none of it was on disk and all of it was in message history. Read this first after a reset.
+
+### Binary — FROZEN
+
+**`88a1166a8fcddaf4848bd29cc19b4a74`**, 111,616 bytes, `TimeDateStamp` `0xbd3e14d0` (high bit set),
+`bin/Release` == `plugins`. Source at commit `561ea06`. **Frozen** under the protocol below; Sophia ran it in
+`framesaver-20260728-100048-postlate-gc.ndjson`.
+
+Ten builds today, all preserved in `artifacts/` and named `Framesaver-<date>-<tag>-<md5 prefix>.dll`. The
+freeze is on the **binary, not the repository** — documentation may move during a run, source may not.
+
+### What shipped today, in one place
+
+| | |
+|---|---|
+| `Sleeping` cross-raid leak | cleared at raid start. `animCulled` was `asleep + 15` in every window of raid 2 |
+| `CurrentState()` menu gating | latches the instance id of the world a raid was sampled in — `AbstractGame` alone would have blinded the 37 s `local/start` window |
+| Component census | four one-shot samples, `Component` enumeration, reflection for `enabled`, two roots |
+| `endToStart` | inter-frame bracket via SPT's `EndOfFrame`/`StartOfFrame` events, pairing-guarded |
+| `Do not expand phases` | blocklist, empty default, `expandedPhases` on the header |
+| Position | `pos` per window (`dist`, per-axis min/max, `end`), `at` on spike lines |
+| `proc` | `wsMb`, `privMb`, `notResidentMb`, per-window deltas |
+| Clock counters | `negResidualFrames`, `frameOverPeriodFrames`, over every frame |
+
+### The `unaccounted` slip — mechanism and fix, because this is the live defect
+
+**`Telemetry.Update()` runs inside `ScriptRunBehaviourUpdate`, inside the `Update` phase** — between that
+phase's Begin and End markers. `ReadAndReset()` therefore takes the snapshot *before* `Update`'s End marker
+fires, so the phase's own duration always lands in the *next* snapshot.
+
+A stall in `Update` **before** our component therefore splits: `period` sees it on the stall line, the phase
+total arrives on the next. Positive residual on line N, **negative on N+1**. Confirmed — every negative line
+carries an `Update` phase 4–50× ordinary (209 ms against a 4.27 ms baseline), magnitude tracking the deficit.
+
+**No clock is wrong.** `period` is a `Stopwatch` delta over an interval it defines and cannot under-measure
+its own span; the phases and `frame` simply cover a *different* interval. Alpha named `period` guilty and
+withdrew it — the fault is an alignment between three correct measurements, which is why the fix changes no
+derivation.
+
+**Fix: move `ReadAndReset()` to `StartOfFrame`.** The subscription already exists for `endToStart`. It is the
+first subsystem of `EarlyUpdate`, so the snapshot covers exactly one complete frame and `Update` is never
+split. **Ship it as a pair with the assertion** — the move makes `unaccounted < 0` impossible by
+construction, so the counters are what prove it worked; without them a silent regression looks like a fix.
+
+**Rate: ~8–10% of in-raid spike lines at `> 1 ms`, stable across builds** (10.5% control, 8.3% today). It
+**predates build 1**, so nothing shipped today caused it.
+
+### Known-wrong comment in the shipped source
+
+`Telemetry.CountClockDisagreement`'s XML comment cites **23.9%** and **29.1%**. Both are threshold-confounded
+— uncut figures admitting sub-millisecond jitter. Correct to **~8–10% at `> 1 ms`, stable across builds**.
+Not fixed because the freeze was in force. **A commit message is disposable; a code comment outlives the
+conversation**, and this one reads as establishing a 23.9% defect rate.
+
+### Census topology — corrects a spec error of mine
+
+The weapon is **not** under the player. `Player.ItemHandsController.smethod_4` positions `_controllerObject`
+to the ribcage and never reparents it — the only `SetParent` calls are inside `if (UsedSimplifiedSkeleton)`,
+zombies with knives or pistols. And `smethod_1:31787` does `player.gameObject.AddComponent<T>()`, so the
+hands controller *is* on the player: rooting there re-enumerates what we already have and still misses the
+weapon, while growing the census enough to look like a fix.
+
+`ControllerGameObject` (`Player.cs:31696`) returns the weapon object itself. **BSG uses it as a recursion
+root for the same purpose** (`Player.cs:28879`), which is better evidence than any argument either of us made.
+
+### Queue for next session, ordered
+
+1. **`negResidualWorstMs` / `frameOverPeriodWorstMs`** — magnitude alongside count. The shipped counters have
+   **no magnitude cut**, so they count jitter alongside the −56 to −200 ms mechanism and cannot be converted
+   into a rate. Emit the worst magnitude rather than pre-committing to a threshold.
+2. **Correct the 23.9% comment** (above).
+3. **`periodMs > 0` guard** — the first frame of a session has `period` 0 and increments both counters once.
+4. **`ReadAndReset()` → `StartOfFrame`**, as a pair with the assertion.
+5. **`PageFaultCount`** via a `GetProcessMemoryInfo` P/Invoke, *if* `notResidentMb` moves on the stall frames.
+   Not shipped: `System.Diagnostics.Process` does not expose it, and `notResidentMb` was the honest substitute.
+6. **Zone telemetry** — deferred from the position work. Needs a spatial lookup against `BotZone` and was not
+   worth doing badly under time pressure.
+7. **The `graphicsMultiThreaded` premise** — parked. `SystemInfo.graphicsMultiThreaded` is descriptive only
+   (BSG never branches on it, three references), the launcher could not be read (`strings` returns zero lines
+   from a 29.5 MB single-file bundle — an instrument that saw nothing, not a file that was clean), and the
+   ceiling is ~1.4 ms of a 6.6 ms `render`. The `PostLateUpdate` decomposition supersedes the source hunt.
+
+### Protocol adopted today — all four from failures, not from theory
+
+- **Freeze then verify.** Beta declares *"frozen at &lt;md5&gt;"* and stops building; Alpha verifies and signals
+  only after seeing it. Alpha's GO referenced a superseded binary three times before this existed.
+- **Stage explicit paths. Never `git add -A`.** It is a filter that fails toward taking too much — right for
+  an instrument, wrong for a commit. Two agents swept each other's work under their own messages.
+- **Four deploy checks**: md5 (both locations), `TimeDateStamp` high bit, changed-file list, staleness —
+  newest build *input* vs binary, with `Assembly-CSharp.dll` checked by **hash** not mtime, since the game
+  rewrites it every launch and an mtime rule would fire permanently.
+- **Announce to the file's owner, not to whoever authorised the work.** An authorisation is not an
+  announcement. And state **tree state and binary state separately** — they move independently.
