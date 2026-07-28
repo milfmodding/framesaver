@@ -1050,8 +1050,8 @@ the **first bot-brain frame of the raid**, long before you can press a key. Set 
 `no compatibility guards will be applied`, and **`Player.log` carries the proof the arm was real.** That log
 is currently the *only* record of it — see "what this run cannot tell you" below.
 
-**2. Confirm the protocol parsed.** The line carries `protocol.steps`. The file defines **4** sections. If
-the log says 4, the parse worked on the file in use. If `protocol` reads `null`, the ini is not installed
+**2. Confirm the protocol parsed.** The line carries `protocol.steps`. The file defines **7** sections. If
+the log says 7, the parse worked on the file in use. If `protocol` reads `null`, the ini is not installed
 and every arm is arm 1.
 
 `Run tag` is **`brainslice`**, so the log self-identifies. The `endToLatch` validation rides along and needs
@@ -1061,14 +1061,32 @@ no tag of its own.
 
 `BepInEx\config\framesaver.protocol.ini`, three steps, advanced with **Ctrl+Alt+PageDown**:
 
-| arm | `Brain update period` | what it is |
-|---|---|---|
-| **B1** | `0` | control — every brain, every frame |
-| **B2** | `0.1` | slicing on |
-| **B3** | `0` | replication. B1 ≈ B3 is what carries the causal claim |
+`BepInEx\config\framesaver.protocol.ini`, **seven steps**, advanced with **Ctrl+Alt+PageDown**:
 
-Held position, one view, per [Protocol A](#protocol-a--one-position-one-view-one-knob). Roughly three
-minutes an arm.
+| step | arm | `Brain update period` | |
+|---|---|---|---|
+| 1–6 | **B1 / B2 / B1 / B2 / B1 / B2** | `0` / `0.1`, alternating | held position, **~2 minutes each** |
+| 7 | **KABAN** | `0.1` | leave position, go fight — see below |
+
+Held position, one view, per [Protocol A](#protocol-a--one-position-one-view-one-knob).
+
+**Why six alternating blocks and not a single ABA reversal.** Gamma measured spike counts rising **3.9×**
+from the first half of a raid to the second **at constant config**, rho **+0.71** against window order.
+Under a drift that size the late control sits above the early one whatever the knob does, and the treatment
+arm in the middle lands between them either way — **ABA can detect that drift and cannot separate it from
+the effect.** Interleaving gives three replications of the contrast, each spanning four minutes rather than
+one spanning fifteen, and balances exposure 50/50 instead of ABA's 2:1 control-heavy split.
+
+**Two minutes, not 2.5.** `Window seconds` is 60, so two minutes is exactly two whole windows and the press
+lands on a boundary. At 2.5 the press cuts a third window short and ~20% of held time lands in partials
+that have to be excluded. Precision is not critical either way — block identity comes from `protocol.step`,
+not from the clock.
+
+**Arm labels repeat on purpose.** `arm` names the *condition*, so pooling the three B1 blocks is what the
+label already does; `protocol.step` names the *block* when you need them apart.
+
+> **The control blocks gate everything.** If the three B1 blocks disagree with each other, the raid is
+> unreadable on every metric and no amount of arithmetic downstream fixes it.
 
 ### 0.1 is the top of the useful range, not a midpoint — and the floor is what actually binds
 
@@ -1171,14 +1189,19 @@ slicing engage" gap above — `slicing` is the same expression the patch branche
 `tickedSum == liveSum` on an arm-2 window means slicing did not engage, measured over every frame of the
 window rather than the last one. Both traps below are about how to *read* them; neither is a data defect.
 
-**1. `frames` is not the denominator these were accumulated under.** `frames` is `_periodSamples`, which
-increments unconditionally; the sums accumulate one line earlier, inside an `if (m != null)`. In raid those
-agree. In a **loading window, or the first window after a raid loads**, `frames` overcounts and
-`tickedSum ÷ frames` understates brains per frame.
+**1. Divide by `n`, not by `frames`.** Both are on the line. `n` is `_frame.Count`, accumulated behind the
+same `if (m != null)` in the same method as the sums, so it is the accumulation denominator **by
+construction**. `frames` is `_periodSamples`, incremented unconditionally one line later, so it can exceed
+the count the sums were taken under.
 
-> **Use `tickedSum ÷ liveSum`.** It needs no frame count at all — both sums share the one gate, so the
-> ratio is exact by construction and so is the `tickedSum == liveSum` check. The per-frame figure is the
-> one to distrust, and only outside a settled raid.
+> ~~The safe ratio is `tickedSum ÷ liveSum` because no matching frame count is emitted.~~
+> **Corrected — `n` is emitted and is the matching count.** The hazard is real and has no instances:
+> `n == frames` on **284 of 284** sample lines across all 18 logs, every state including loading. So
+> `tickedSum ÷ frames` has never actually been wrong; it is simply the one that has no guarantee.
+
+`tickedSum ÷ liveSum` remains the more useful ratio — fraction of the roster ticked per frame, which is
+what predicts frame time — and `tickedSum == liveSum` remains the exact did-slicing-engage check, since
+both sums share the one gate.
 
 **2. On the `flushedByProtocol: true` line, the labels and the measurements describe different arms.**
 `ProtocolRunner.Advance()` applies the new step's config values and *then* returns true to trigger the
@@ -1224,3 +1247,44 @@ provenance is unambiguous. An armed protocol that nobody presses is inert, but a
 That is the cross-raid leak shape `ResetForRaid` exists to close, one level up: it rewinds the protocol's
 *position* and cannot rewind the config the protocol wrote. `agents.slicing` on the first window is the
 in-situ check, and it is why that field is worth having beyond the A/B it was built for.
+
+### The primary metric — read this before computing anything
+
+**Two thresholds, and they are not interchangeable.** Alpha registered `period >= 30 ms` as primary
+(`registrations.json`, `85d05a1`) on a power argument; Gamma then measured it and sent a retraction. The
+retraction is the one to act on, and the reason is not power:
+
+| threshold | dispersion vs Poisson | drift within a raid at constant config | verdict |
+|---|---|---|---|
+| `period >= 30 ms` | **454×** overdispersed | **3.9×** across a raid, rho **+0.71** | **descriptive only** |
+| `period >= 100 ms` | 1.2× — near-Poisson | — | **primary**, and underpowered |
+
+> **Do not run a conditional binomial on `>= 30 ms`.** It assumes Poisson and the metric is not a
+> rare-event count — it tracks the frame-time distribution, so it drifts hard within a raid. That test
+> yields a confident number which is mostly drift, which is worse than no number.
+
+**So: `>= 100 ms` is primary**, with its detectable effect stated honestly — at ~2.2 events per window a
+5-minute arm holds ~11, resolving only a **4.5×** change at 80% power. Report `>= 30 ms` alongside as
+description, never as a test. The interleaved blocks above are what makes the drift survivable rather than
+fatal; they do not make `>= 30 ms` Poisson.
+
+**Count `period`, not `frame`.** The emit gate at `Telemetry.cs:966` tests `periodMs` alone — `frameMs` is
+passed in and never tested. Since `frame` travels one line ahead of `period`, a large frame can sit on a
+line whose period is under threshold and emit nothing. Counting `frame >= T` off the spike stream
+undercounts by about a third, and 8 of 16 windows have a percentile-derived lower bound above their
+observed count.
+
+### Stratify the B2 blocks — they are not one condition
+
+Arm 2 straddles two regimes, and the raid crosses the boundary on its own. At 23 agents and 17.1 ms frames
+the computed `perFrame` is 4 and `Minimum brains per frame` is 4 — **they coincide exactly.** Slicing binds
+above ~30 agents; the floor binds below ~15; **Streets runs 14–29 within a single raid.**
+
+**`tickedSum ÷ liveSum` is the arm's own covariate.** Split the B2 windows on it before pooling: a real
+effect present only in the high-agent windows gets diluted by the windows where the floor meant nothing was
+actually sliced. **Pre-register the split rather than discovering it in the analysis** — deciding where to
+cut after seeing the outcome is how a null becomes a finding.
+
+That also makes the Kaban phase sharper than "best case". It is the **highest-agent** phase of the raid, so
+it is the one place slicing is guaranteed to bind rather than sit on the floor — which makes it the
+cleaner test of the mechanism, not merely the most favourable.
