@@ -192,21 +192,25 @@ namespace Framesaver
                 "locates work that falls outside the game's own Update/FixedUpdate/render counters. Turn off " +
                 "if you suspect the injection is causing trouble.");
 
+            // Renamed from "Expand phase" when the meaning inverted from allowlist to blocklist. The
+            // rename is the point: BepInEx orphans the old key and creates this one at its default, so
+            // an existing "PreLateUpdate" goes inert rather than silently meaning the opposite. Every
+            // alternative - warnings in the description, in the run sheet, a changed default - needs a
+            // human to notice something that looks correct.
             ExpandPhase = Config.Bind(
-                "3. Telemetry", "Expand phase", "",
-                "*** MEANING INVERTED 2026-07-28: this is now a BLOCKLIST. *** Comma-separated list of "
-                + "player-loop phases NOT to break into their child systems. Blank - the new default - "
-                + "expands every phase, which is what you almost always want. An allowlist could only "
-                + "time phases someone had thought to name, so a phase carrying a rare large spike went "
-                + "unmeasured while the output looked complete; a blocklist fails toward collecting too "
-                + "much instead. Deliberately no default entries: Initialization averages 0.005 ms and "
-                + "looks like an obvious block, but one in-raid Initialization spike of 74.8 ms is on "
-                + "record - average cost is the wrong criterion for a spike instrument. "
-                + "NOTE an existing config carries the old allowlist value, which now means the "
-                + "opposite: 'PreLateUpdate' used to expand only that phase and now blocks only it. "
-                + "Read only inside Install(), so a change takes effect on the NEXT raid load - setting "
-                + "it mid-raid does nothing. The resolved set is logged at Install, including blocklist "
-                + "entries that matched no phase.");
+                "3. Telemetry", "Do not expand phases", "",
+                "Comma-separated player-loop phases NOT to break into their child systems. Blank - the "
+                + "default - expands every phase, which is what you almost always want. This is a "
+                + "blocklist: an allowlist could only time phases someone had thought to name, so a "
+                + "phase carrying a rare large spike went unmeasured while the output looked complete. "
+                + "A blocklist fails toward collecting too much instead. Deliberately no default "
+                + "entries - Initialization averages 0.005 ms and looks like an obvious block, but one "
+                + "in-raid Initialization spike of 74.8 ms is on record, and average cost is the wrong "
+                + "criterion for a spike instrument. Read only inside Install(), so a change takes "
+                + "effect on the NEXT raid load; setting it mid-raid does nothing. The phases actually "
+                + "expanded are reported as `expandedPhases` on the telemetry header, and entries "
+                + "matching no phase are logged - a blocklist typo expands something you meant to block "
+                + "and otherwise looks exactly like success.");
 
             GpuTelemetryEnabled = Config.Bind(
                 "3. Telemetry", "GPU telemetry", true,
