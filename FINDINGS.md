@@ -3007,16 +3007,53 @@ above — the backup system was the wrong suspect.
 ([RemoveUsedBotProfilePatch.cs:22](../../Community/modules-master/project/SPT.SinglePlayer/Patches/RaidFix/RemoveUsedBotProfilePatch.cs:22)).
 Every profile handed out is removed from the cache. That is correct in isolation — it stops duplicate bots.
 
-**Corrected 2026-07-28, Delta, before this went into a public PR: the patch is a no-op. `withDelete` is
-already `true` at every reachable call site in BSG's own code.** Three of them, all hardcoded:
+**Corrected 2026-07-28, Delta, before this went into a public PR: the patch is inert on the current build.
+`withDelete` arrives `true` on every reachable path in BSG's own code.**
 
-| site | file:line | value |
+**The chain is one literal deep, and the first version of this table obscured that.** It listed three sites of
+three *different* methods and omitted the one the patch actually intercepts. Alpha caught it. Corrected:
+
+| step | file:line | supplies |
 |---|---|---|
-| `BotCreationDataClass.Create`, else branch | [`BotCreationDataClass.cs:65`](../../Src/Assembly-CSharp/Assembly-CSharp/BotCreationDataClass.cs:65) | `GenerateProfile(data, ct, true)` |
-| `BotsPresets.CreateProfile`, refill after a miss | [`BotsPresets.cs:209`](../../Src/Assembly-CSharp/Assembly-CSharp/BotsPresets.cs:209) | `ChooseProfile(this.List_0, true)` |
-| `BotsPresets.FillCreationDataWithProfiles` | [`BotsPresets.cs:245`](../../Src/Assembly-CSharp/Assembly-CSharp/BotsPresets.cs:245) | `GetNewProfile(data, true)` |
+| the only literal | [`BotCreationDataClass.cs:65`](../../Src/Assembly-CSharp/Assembly-CSharp/BotCreationDataClass.cs:65) | `GenerateProfile(data, ct, true)` |
+| forward | [`BotCreatorClass.cs:197`](../../Src/Assembly-CSharp/Assembly-CSharp/BotCreatorClass.cs:197) | `Ginterface21_0.CreateProfile(…, withDelete)` |
+| forward | [`BotsPresets.cs:173`](../../Src/Assembly-CSharp/Assembly-CSharp/BotsPresets.cs:173) | `CreateProfile` override, parameter |
+| **patched here** | [`BotsPresets.cs:178`](../../Src/Assembly-CSharp/Assembly-CSharp/BotsPresets.cs:178) | `GetNewProfile(data, withDelete)` — a **variable** |
 
-and the third is **dead code — confirmed against a live raid, not only by reading.**
+`BotsPresets` does not override `GetNewProfile`, so `this.GetNewProfile` dispatches to the patched
+`GClass680` virtual and the prefix does fire. The other `GetNewProfile` call site,
+[`BotsPresets.cs:245`](../../Src/Assembly-CSharp/Assembly-CSharp/BotsPresets.cs:245), hardcodes `true` — and
+is dead code, below.
+
+**Two enumerations of this chain were wrong in opposite directions, and the disagreement is the finding.**
+Mine under-counted by naming sites of the wrong methods. Beta's over-counted: their table lists
+`BotCreatorClass.cs:131` (`ActivateBot`) as a fifth literal `true`, but `method_0`'s `withDelete` parameter
+is **never read in the method body** — it iterates an already-populated `data.Profiles` and calls
+`method_2(profile, position, callback, true, ct)`, a different flag. It is a dead parameter that never
+reaches `GetNewProfile`. So "five literals, no `false` anywhere" reads as a robustly redundant chain, and the
+truth is a single point of failure: **flip `BotCreationDataClass.cs:65` in some future EFT build and the
+patch becomes load-bearing again.**
+
+Which settles the framing. **This is not "remove this patch, it does nothing" — it is "currently inert, and
+possibly deliberate defence against a change BSG has not made."** We have no SPT-side history to tell us
+which, so claim 1 comes off the PR rather than being filed as refuted.
+
+Four ways it could still be wrong, all checked:
+
+- **Interface escape.** `IBotCreator.GenerateProfile` and `IGetProfileData.ChooseProfile` are public; a mod
+  could pass `false`. **None does** — no `false` argument anywhere under `Community/`. Fika builds its own
+  `BotsPresets` (`HostGameController.cs:570`) into the same chain; QuestingBots calls the four-argument
+  `BotCreationDataClass.Create` (`BotGenerator.cs:494`), routing through the same one literal; and
+  `PmcBotSidePatch` postfixes `ChooseProfile` but only mutates `__result.Info.Side`. The grep's own positive
+  control is that it *did* match those three, so the null is instrument-verified rather than assumed.
+- **Decompiler constant-folding.** Would produce exactly this pattern of literals. Counter-evidence:
+  `BotsPresets.cs:178` forwards a **variable**, and the parameter survives across three forwarding hops. A
+  folded constant would have folded there too.
+- **Inert now ≠ always pointless.** Conceded; that is the reframing above.
+- **`GClass688.ChooseProfile` throws `NotImplementedException`.** Constructed at exactly one site,
+  `BotSpawner.cs:772`, inside a `DebugBotProfileChooser` path. Unreachable in normal play.
+
+The dead second call site is **confirmed against a live raid, not only by reading.**
 `FillCreationDataWithProfiles` opens with an unconditional `Debug.LogError("BotProfileClient.CreateProfile")`
 ([`BotsPresets.cs:242`](../../Src/Assembly-CSharp/Assembly-CSharp/BotsPresets.cs:242)), so a single execution
 would be loud. It appears **zero times** in the 2026-07-28 10:00 session's `errors.log`, a session that
@@ -3030,12 +3067,16 @@ Why it is dead: `BotCreationDataClass.Create` branches on `botCreator as BotsPre
 live `IBotCreator` is a `BotCreatorClass` ([`LocalGame.cs:103`](../../Src/Assembly-CSharp/Assembly-CSharp/EFT/LocalGame.cs:103)
 constructs it wrapping `botsPresets` as its `GInterface21`), `BotsPresets`' base `GClass680` implements
 `GInterface21` and **not** `IBotCreator`, and nothing in the assembly derives from `BotsPresets` — so the cast
-is always null and `FillCreationDataWithProfiles` never runs. The live path is
-`Create` → `BotCreatorClass.GenerateProfile(…, true)` → `BotsPresets.CreateProfile(…, withDelete: true)` →
-`GetNewProfile(data, true)`. The patch prefixes that last call and sets `true` to `true`.
+is always null and `FillCreationDataWithProfiles` never runs.
+
+**And none of that carries weight on the conclusion, which is worth saying because it was the most elaborate
+part of the argument.** The dead method passes `true` as well. Whether it runs or not, `withDelete` is `true`.
+The branch analysis is correct and it would survive being deleted — a reminder that effort spent is not
+evidence supplied, and that the load-bearing step here was the single literal at `BotCreationDataClass.cs:65`,
+which took one line to find.
 
 Two consequences. **First, this cannot be led with as "SPT's own defect" — deleting a used profile is BSG
-behaviour, and removing the patch would change nothing.** Second, the mechanism below is unaffected: the cache
+behaviour, and on the current build removing the patch would change nothing.** Second, the mechanism below is unaffected: the cache
 really does drain at the rate of attempts. Only its *attribution* was wrong. That distinction is the whole
 value of the check, because the mechanism is what the fix targets and the attribution is what the PR would
 have claimed.
