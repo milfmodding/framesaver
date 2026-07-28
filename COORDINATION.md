@@ -2201,3 +2201,171 @@ server mod does not degrade telemetry, it breaks bot generation for the raid.
 
 Deploy is therefore opt-in (`-p:Deploy=true`), matching `Framesaver.csproj`.
 
+---
+
+## 2026-07-28 — Gamma handover at context compaction
+
+Telemetry role. Everything below was in message history and nowhere on disk, which is the same gap the
+last compaction found. The registered predictions themselves are in
+[FINDINGS.md](FINDINGS.md); **this is the runbook for reading the next log against them**, and the order
+matters because the first two checks decide whether any other number is quotable.
+
+### Run these against the next log, in this order
+
+**1. Validate before reading anything.**
+
+```bash
+python analysis/check-boundary-latch.py <log.ndjson>
+```
+
+**Exit 2 is not a pass** — it means the latch could not be validated and the run says nothing about it.
+Exit 0 requires every essential check. **Read the coverage figure in the pass line**, not just the verdict.
+
+**2. Is the zero a held assertion or an untested one?** `negResidualFrames == 0` is both the prediction and
+what a run produces if the test never ran. **`clockResidualFrames` is the denominator**, and the bound it
+supports is `3 ÷ N`:
+
+| eligible frames | bound on a residual defect rate |
+|---|---|
+| 79,999 *(the 2026-07-28 raid)* | **0.0037%** |
+| ~3,000 *(one window)* | 0.1% — the working requirement |
+| ~41 | 7.3% — **the run says nothing** |
+
+**3. The `endToLatch` registration, and it needs both rows.**
+
+| | expected | if it fails |
+|---|---|---|
+| `endToLatch[N]` vs `unaccounted[N]`, same line | well under 1 ms | the latch pairing is not what it claims; this is not a fix |
+| `endToStart[N−1]` vs `unaccounted[N]` | reproduces **0.035 ms** | the 2026-07-28 pairing was a property of that raid, not of the instrument — which weakens the resolution it supports |
+
+The second row is why `endToStart` stays in the build. **Without the field being replaced still present, a
+fix and a silent regression produce identical output.**
+
+**4. `drawCalls.max ÷ .avg` against `look.swept`.** They should flag the same windows as straddling an arm
+boundary. **Agreement promotes `look` to the arm-boundary marker for future runs; disagreement is a finding
+either way** — a runner who drifted fails `pos`, a runner who held fails nothing else. Until then
+`drawCalls` keeps the job, because the instrument under test must not define the populations it is judged
+on.
+
+### Open, and not recorded anywhere else
+
+- **The Protocol B slope is two brackets that have not been reconciled.** Alpha computed **1.83–2.38×** the
+  fitted 0.000467; Gamma computed **1.56–2.25×**. The difference is **arm membership at the edges**, and the
+  reconciliation should use **`look.swept`** — it reads 0–3.1 held against 196.8 / 195.1 on the turns, which
+  is a far cleaner boundary than draw calls. **Neither bracket should be quoted until that is settled.**
+- **The `boundaryMissedFrames` corpus rule is still owed** and still needs a log to write against. The
+  2026-07-28 raid gave **0 across all 32 in-raid windows and 1 in a loading window** — too few to describe a
+  distribution. The rule matters because `boundaryMissedFrames > 0` means **spike lines are missing from
+  that window, not that it was quiet**, and misses concentrate at raid load. Threshold for reopening the
+  latch design: **hundreds per loading window**, at which point the instrument is dark rather than blinking.
+
+### Verified clean — do not re-derive
+
+| | |
+|---|---|
+| latch assertion: 0 negative residuals over 79,999 frames, `clockResidualFrames` == `frames` exactly | held |
+| `endToStart[i−1]` ≈ `unaccounted[i]`, **22 of 22** adjacent pairs, median 0.035 ms | exact |
+| the other **25** boundary lines are **untestable, not disconfirming** — no predecessor spike line | population is defined by the field's own availability |
+| `gcGen0` = 0 on all 59 boundary-type spikes | the large family is entirely non-collection |
+| drift is a property of the **view**: wall 2.4× more stable than sightline | design input for every held-position run |
+
+### One thing that is easy to get backwards
+
+**The out-of-loop attribution stands.** It looked for several hours as though it needed withdrawing —
+`endToStart` reads ~0 on every large post-latch spike — and the resolution is that the field reports the
+stall **one line early**, not that the stall is somewhere else. Anyone re-reading the post-latch log
+cold will hit the same apparent contradiction. **The answer is the `i−1` pairing, and it is in FINDINGS
+under the resolution heading.**
+
+## 2026-07-28 — Beta: state at the second compaction
+
+Read this first after a reset. Everything below was in message history and nowhere else.
+
+### Deployed and GO-gated
+
+| | |
+|---|---|
+| **md5** | **`e6abe58c2e2199e143b279f3f29b1b7a`** |
+| **commit** | **`dbf1379`** — read from the binary with `analysis/build-provenance.py` |
+| size / `TimeDateStamp` | 122,368 / `0x93b0f658` |
+| artifact | `artifacts/Framesaver-20260728-protocol-dbf1379-e6abe58c.dll` |
+| `Assembly-CSharp.dll` | `944f6502648b62867f6bd1d41c890869` |
+| `harness/GO` | `dbf1379` — Alpha moved it; the gate is current |
+
+`git diff dbf1379..HEAD -- '*.cs' '*.csproj'` empty. **Empty is sufficient, not necessary** — a comment-only
+commit makes it non-empty while changing no IL, so when non-empty, read the diff.
+
+### The one thing that must not be lost: `endToStart` is scheduled for deletion
+
+**`endToStart` and `endToLatch` both emit, deliberately, for ONE run.** `endToStart` is superseded — it is
+written at `OnStartOfFrame`, which is *after* the phase-0 boundary latch, so its span straddles the closing
+boundary of the period being reported. `endToLatch` closes the same gap at the latch and is paired by
+construction.
+
+Both ship only because Gamma's identity on `endToStart` is a registered prediction, and replacing the field
+outright would make that prediction unevaluable — removing the only way to show the fix worked. **Same
+argument as shipping the boundary latch paired with the counters that prove it.**
+
+**Drop `endToStart` once `endToLatch` is validated against it.** If this note is lost, we ship two fields
+measuring the same thing forever, and the older one is the wrong one.
+
+Gamma's registration, on disk in FINDINGS before the build existed:
+
+> `unaccounted[N] ≈ endToLatch[N]` — same line, no subtraction, no index shift.
+>
+> **Control:** `endToStart[N−1]` vs `unaccounted[N]` must reproduce the 0.035 ms agreement, or the pairing
+> was a property of that raid rather than of the instrument.
+
+### Also live and not obvious from the code
+
+- **`protocol` reads `null` until a protocol is installed.** `protocol-example.ini` is the template; it must
+  be copied to `BepInEx\config\framesaver.protocol.ini` to arm. Not installed as of this writing, so `null`
+  is the *expected* reading and not a defect.
+- **`ProtocolRunner.Load`'s state machine is untested** — it needs a BepInEx `ConfigFile` to resolve keys.
+  The in-situ check is better and should be run on the first protocol raid: **the line carries
+  `protocol.steps`; if the file defines three and the log says three, the parse worked on the file in use.**
+- **The protocol key is `Ctrl+Alt+PageDown`** and an accidental press voids the arm in progress.
+
+### Queue
+
+1. **Drop `endToStart`** once `endToLatch` validates (above).
+2. **Gamma's rule of three** in `check-boundary-latch.py` — zero events in N trials bounds the rate at 3/N,
+   so a pass line states what it excludes. Their proposal, better than the threshold I shipped; deliberately
+   deferred until there are real numbers to add it against.
+3. **Shutter deploy** — `F:\SPT\Mods\Shutter`, separate repo, `e812990`, built and **not deployed**.
+   `user\mods\` holds only LootingBots and SAIN. **Placing the files IS deploying, on a delay** — server
+   mods load at server start, and the server gets launched for reasons unrelated to any deploy decision.
+4. **`ProfileBuild.Depth` finalizer** — Delta's `[HarmonyFinalizer]` beats my `ResetWindow` reset, because a
+   window reset bounds the damage without stopping the latch. The latch has **never fired** (68 of 68
+   windows carrying a `bot/generate` callback show `profileBuild` work), so this is forward-looking.
+
+### Two rules from this stretch, both earned
+
+**A field can be broken by a change that does not touch it.** I moved `period` to the frame boundary and
+checked that the diff did not touch the `endToStart` subscriptions, concluding it did not affect them. **A
+diff shows one side of a relationship, and correctness lives between the two.** Gamma had written the
+precondition for exactly this and satisfied themselves from the same diff — *we both checked the same wrong
+thing from opposite sides.* Second instance today, after the guard tightening.
+
+**A tolerance wide relative to the values matches everything, and the baseline moves with it.** Alpha's
+first pairing figures (34% / 79%) came from running the null over all in-raid spikes, where both quantities
+sit near zero and a ±5 ms tolerance matches unconditionally — so the rate and its baseline inflated
+together and the comparison looked controlled. At the correct cut it is 22/22 against a 0.0% baseline.
+
+### `grep` cannot verify a .NET binary, and it was in my deploy declarations
+
+A .NET assembly has two string heaps: **`#Strings` is UTF-8** (type, member and field names) and **`#US` is
+UTF-16** (string literals). `grep -c <name> dll` sees only the first.
+
+So a telemetry field existing **only as a literal** returns a confident **0** while working —
+`windowSec` and `protocol` are exactly that. `endToLatch` matched only because a member is called
+`_endToLatchMs`; `yawSwept` matched for that reason while never being a literal at all.
+
+Every earlier declaration happened to check names that doubled as member names, so no past claim was wrong
+— **luck, not method.** The failure direction is the worst available: a false 0 in a declaration reads as
+*"the feature is not in the binary"*.
+
+**Use `analysis/probe-symbols.py`.** It checks both heaps, names which one matched, and exits 1 on anything
+missing. Fifth instrument-saw-nothing of the day and **the first inside a verification tool** — the one
+place it can invalidate everything checked with it.
+
