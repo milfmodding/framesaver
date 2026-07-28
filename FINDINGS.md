@@ -3405,11 +3405,22 @@ decision and has been asked.
 prediction, and it is also what a raid produces if the residual test never ran. The two are the same bytes,
 which is the shape this project has now hit four times.
 
-| | |
-|---|---|
-| `clockResidualFrames` ≈ `frames − boundaryMissedFrames`, in the **thousands** per window | the assertion was tested and held |
-| `clockResidualFrames` in the **tens** | the assertion was not tested. **Not a pass** — the run says nothing about the latch either way |
-| `clockResidualFrames` **0** | caught by [`check-boundary-latch.py`](analysis/check-boundary-latch.py) |
+**Say what the run rules out, rather than picking a threshold.** "In the thousands" was the first version
+of this and it is a guessed number in the same family as the 23.9% figure — a constant chosen before the
+data. There is a standard quantity that needs no constant: with **zero** events observed in *N* trials, the
+95% upper bound on the underlying rate is **3 ÷ N**. So the eligible count converts directly into the
+strongest statement the run supports:
+
+| `clockResidualFrames` | 95% bound on a residual defect rate | reading |
+|---|---|---|
+| **6,700** *(≈2 windows)* | **0.045%** | the assertion was tested and held |
+| **3,000** *(≈1 window)* | **0.1%** | comfortably below any plausible failure rate — the working requirement |
+| **300** | **1%** | marginal; a fix that half-worked would survive this |
+| **41** | **7.3%** | **the run says nothing.** Not a pass and not a failure |
+| **0** | — | caught by [`check-boundary-latch.py`](analysis/check-boundary-latch.py) |
+
+**One full window of eligible frames is the natural unit**, and it lands at the 0.1% bound. That is the
+criterion: not a magnitude, but *what the observed zero is able to exclude.*
 
 The degenerate case is caught in code. **The nearly-degenerate case is the one that slips through**, because
 it looks exactly like a pass and arrives with a plausible-looking number beside it.
