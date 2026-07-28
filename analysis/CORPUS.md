@@ -177,6 +177,24 @@ consecutive windows **together with an inflated `unaccounted`** — not the per-
 `TimeUpdate` shows normally. One phase blinking out for one window is the 0.5 ms threshold; the same phase
 gone for the rest of the session while the residual grows is the guard failing.
 
+**Window length is on the header and nowhere else, against a setting that is live-editable.** Every
+per-window rate in this project divides by it — `frames ÷ windowSeconds` is how fps per window is computed
+— and no `sample` line carries it. `cfg` is repeated per line precisely because BepInEx config can change
+mid-session; `Window seconds` is the one setting that governs the line's own denominator and is *not* in
+`cfg`. *Wrong conclusion:* that a rate computed from `frames` is comparable across a session in which the
+setting was touched. **Recovery: read `windowSeconds` from the header, and treat any log where it may have
+been edited live as having no reliable per-window rates after the edit** — nothing in the data would say.
+No log in this corpus is known to have been edited that way, and none could show it if it had been.
+
+**`drawCalls.max ÷ .avg` rises with window frame count** — `corr(frames, ratio) = +0.484` over 76 in-raid
+windows, median **1.48** in the lowest third by frame count against **1.81** in the highest. A `max` has
+more chances to be extreme when there are more samples, and frame counts across this corpus span **659 to
+6,299**, nearly 10×. *Wrong conclusion:* that the ratio is comparable between a low-fps window and a
+high-fps one, or that the ≤ 1.15 held-view threshold means the same thing in both. **Recovery: compare the
+ratio only across windows of similar `frames`.** The threshold survives its intended use — a genuinely
+held view drives the ratio to ~1.0 by having no view change at all, not by sampling less — but it is
+calibrated on ~60 s windows and **must not be transported to a partial one.**
+
 **`gpu.vram` reads a string on the first window of each GPU-carrying log.** Initialisation, not failure.
 *Wrong conclusion:* that the `overBudget` regression guard is absent. **Recovery: skip window 0** — the field
 is live in 14 of 15 windows in the most recent log.
