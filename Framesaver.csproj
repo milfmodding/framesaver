@@ -26,6 +26,13 @@
     <SptDir>$(MSBuildProjectDirectory)\..\..\SPT4.0.13</SptDir>
     <ManagedDir>$(SptDir)\EscapeFromTarkov_Data\Managed</ManagedDir>
     <BepInExDir>$(SptDir)\BepInEx</BepInExDir>
+
+    <!--
+      tests\ holds its own project, and the SDK's default **\*.cs glob would otherwise compile it and
+      its generated obj\ assembly-info into this assembly - which fails with duplicate-attribute errors
+      rather than anything that names the cause. Adding a test broke the build until this line existed.
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
