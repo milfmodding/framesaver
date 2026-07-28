@@ -61,6 +61,7 @@ $ClientExe   = Join-Path $InstallDir 'EscapeFromTarkov.exe'
 $PluginDll   = Join-Path $InstallDir 'BepInEx\plugins\Framesaver.dll'
 $ConfigFile  = Join-Path $InstallDir 'BepInEx\config\framesaver.ai.perf.cfg'
 $LogDir      = Join-Path $InstallDir 'BepInEx\plugins\Framesaver-logs'
+$BepInExLog  = Join-Path $InstallDir 'BepInEx\LogOutput.log'
 $ProfileDir  = Join-Path $ServerDir 'user\profiles'
 $HttpConfig  = Join-Path $ServerDir 'SPT_Data\configs\http.json'
 $ArgsFile    = Join-Path $HarnessDir 'launch-args.json'
@@ -529,8 +530,44 @@ function Invoke-PostFlight {
         else { Warn 'this run produced no new ndjson - the plugin may not have loaded' }
         return
     }
+    # Preserve the engine and BepInEx logs beside the ndjson, because some things
+    # a run has to prove are only in them and both are overwritten on the next
+    # launch. The brain-slicing arm is the live case: `cfg.brainPeriod` reports
+    # the value REQUESTED, and whether slicing actually engaged past
+    # `ModCompat.SuppressSlicing` appears only in the BepInEx summary. So a log
+    # can read `brainPeriod: 0.1` on a vanilla arm, and the artifact that says
+    # otherwise is one game start from gone. See analysis/CORPUS.md, "Recoverable,
+    # but only from outside the ndjson".
+    $eft = "$env:LOCALAPPDATA" + 'Low\Battlestate Games\EscapeFromTarkov'
+    $sidecars = @(
+        @{ From = "$eft\Player.log";              Suffix = 'Player.log' },
+        @{ From = $BepInExLog;                    Suffix = 'BepInEx.log' }
+    )
+
     foreach ($f in $new) {
         Ok ("log {0} ({1:n0} bytes)" -f $f.Name, $f.Length)
+
+        $stem = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+        foreach ($s in $sidecars) {
+            if (-not (Test-Path -LiteralPath $s.From)) {
+                Warn ("no {0} to keep - {1}" -f $s.Suffix, $s.From)
+                continue
+            }
+            $dest = Join-Path $LogDir ("{0}.{1}" -f $stem, $s.Suffix)
+            # Never overwrite: a second post-flight pass over the same log must
+            # not replace the copy taken when it was fresh.
+            if (Test-Path -LiteralPath $dest) {
+                Note ("{0} already kept" -f $s.Suffix)
+                continue
+            }
+            try {
+                Copy-Item -LiteralPath $s.From -Destination $dest -ErrorAction Stop
+                Ok ("kept {0}" -f (Split-Path $dest -Leaf))
+            } catch {
+                Warn ("could not keep {0}: {1}" -f $s.Suffix, $_.Exception.Message)
+            }
+        }
+
         if (-not (Test-Path -LiteralPath $LatchCheck)) { continue }
 
         & python $LatchCheck $f.FullName

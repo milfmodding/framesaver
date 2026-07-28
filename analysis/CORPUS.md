@@ -99,6 +99,17 @@ cleared at raid teardown, so every bot asleep when a raid ends stays counted for
 entirely to the three multi-raid logs and is **zero in every single-raid log**. The offset equals the prior
 raid's final `asleep` count and accumulates across raids (0 → 18 → 41 → 62 → 76 in the five-raid log).
 
+> **Fixed in the build deployed on 2026-07-28, so the recovery rule above applies to the logs listed here and
+> must not be carried forward.** `SleepingBotAnimatorPatch.ResetForRaid()` now runs on each raid transition,
+> alongside `Census.ResetForRaid()` and `ProtocolRunner.ResetForRaid()`. Confirmed present in
+> `e6abe58c2e2199e143b279f3f29b1b7a` with `analysis/probe-symbols.py`, not grep.
+>
+> **This matters most for the run that needs it most.** *"Use raid 1 of any log"* would discard eight legs of a
+> nine-leg transit marathon — the single cheapest way to cover the six maps this corpus has never launched. A
+> stale recovery rule costs more than the defect did, because the defect only inflated one field while the rule
+> throws away whole raids. **When a defect is fixed, date the fix in the same entry rather than deleting it**:
+> the older logs still need the rule, and a reader cannot tell which side of the fix a log falls on without it.
+
 **Spike counts do not join across logs.** `Spike event ms` has been 100, 50 and 30.
 *Wrong conclusion:* that a log with more spike lines had more stalls. **Recovery: segment on the header's
 `spikeEventMs`, and normalise to a common `period` cut before comparing rates.** The last two columns above do
