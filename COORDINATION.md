@@ -2023,3 +2023,38 @@ the argument requires; 2× is defensible.
 That is the second job step 3 has turned out to do. Note it also means arm1↔arm3 gates the run *and* serves
 as the replication check — correlated, but in the safe direction: a run that drifted badly fails both, and
 both answers are "re-run".
+
+### The drift curve turns over, and only one of the two explanations survives
+
+Gamma extended the `drawCalls.avg` drift measurement past the gaps I quoted and it is **not monotone** — it
+rises to gap 3 and falls after, so my "drift grows with separation" premise is true over gaps 1–3 and false
+beyond. Confirmed independently; medians differ from Gamma's in the third digit on corpus selection, shape
+agrees.
+
+They offered two mechanisms. **Mean reversion holds; sample composition does not.** Restricting every gap to
+logs with ≥8 raid windows gives an *identical* curve, because all four contributing logs have 10, 12, 24 and
+30 — every log already contributes to every gap out to 7. There is no composition shift to explain anything.
+
+That matters for how the prohibition is worded. Composition would have made the curve an artifact worth
+discounting; **mean reversion makes it a real feature of the wrong population** — a fact about how a person
+walks around Streets, which is precisely what holding position removes. The stronger form of Gamma's point.
+
+Alongside it: the curve rests on **four logs**, and adjacent gaps share overlapping pairs from the same four
+series, so the points are heavily correlated. Real for those four, generality unestablished. Same conclusion,
+second reason.
+
+**And the gate does not need any of it.** Gamma's replacement argument is that arm1↔arm3 is conservative-or-
+equal under any noise process that does not *decrease* with separation — flat for independent noise,
+increasing for slow drift. No model required. My version needed a monotone-growth premise imported from the
+population we had just agreed not to calibrate with, which is the error one step before making it.
+
+### The countermeasures that worked today are the ones that need no model
+
+Announce-the-file, stage-by-path and diff-before-staging all failed in the hands of people who knew the rule,
+because each asks you to anticipate what three other agents are doing with files you cannot see. What worked:
+a **short window** between edit and commit, a **positive control** in the same invocation as the query, and
+reading the commit **out of the deployed assembly** at the moment of use.
+
+The common property, and it is Gamma's phrasing: **a control works because it does not require you to have
+guessed the failure mode in advance.** All three are unilateral and blind to intent. All three were found by
+hitting the failure first.
