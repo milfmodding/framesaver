@@ -1288,10 +1288,30 @@ retraction is the one to act on, and the reason is not power:
 > rare-event count — it tracks the frame-time distribution, so it drifts hard within a raid. That test
 > yields a confident number which is mostly drift, which is worse than no number.
 
-**So: `>= 100 ms` is primary**, with its detectable effect stated honestly — at ~2.2 events per window a
-5-minute arm holds ~11, resolving only a **4.5×** change at 80% power. Report `>= 30 ms` alongside as
-description, never as a test. The interleaved blocks above are what makes the drift survivable rather than
-fatal; they do not make `>= 30 ms` Poisson.
+**So: `>= 100 ms` is primary**, and its detectable effect belongs in the sheet *before* the raid rather
+than as an excuse after it. At the measured ~2.2 events per window, exact conditional binomial, two-sided,
+80% power:
+
+| design | held | windows/condition | detectable ratio |
+|---|---|---|---|
+| old ABA, 5 min × 3 | 15 m | 10 control vs 5 treatment | **~4.7×** |
+| interleaved 2 min × 6 | 12 m | 6 | **~5.7×** — *worse than the ABA it replaced* |
+| **interleaved 3 min × 6 — installed** | 18 m | 9 | **~3.5×** |
+| interleaved 4 min × 6 | 24 m | 12 | ~2.9× |
+
+**The row that decides the block length is the second one.** Interleaving buys drift control and pays for
+it in exposure; at two minutes the net was a design more valid and *less able to see anything* than the one
+it replaced. Three minutes gets both, for six more minutes of standing still.
+
+> **Three people have derived these and they disagree by up to ~1.4×** — Alpha 3.74× where this table says
+> 3.5×, Gamma 4.5× for the ABA row. Most of the gap is that the **ABA design is not balanced** (control is
+> B1+B3, twice the treatment exposure) and an unbalanced conditional test has null `p₀ = W₁/(W₁+W₂)`, not
+> 0.5; the rest is small-`N` discreteness in the exact test. **The ranking is identical under all three,
+> and the ranking is what the block-length decision turns on.** Quote the ordering, not the digits, until
+> one derivation is agreed.
+
+Report `>= 30 ms` alongside as description, never as a test. The interleaved blocks make the drift
+survivable rather than fatal; they do not make `>= 30 ms` Poisson.
 
 **Count `period`, not `frame`.** The emit gate at `Telemetry.cs:966` tests `periodMs` alone — `frameMs` is
 passed in and never tested. Since `frame` travels one line ahead of `period`, a large frame can sit on a
