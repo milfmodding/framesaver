@@ -206,3 +206,8 @@ And it does **not** re-read a `live` log, so its numbers age exactly as the prov
 
 `analysis/ticker-manifest.json` lists the 759 `Assembly-CSharp` types that receive a per-frame Unity message,
 transitively closed over base types — 585 declaring one directly and 174 inheriting without overriding.
+
+`analysis/corpus-table.py` regenerates the provenance table above. Dependency-free; prints markdown to stdout.
+It applies **both** normalisations together because either alone is misleading, snapshots the corpus once so a
+live log cannot make it disagree with itself, and prints a warning naming any log that may still be growing.
+**Re-run it after any session ends** — a `live` row's counts are partial by definition.
