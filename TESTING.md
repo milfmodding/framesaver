@@ -382,12 +382,15 @@ locates a line without arithmetic.
 
 - **Where you stood and what you aimed at**, in one sentence each. A protocol that cannot be repeated next
   month is a single measurement wearing a protocol's clothes, and nothing in the ndjson names the spot.
-- **That the causal claim rests on the arm 1 ≈ arm 3 replication.** `pos` records position and never look
-  direction, so no field verifies the aim point was held; `drawCalls.max ÷ .avg` certifies that *a* view was
-  held, not *which*. What rules out a scene change driving the draw calls instead of the view is that a
-  spontaneous change does not revert exactly. **Whoever reads the result needs to know that is what carried
-  it** — otherwise the yaw/pitch fields land later, the claim gets restated as though it had been measured
-  directly, and nobody can tell which runs predate the instrument.
+- **That the causal claim rests on the arm 1 ≈ arm 3 replication.** `drawCalls.max ÷ .avg` certifies that
+  *a* view was held, not *which*. What rules out a scene change driving the draw calls instead of the view
+  is that a spontaneous change does not revert exactly. **Whoever reads the result needs to know that is
+  what carried it** — otherwise the claim gets restated later as though it had been measured directly, and
+  nobody can tell which runs predate the instrument.
+- **Whether `pos.look` was present, and whether it read plausibly.** The field ships from `52d398f` onward,
+  so **the run in which it first appears is the boundary** any later reader needs in order to know which
+  results rest on the replication and which on a measurement. Record it explicitly; the ndjson says the
+  field exists, not that anyone trusted it yet.
 
 ---
 
@@ -932,10 +935,23 @@ else. **So no field verifies that you held the aim point**, which is precisely w
 3.21, median 1.63, with only 5 windows at or below 1.15. A fixed view genuinely does drive it to ~1.0, and
 roaming genuinely does not — so ≤ 1.15 certifies a held view without certifying *which* view.
 
-**Built, tested, and deliberately not deployed for this run.** `pos.look = {samples, yaw:{range,swept},
-pitch:{range,swept}}` exists complete at `artifacts/Framesaver-20260728-look-52d398f-a38db8cc.dll`. It was
-deployed briefly and withdrawn with the no-more-builds-before-the-raid call, so **tonight runs without it
-and the stand-in below is what carries the held-view condition.** Post-raid it is a copy, not a rebuild.
+**Shipped, and deployed for this run** — `a38db8cc` / `52d398f`, verified on disk rather than from a
+message. `pos.look = {samples, yaw:{range,swept}, pitch:{range,swept}}`, or `"look":null`.
+
+**It does not yet carry the held-view condition, and tonight is not the run that lets it.** The field has
+never produced a line, so its first reading validates the *instrument*, not the protocol. Tonight the
+causal claim still rests on the arm 1 ≈ arm 3 replication; `look` runs alongside as a cross-check whose own
+first output is under test.
+
+> **Protocol B is its own positive control for the field, at no cost.** Step 2 is a deliberate large yaw
+> change between two deliberately held views — so arms 1 and 3 must show **small `swept`** and the
+> transitions **large**. That pattern is the field working. A large `swept` inside a held arm means either
+> the field is wrong or the runner moved, and the other criteria say which.
+>
+> **If it reads that way, later runs can rest on `look` directly and drop the replication argument to a
+> secondary check.** If it does not, nothing about tonight's result changes — the claim never depended on
+> it. This is the cheapest possible way to bring a new field into service: put it in a run whose
+> manipulation already exercises it, and let the run decide.
 
 > **The one thing to know about it before reading a `look` field**, because it nearly shipped inverted:
 > **raw yaw min/max reports a perfectly held view as a full 360° sweep.** Yaw wraps, so a view held near

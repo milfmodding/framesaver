@@ -3552,6 +3552,11 @@ Worth keeping — several of these cost real time to learn.
   four different outcomes, a callback scan matching 74 candidates including `keepalive`, and a phase scan
   reporting zero when three artifacts existed. **The absurd uniformity announced the bug in all four**, and
   in none of them did the wrong answer look implausible on its own — only the *distribution* of answers did.
+- **A state observed without its history reads as a defect.** Alpha's, and it is a different family from
+  silence or from stale text: a *correct* observation producing a confident wrong conclusion because the
+  missing information was elsewhere rather than absent. A scan reporting no candidates when three existed;
+  a deliberate restore diagnosed as a failed deploy. **The countermeasure is one question — "what would
+  have to be true for this state to be correct?"** — and it would have caught both.
 - **A single read of a file another agent is writing is a sample, not a state.** Verifying a restore, the
   first read returned the superseded binary and the second, two seconds later, the restored one — the copy
   landed between them. A stale *declaration* has been the recurring failure all day; this is the same
