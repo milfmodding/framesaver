@@ -3101,6 +3101,18 @@ Worth keeping — several of these cost real time to learn.
   **So the thing worth keeping is not any individual catch: it is that nobody defended a number once it was
   checked.** That is what made a day with this many defects cost zero runs, and it is the only part of the
   practice that has to survive contact with being wrong in public.
+
+  **And the honest reason it was cheap is the corpus, not the care** (Delta, 2026-07-28). Every catch above
+  landed on data already on disk — fifteen ndjson logs and three PresentMon captures, re-derived as many times
+  as anyone wanted for free. The same defect rate against a workflow where each check costs a raid would have
+  been a different day entirely. **The transferable lesson is not "we caught a lot", it is "being wrong was
+  cheap because the corpus was rich enough to be re-queried"** — which is an argument for the telemetry
+  investment rather than for anyone's diligence.
+
+  The corollary sets the price of the next step: a measurement that no existing log can reproduce loses this
+  protection entirely. That is why the `endToStart` bracket's prediction was registered **before** the
+  instrument had ever produced a number — a pre-registration is the substitute for cheap re-derivation, and it
+  is only a substitute.
 - **A label is not a caveat. A qualifier that lives anywhere except the number will be dropped by the first
   person who quotes it.** Two figures in this document were misread this way four days apart, and **neither
   was a measurement fault** — both numbers were correct, and in both cases the qualification was sitting in
