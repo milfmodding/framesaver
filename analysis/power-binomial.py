@@ -30,9 +30,35 @@ TWO REAL ERRORS FOUND WHILE RECONCILING, both worth keeping:
     Same denominator family as everything else today: the null has to describe the
     design, not the ideal.
 
-Design figures are for CHOOSING an arm length. **For reporting after a raid,
-condition on the realized total** — `read-slicing-raid.py` does that, calling the
-detectable ratio on the observed count rather than on a projection.
+RESOLVED. Gamma found their own bug: the simulation generated the treatment arm as
+`lambda * r` instead of `lambda / r` — inflated rather than depleted. Slicing is
+meant to *reduce* stutter, so under H1 the treatment arm is the depleted one and
+`T` shrinks; crediting it with events the hypothesis does not produce is the same
+error as holding `T` at its null value, reached from the other side. Corrected,
+their figures land on this file's exactly at 9 and 12 windows per arm.
+
+Their note on how it went wrong is the part worth keeping: they had a hypothesis
+that explained the 1.4x gap — halved sample gives sqrt(2) — and the arithmetic was
+consistent with it, so they stopped. **A consistent explanation is not a confirmed
+one.** Reproducing the other figure would have taken a minute and would have shown
+the diagnosis was wrong before it was sent.
+
+TWO FIGURES, BOTH CORRECT, DIFFERENT QUANTITIES. Do not quote one as the other:
+
+  * **Design figures** — what this file prints — average over a random `T` that H1
+    itself shrinks. 6 windows/arm gives 6.43x. **Use this to choose an arm length
+    before the raid.**
+  * **Post-hoc figures** condition on the realized total. At an observed `T = 18`
+    that reads about 4.7x. **Use this for "what could this raid have seen",** and
+    it is what `read-slicing-raid.py` prints beside the critical count.
+
+Quoting the post-hoc number as the design requirement understates what the design
+needed, which is the direction that turns an underpowered null into a finding.
+
+SELF-CHECK, and it needs no second implementation: at the reported ratio, if
+`E[control] < k_crit` then the figure is wrong, because the expected outcome not
+rejecting caps power below 50%. Asserted below on every row. It would have caught
+Gamma's bug and it would have caught mine had it gone the other way.
 """
 import sys
 from math import comb, exp, lgamma, log
@@ -124,10 +150,30 @@ def main():
         ('interleave 2 min x8', 8, 8),
         ('old ABA 5 min x3, real 10v5', 10, 5),
     ]
+    failures = []
     for label, wc, wt in designs:
         p0 = float(wc) / (wc + wt)
-        print('%-32s %-6d %-6d %-9.1f %-9.3f   %.2fx'
-              % (label, wc, wt, RATE * wc, p0, detectable(wc, wt)))
+        r = detectable(wc, wt)
+        # The self-check, on every row. At the reported ratio the expected control
+        # count must reach the critical value, or the expected outcome does not
+        # reject and power is capped below 50% -- so the figure cannot be an 80%
+        # detectable effect. This is cheap and it catches the whole family of
+        # H1-direction errors without a second implementation to disagree with.
+        ec = RATE * wc
+        t = int(round(ec + RATE * wt / r))
+        k = critical(t, p0)
+        flag = ''
+        if k is None or ec < k:
+            flag = '   <-- SELF-CHECK FAILED (E[ctrl] %.1f < k %s)' % (ec, k)
+            failures.append(label)
+        print('%-32s %-6d %-6d %-9.1f %-9.3f   %.2fx%s'
+              % (label, wc, wt, ec, p0, r, flag))
+    if failures:
+        print('\n%d row(s) failed the self-check and must not be quoted: %s'
+              % (len(failures), ', '.join(failures)))
+    else:
+        print('\nself-check passed on every row: at each reported ratio the '
+              'expected control count reaches the critical value.')
 
     print('\nWhat "rejecting at the expected outcome" buys, which is about 50% '
           'and not 80%:')
