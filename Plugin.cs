@@ -417,6 +417,7 @@ namespace Framesaver
             if (ProfilePlayerLoop.Value)
             {
                 PlayerLoopProfiler.Install();
+                PlayerLoopProfiler.ArmFrameGap();
             }
 
             if (TelemetryEnabled.Value)
