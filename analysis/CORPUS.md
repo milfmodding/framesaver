@@ -229,6 +229,31 @@ Quoting it as one produced a phantom 40% disagreement with the user's own observ
 16.51 ms against that column's 11.51. **Recovery: read the median columns in
 [TESTING.md](../TESTING.md).**
 
+### Recoverable, but only from outside the ndjson
+
+**`cfg.brainPeriod` is the value *requested*, not the value in force.** It reads `BrainUpdatePeriod.Value`, so
+it reports what the config asks for whether or not slicing actually engages. `ModCompat.SuppressSlicing` is
+`DeferToOtherAiMods && (Orbit || BigBrain)`, and `DrakiaXYZ-BigBrain.dll` ships as a SAIN dependency — so on
+any install with SAIN and the **default** `Defer to other AI mods = true`, `AICoreControllerUpdatePatch` takes
+the vanilla path while the log still reads `brainPeriod: 0.1`.
+
+*Wrong conclusion:* that an arm labelled 0.1 was sliced. **The natural reading of a null is then "slicing does
+not help", drawn from an arm that never ran** — the most expensive shape of wrong answer available, because it
+retires a fix on evidence that never tested it.
+
+**Recovery: `Player.log`.** With `DeferToOtherAiMods` false and BigBrain present, `ModCompat.LogSummary()`
+takes the `!defer` branch unconditionally and writes positive confirmation there. Nothing in the ndjson
+carries it: `SuppressSlicing` is not emitted, and `AICoreControllerUpdatePatch.LastBrainsTicked` — whose own
+doc comment says it *"confirms slicing is doing what it claims"* — reaches no line. Requested from Gamma as
+two fields; until they land, **an ndjson alone cannot establish that slicing was active**, and any
+brain-slicing arm needs its `Player.log` kept alongside.
+
+Three separate facts had to agree to see this: the plugin list, the guard's boolean, and *which* value the
+telemetry field reports. Beta found it before the raid rather than after, which is the only reason it is a
+note here instead of a withdrawn finding. Note the family — it is the same one as `animCulled` and
+`state: loading`-at-menu: **a field that reports an intent rather than a state reads as healthy in exactly the
+case it needs to warn about.**
+
 ### Fatal
 
 **`initHeapDeltaMb` is unusable.** It read 6,900.8 MB inside a 116.6 MB container on one raid and a consistent
