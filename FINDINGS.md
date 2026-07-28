@@ -3414,6 +3414,20 @@ which is the shape this project has now hit four times.
 The degenerate case is caught in code. **The nearly-degenerate case is the one that slips through**, because
 it looks exactly like a pass and arrives with a plausible-looking number beside it.
 
+**Demonstrated, not predicted.** A synthetic window with `clockResidualFrames: 41`, `boundaryMissedFrames:
+3359` and `negResidualFrames: 0` — **98.79% of frames missing the boundary** — is reported by
+`check-boundary-latch.py` as `PASSED`, exit 0. The coverage figure appears, as `info`, two lines above the
+verdict.
+
+**This is the more likely defect, not the exotic one.** A latch that *mostly* does not fire is more probable
+than one that never fires: a marker surviving the raid-load swap intermittently, or being clobbered and
+reinstalled on a cycle, produces exactly this shape. The zero case is caught; the 1.2%-coverage case is
+not, and it reads as a clean result at a glance.
+
+**The rule underneath it, which is the day's lesson in one line: an assertion's strength scales with the
+eligible count, so the eligible count belongs next to the assertion** — in the same line and at the same
+severity, not above it as an aside.
+
 ##### There is a third population, and it is derivable rather than named
 
 Read against the shipped `61697b1` rather than against the spec. `Sample()` has **three** paths, not two:
