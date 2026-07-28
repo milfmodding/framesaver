@@ -3235,10 +3235,30 @@ re-armed — depresses `negResidualFrames` while leaving `frameOverPeriodFrames`
 "`negResidual` is much rarer" arriving for a reason that has nothing to do with a positive floor. **The
 number of skipped frames is in no field**, so the confound cannot be measured out afterwards.
 
-**So the test is the conditional means, not the rates.** `SumMs ÷ own Frames` is internally normalised and
-immune to this: it is a mean over whatever frames were counted, whichever those were. Rows 2 and 5 stand as
-written and rows 1 and 4 drop to corroboration. Registered this way *before* the data exists, because
-afterwards "we used the means" is indistinguishable from having picked the statistic that worked.
+**So the test is the conditional means, not the rates.** `SumMs ÷ own Frames` is far less sensitive to it:
+Beta confirms the sum accumulates *inside the same branch as the increment*, so it is a mean over exactly
+the frames that were counted. Rows 2 and 5 stand as written and rows 1 and 4 drop to corroboration.
+Registered this way *before* the data exists, because afterwards "we used the means" is indistinguishable
+from having picked the statistic that worked.
+
+**"Immune" was too strong, and the residual bias runs the wrong way.** The excluded frames are the ones
+where the profiler was not installed — during the player-loop swap, which is when stalls concentrate. So
+the exclusion drops frames *more* likely to carry a large deficit, and **`negResidualSumMs ÷
+negResidualFrames` is biased downward by an unmeasurable amount.** That weakens exactly one inference: a
+sub-millisecond reading is **weaker** evidence for "the negatives are jitter" than it looks, because the
+mechanism-sized frames may not be in the sample at all. A large reading is unaffected.
+
+**Beta's refinement of the thresholds, which sharpens the embarrassing outcome rather than softening it.**
+Sum and count share a branch, so both are conditioned on a deficit existing — and if jitter is symmetric,
+about half of *all* frames land on the deficit side and enter both. **A jitter-only window therefore reads
+a mean of order the jitter magnitude — sub-0.1 ms, not zero.** The bands: **under ~0.1 ms is pure
+jitter**, **tens of ms is the mechanism**, and **0.1–1 ms is an ambiguous middle no single number
+resolves.** Registering the middle band as ambiguous is the point — without it a 0.4 ms reading gets argued
+into whichever camp the reader already occupied.
+
+**A rate is still available and is not the same statistic.** `frames` is on every line, so
+`negResidualFrames ÷ frames` can be computed — it is simply conditioned differently from
+`frameOverPeriodFrames ÷ frames`, which is the whole content of the amendment above.
 
 **One int would fix it properly** — a counter incremented where the residual test is actually evaluated,
 giving `negResidual` a denominator of its own. `Telemetry.cs` is Beta's and `403b1aeb` is frozen; proposed
@@ -3274,15 +3294,35 @@ not a detail.
 ### Registration 2 — the boundary latch, not yet built
 
 Beta's item 4 latches **both** `ReadAndReset()` and the `period` timestamp at the Begin marker of the
-first top-level phase. Under it the eight phase intervals are disjoint sub-intervals of the period window.
+first top-level phase — confirmed by them directly, and **it is the whole fix.** The variant where
+`Sample()` keeps computing `period` while only the snapshot moves is the broken one, and it is what the
+original queue described. So the first thing to establish from the build is not a number but a fact:
+**did both move, or only one.** Everything below assumes both.
+
+Two source facts underwrite it, re-derived by Alpha rather than assumed: `GClass660.InsertAsSubSystem`
+implements `First` as `list.Insert(0, …)` (`GClass660.cs:115`), which is why `FrameCounter` ends up ahead
+of `StartOfFrame`; and `wrapped[0] = MakeBegin(phaseSlot)` (`PlayerLoopProfiler.cs:294`) puts our Begin at
+index 0 of every top-level phase, so the marker on `root.subSystemList[0]` is first in the frame.
 
 The consequence is not statistical and there is no threshold to choose:
 
-> **`negResidualFrames` must be exactly 0, for the whole run.** Not "small". Not "much reduced". Zero, by
-> construction — and any non-zero value is a defective instrument rather than a property of the game.
+> **`negResidualFrames` must be exactly 0, and `negResidualWorstMs` exactly 0, for the whole run.** Not
+> "small". Not "much reduced". Zero, by construction — and any non-zero value is a defective instrument
+> rather than a property of the game.
+
+`WorstMs` matters as much as the count here and for a different reason: a count can be argued down to
+"nearly zero, close enough", while a worst magnitude names the size of whatever survived. **One frame at
+200 ms and forty at 0.02 ms are the same count and completely different findings.**
 
 That is what makes shipping the counters one build ahead of the fix worth doing: it converts the counter
 from a measurement into an assertion.
+
+**And an assertion needs a witness.** A zero that means "the identity held" and a zero that means "the
+branch never ran" are the same bytes — the guard skips the residual test entirely when the profiler is
+uninstalled. That is the fourth instance of this shape in one day, after `proc` reading zeros, `gcPhase`
+selected by its own success, and `endToStart` emitting `null` for two distinct reasons. **The eligible-frame
+counter proposed above stops being a nicety once the fix lands and becomes the thing that makes the zero
+readable at all.**
 
 Three further predictions, each of which someone will otherwise get backwards:
 

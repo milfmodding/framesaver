@@ -712,21 +712,50 @@ Nothing is configured, nothing is toggled. The only variable is which way you ar
 
 #### Registered prediction — written before Protocol B has ever run
 
-Observed draw calls span 1,141–4,648 across the corpus, so a sightline-to-wall swing should move roughly
-**3,300 draw calls**. At the fitted slope that predicts:
+**Registered as a slope, not a difference.** The difference form was the first version and it had a hole
+Delta found: nothing in it verified that the two arms *differed in draw calls at all*. A near wall with
+geometry behind it, or a sightline occluded by something you did not clock, passes every held-position
+criterion, lands both arms at similar `drawCalls.avg`, and produces Δ`render` ≈ 0 — **which reads as the
+outcome that retires the whole line of enquiry.** A failed manipulation and a real null were
+indistinguishable, and the failure mode manufactured the most consequential reading on the table.
 
-> **Δ`render` p50 ≈ 1.5 ms** between the two views, and `gameUpdate` unchanged.
+> **Δ`render` p50 ÷ Δ`drawCalls.avg` ≈ 0.000467 ms per call**, and `gameUpdate` unchanged.
 
-| outcome | reading |
+Dividing by the swing you actually got, rather than the one you assumed, is what closes it: a weak
+manipulation becomes a wide error bar instead of a null, and a *failed* manipulation announces itself.
+
+**Manipulation check, and it is a pass criterion rather than a note:**
+
+| | |
 |---|---|
-| **Δ ≈ 1.5 ms** | the slope is causal; "79% of Streets render is a constant draw calls do not reach" stands, and the reachable ceiling really is ~1.4 ms |
-| **Δ ≫ 3 ms** | draw calls proxy something larger — culling, shadow casters, overdraw. The 1.4 ms figure is an *under*estimate and the lever is bigger than we have been saying |
-| **Δ ≈ 0** | the observational slope was position and content, not submission. The draw-call lever does not exist and `render` is fixed cost |
+| **Δ`drawCalls.avg` ≥ 2,000** | the run is readable. Predicted Δ`render` ≈ 0.93 ms |
+| **Δ`drawCalls.avg` < 2,000** | **void, not negative.** Do not compute the ratio, do not report a null — find a wall with less behind it, or a longer sightline, and run it again |
+
+The error bar is free and already in the protocol: **two windows per arm gives the within-arm spread**, and
+Δ`render` should be read against it rather than against zero. If the two arms overlap inside their own
+scatter, the answer is "this swing was too small to resolve", which is a third thing distinct from both a
+confirmed slope and a null.
+
+| outcome — slope in ms per call | reading |
+|---|---|
+| **≈ 0.0005**, within the arms' own scatter | the observational slope is causal. "79% of Streets render is a constant draw calls do not reach" stands, and the reachable ceiling really is ~1.4 ms |
+| **0.0005 – 0.001** | real and larger than fitted; the observational fit was diluted by windows where position moved against the view. The lever is bigger than we have been saying, and the ~1.4 ms figure is an underestimate |
+| **> 0.001** | draw calls proxy something well beyond submission — culling, shadow casters, overdraw. The decomposition needs redoing before the number is quoted again |
+| **≈ 0** with Δ`drawCalls` above the floor | the observational slope was position and content, not submission. The draw-call lever does not exist and `render` is fixed cost |
 | **`gameUpdate` moves too** | the view is driving more than rendering — visibility or LOD work on the CPU side — and neither the slope nor the split can be read until that is separated |
 
-**Δ ≈ 0 is a good result and should be reported as one.** It retires the draw-call line of enquiry with a
-measurement instead of leaving it as a caveat on a regression, and it costs five minutes to get. The
-temptation afterwards will be to describe it as a failed experiment; it is the opposite.
+**The ≈ 0 row is a good result and should be reported as one.** It retires the draw-call line of enquiry
+with a measurement instead of leaving it as a caveat on a regression, and it costs six minutes. The
+temptation afterwards will be to describe it as a failed experiment; it is the opposite — **provided the
+manipulation check passed**, which is the whole reason that check is now a gate rather than a footnote.
+
+**A number this section used to carry, corrected.** It said draw calls span *"1,141–4,648 across the
+corpus"*. The lower bound is right and the upper is not: in-raid `drawCalls.avg` reaches **5,880**, and
+five windows exceed 4,648. 4,648 was the top of the **38-window subset the regression was fitted on**,
+quoted as though it described the corpus — the same shape of error as reading a best-window figure as a
+baseline, [which this project has already made once](../analysis/CORPUS.md). Under a slope prediction the
+span does not enter the arithmetic at all, which is a second reason to prefer it: **the corpus span is an
+upper bound on what one position can swing, not an expectation, because it aggregates positions.**
 
 ### Pass criteria — read from the log afterwards, never judged in the moment
 
@@ -737,6 +766,14 @@ temptation afterwards will be to describe it as a failed experiment; it is the o
 | **view held** | `gpu.render.drawCalls.max ÷ .avg` | **≤ 1.15** |
 | **arms comparable** | `bots.awake` | within **±2** across arms |
 | **arm labelled right** | `cfg.*` | first window after every change discarded |
+| **manipulation worked** *(B only)* | Δ`gpu.render.drawCalls.avg` between arms | **≥ 2,000**, else the run is **void, not negative** |
+| **no drift across the run** | arm 3 vs arm 1, same measure as the result | agree within the arms' own scatter |
+
+**Arm 3 is a replication, not a formality, and it is a stronger control than `bots.awake`.** Both protocols
+already end by returning to the starting condition, so the comparison is free — and if arm 3 does not
+reproduce arm 1, something drifted over the nine minutes whatever the bot count says. Heat, a wave
+arriving, the heap growing. **A result that survives arm 1 vs arm 2 but fails arm 1 vs arm 3 measured
+time, not the variable**, and no other criterion here can see that.
 
 **The bounding box is the criterion, not `dist`.** `dist` sums a per-frame distance over ~3,000 frames a
 window, so its floor grows with frame count and it will read non-zero standing perfectly still; the box
@@ -750,6 +787,12 @@ quietest roaming window on record is 76 m against a 5 m bound, more than an orde
 
 **`bots.awake` is the combat check.** Standing still on Streets draws fire, and a bot shooting at you is a
 different CPU workload from a bot patrolling. Consistent is fine; *different between arms* is not.
+
+**`max ÷ avg` keys on a single frame, so bias it toward false failures deliberately.** One explosion or a
+HUD element popping can fail an otherwise-clean arm. For a *validity* check that is the right direction —
+a false fail costs a re-run, a false pass costs a wrong conclusion — so the threshold stays where it is. If
+an arm fails it and looks clean on everything else, check whether `max` was a single frame before
+discarding it.
 
 ### What the log cannot check, and what stands in for it
 
