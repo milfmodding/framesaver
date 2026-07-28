@@ -1065,7 +1065,7 @@ no tag of its own.
 
 | step | arm | `Brain update period` | |
 |---|---|---|---|
-| 1–6 | **B1 / B2 / B1 / B2 / B1 / B2** | `0` / `0.1`, alternating | held position, **~2 minutes each** |
+| 1–6 | **B1 / B2 / B1 / B2 / B1 / B2** | `0` / `0.1`, alternating | held position, **~3 minutes each** |
 | 7 | **KABAN** | `0.1` | leave position, go fight — see below |
 
 Held position, one view, per [Protocol A](#protocol-a--one-position-one-view-one-knob).
@@ -1077,16 +1077,32 @@ arm in the middle lands between them either way — **ABA can detect that drift 
 the effect.** Interleaving gives three replications of the contrast, each spanning four minutes rather than
 one spanning fifteen, and balances exposure 50/50 instead of ABA's 2:1 control-heavy split.
 
-**Two minutes, not 2.5.** `Window seconds` is 60, so two minutes is exactly two whole windows and the press
-lands on a boundary. At 2.5 the press cuts a third window short and ~20% of held time lands in partials
-that have to be excluded. Precision is not critical either way — block identity comes from `protocol.step`,
-not from the clock.
+**Three minutes a block.** `Window seconds` is 60 and a keypress both flushes and resets the timer
+(`Telemetry.cs:405–410` — `Flush(false)` then `_nextWrite = now + 60`), so a block that is a whole multiple
+of 60 s spends nothing on partials: the press closes a *full* window rather than cutting one short. Three
+minutes is three full windows a block — **18 usable windows against the ABA design's 15**, for three more
+minutes of standing still. At 2.5 the press would cut a third window short and ~20% of held time would land
+in partials that have to be excluded.
+
+> **This file now contains two different window-arithmetic tables. They do not contradict each other.**
+> [Protocol B's table](#the-held-position-ab--the-procedure-for-the-person-standing-there) says three
+> minutes guarantees only **two** windows, and it is right *for Protocol B* — that protocol has no
+> keypress, so nothing re-aligns the 60 s cadence to when the runner starts standing still and an arm
+> begins at an arbitrary offset. **A protocol keypress re-aligns it by construction**, which is why the
+> same three minutes buys three windows here and two there. If you ever run these blocks without the
+> protocol, Protocol B's table is the one that applies.
+
+~~Two minutes, because that is exactly two whole windows.~~ **Two is aligned but 3 is aligned too**, and
+picking the shorter one optimised total held time, which is not the scarce resource here — usable windows
+are. Precision is not critical either way; block identity comes from `protocol.step`, not from the clock.
 
 **Arm labels repeat on purpose.** `arm` names the *condition*, so pooling the three B1 blocks is what the
-label already does; `protocol.step` names the *block* when you need them apart.
+label already does; `protocol.step` names the *block*.
 
-> **The control blocks gate everything.** If the three B1 blocks disagree with each other, the raid is
-> unreadable on every metric and no amount of arithmetic downstream fixes it.
+> **The control blocks gate everything, and the check keys on `step`.** If the three B1 blocks disagree
+> materially the raid is unreadable on every metric, and no arithmetic downstream fixes it. **Group by
+> `protocol.step`, not `protocol.arm`** — the natural thing to write is "group by arm", and that pools the
+> three control blocks into one, destroying exactly the signal the alternation was added to produce.
 
 ### 0.1 is the top of the useful range, not a midpoint — and the floor is what actually binds
 
@@ -1245,8 +1261,17 @@ provenance is unambiguous. An armed protocol that nobody presses is inert, but a
 > and `protocol` reporting `null` — every signal saying "no arm applied" while an arm is applied.
 
 That is the cross-raid leak shape `ResetForRaid` exists to close, one level up: it rewinds the protocol's
-*position* and cannot rewind the config the protocol wrote. `agents.slicing` on the first window is the
-in-situ check, and it is why that field is worth having beyond the A/B it was built for.
+*position* and cannot rewind the config the protocol wrote.
+
+**It contaminates a re-run of the slicing raid too, not only the marathon.** Block 1 of a second run
+inherits `0.1` from the first run's last arm until step 1 applies it away — so if the runner spawns in and
+waits before the first keypress, **those windows are B2 wearing no label at all.** Every `[B1]` block
+stating its own period is what saves this; that choice is load-bearing for a second reason now.
+
+> **Hard stop, not a note: `agents.slicing` must read `false` on the first window.** If it reads `true`
+> before the first keypress, a previous run's state is still applied. Reset the config and restart the
+> raid — do not press through it, because the arm you are standing in has no label and cannot be given one
+> afterwards.
 
 ### The primary metric — read this before computing anything
 
