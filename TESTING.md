@@ -1017,3 +1017,112 @@ Worth raising in the queue on that basis; still behind the boundary latch.
 **Protocol B.** Protocol A makes future comparisons valid; Protocol B answers an open question about goal 1
 today, needs no config changes, and takes twelve minutes. It is also the cheaper failure: a botched
 Protocol A wastes an intervention, while a botched Protocol B wastes twelve minutes of standing still.
+
+---
+
+## Brain-slicing A/B — Streets, held position. Run sheet, 2026-07-28
+
+The first raid that varies a **Framesaver AI patch** rather than telemetry design or a GC knob. Across all
+18 logs, nine of ten AI knobs have never moved and `brainUpdatePeriod` is **0 in every one of them**. The
+config comment on it reads *"try 0.05-0.1 and measure"*; nobody has. So this raid tests the lever the mod
+already ships, switched off.
+
+**What it targets.** Slicing throttles `AICoreControllerClass.Update`, which drives every bot brain, which
+is the path to the recursive cover search — up to 500 point checks and 100 raycasts, synchronously, on the
+main thread. Brain updates live inside `ScriptRunBehaviourUpdate`: **3.80 ms, 20.7% of the median Streets
+frame**, and the largest block on the update side still unattributed.
+
+### Before you launch — two things, and the first one is the whole raid
+
+**1. `Defer to other AI mods` must be `false`.** Already set in `framesaver.ai.perf.cfg`; this records why,
+because re-enabling it silently voids the run.
+
+`DrakiaXYZ-BigBrain.dll` is installed — SAIN depends on it — and `ModCompat.SuppressSlicing` suppresses
+slicing whenever BigBrain or ORBIT is present *and* the defer setting is on. With the shipped default,
+`Brain update period = 0.1` **changes nothing**, and `cfg.brainPeriod` still reports `0.1`, because it
+reports the value requested rather than the value in force.
+
+> **Arm 2 would be arm 1 wearing arm 2's label**, and the natural reading of the resulting null is *"slicing
+> does not help"* — the exact conclusion the raid exists to draw, drawn from an arm that never ran.
+
+The override is in the config file rather than a protocol step because `ModCompat` latches its detection on
+the **first bot-brain frame of the raid**, long before you can press a key. Set before launch, BepInEx logs
+`no compatibility guards will be applied`, and **`Player.log` carries the proof the arm was real.** That log
+is currently the *only* record of it — see "what this run cannot tell you" below.
+
+**2. Confirm the protocol parsed.** The line carries `protocol.steps`. The file defines **3** sections. If
+the log says 3, the parse worked on the file in use. If `protocol` reads `null`, the ini is not installed
+and every arm is arm 1.
+
+### The arms
+
+`BepInEx\config\framesaver.protocol.ini`, three steps, advanced with **Ctrl+Alt+PageDown**:
+
+| arm | `Brain update period` | what it is |
+|---|---|---|
+| **B1** | `0` | control — every brain, every frame |
+| **B2** | `0.1` | slicing on |
+| **B3** | `0` | replication. B1 ≈ B3 is what carries the causal claim |
+
+Held position, one view, per [Protocol A](#protocol-a--one-position-one-view-one-knob). Roughly three
+minutes an arm.
+
+### 0.1 is the top of the useful range, not a midpoint — and the floor is what actually binds
+
+Measured, from the 163 in-raid Streets sample lines in the corpus: **23 live agents** at the median,
+**17.1 ms** median frame.
+
+`perFrame = ceil(count ÷ (period ÷ delta))`, then clamped up to `Minimum brains per frame` (**4**). At the
+median that is `ceil(23 ÷ 5.85) = 4` — **exactly the floor**. The floor binds for any period above ~0.098,
+so `0.1`, `0.2` and `0.5` all tick the same four brains per frame.
+
+Two consequences, and they point in opposite directions:
+
+- **A null at 0.1 kills the entire 0.098–0.5 range in one arm**, not just the value tested. That is a
+  stronger result than picking a midpoint would have bought.
+- **A positive result does not make 0.1 the ship value.** What the arm actually varies is *slicing engaged
+  at a floor of 4* versus *not engaged*. The shippable question that follows is **what floor**, not what
+  period, and it needs its own raid.
+
+**`Minimum brains per frame` stays at 4.** Dropping it would buy a "purer" 0.1 and is the wrong trade: 4 of
+23 is already an 83% cut in brain work, the AI-quality risk is the binding constraint in this arm rather
+than the frame-time headroom, and 4 is the shipped default — so the arm tests a configuration someone could
+actually run.
+
+### Sophia's read is an instrument here, not colour commentary
+
+The numbers measure frame time and hitches. They **cannot see whether bots still fight competently**, and
+slicing is throttling SAIN's custom brain layers — which is precisely the interaction `ModCompat` calls
+*"the kind that produces 'the AI feels wrong' reports with no obvious cause."* That guard has never been
+measured; it is a prediction, and this raid is the first test of it.
+
+**Write one line per arm, during the arm.** Not afterwards — the point is that it is not reconstructed.
+
+| | B1 | B2 | B3 |
+|---|---|---|---|
+| did they push, or hold back? | | | |
+| did they flank, or come straight? | | | |
+| did they use cover between moves? | | | |
+| reaction time when you broke cover | | | |
+| anything that felt *wrong* | | | |
+
+A frame-time win with a "they stopped flanking" note is not a win. The release criteria do not mention AI
+quality; the people who install this will.
+
+### What this run cannot tell you, stated before it produces numbers
+
+- **Whether slicing engaged is not in the ndjson.** `AICoreControllerUpdatePatch.LastBrainsTicked` exists
+  and is documented as *"confirms slicing is doing what it claims"* — and is **not emitted**. Verified
+  against the deployed binary with `analysis/probe-symbols.py`: `brainsTicked` is in neither string heap.
+  Nor is the effective `SuppressSlicing` state. So engagement is **inferred from `Player.log` plus a frame
+  time that moved**, which is weaker than it should be, and the floor arithmetic above stays arithmetic
+  rather than becoming a measurement.
+- **This measures slicing *under SAIN*, not slicing under vanilla AI.** SAIN replaces much of the decision
+  logic the cover-search hotspot sits in. A frame-time win is real and is what a real user would get, but it
+  **cannot be attributed to the cover search** without a SAIN-absent raid to compare against. Do not write
+  the mechanism into FINDINGS off this run alone.
+
+### Riding along at no cost
+
+The `endToLatch` validation and its `endToStart` control need this raid and no build. **Do not drop
+`endToStart` yet.**
