@@ -4434,3 +4434,99 @@ Worth keeping — several of these cost real time to learn.
   reported as CPU-side stalls at `CPUBusy` 125–133 ms using a **neighbourhood-max** search over ±300 ms, which
   on an A frame can select a nearby genuine stall instead. **That figure has not been re-derived under strict
   containment and should not be relied on until it is.**
+
+---
+
+## Raid 2026-07-28 12:52 (`latch`) — three numbers settled, one of them against the hypothesis
+
+Delta, written at compaction. The alignment resolution for this raid is in
+[the `unaccounted ≈ gap` section](#resolved-2026-07-28-by-delta-and-it-is-a-fourth-outcome-none-of-the-three-rows-cover);
+what follows is everything else this log answered. Scripts:
+[`delta-stall-events.py`](analysis/delta-stall-events.py),
+[`delta-endtostart-null.py`](analysis/delta-endtostart-null.py).
+
+### The draw-call slope: 1.56× – 2.25× the fitted value
+
+Protocol B's first run. **Arms delimited mechanically** — `look.yaw.swept > 10` or `dist > 5 m`. Held windows
+read 0–3.1, turns read 102–275, so any cut between 5 and 100 gives the same partition and no judgement enters.
+
+| arm | windows | `drawCalls.avg` | `PostLateUpdate.avg` |
+|---|---|---|---|
+| 0 | 4–7 | 4240 | 7.989 |
+| 1 | 9–11 | 1318 | 5.857 |
+| 2 | 13–19 | 4951 | 9.574 |
+| 3 | 21 | 1283 | 6.132 |
+| 4 | 23–25 | 4968 | 9.999 |
+| 5 | 27–31 | 5450 | 10.061 |
+
+Against the same-view replication floor (largest same-view Δ = 712 calls), four adjacent pairs pass the gate
+and one voids:
+
+| pair | ΔdrawCalls | ratio | slope ms/call | × fitted |
+|---|---|---|---|---|
+| 0→1 | −2922 | 4.11× | 0.000730 | 1.56× |
+| 1→2 | +3633 | 5.11× | 0.001023 | 2.19× |
+| 2→3 | −3669 | 5.16× | 0.000938 | 2.01× |
+| 3→4 | +3685 | 5.18× | 0.001049 | 2.25× |
+| 4→5 | +482 | 0.68× | — | **VOID** |
+
+**Publish ~2×, bracket 1.56–2.25.** It lands on the registered *"real and larger than fitted"* row and does
+not reach the next one. Robustness: discarding each arm's first window gives 1.30×–2.00×; dropping the
+single-window arm 3 gives 1.56×–2.19×. **Every convention lands inside 1.3×–2.25×.**
+
+Two things worth keeping over the number itself:
+
+- **The gate earned itself on its first run.** Pair 4→5 is a 482-call swing carrying 0.062 ms — slope 0.28×.
+  Without the gate the published bracket starts there and reads as *"the lever barely exists."*
+- **`look.swept` retired the discard rule for this protocol.** Turns land in their own windows, so there is
+  no contamination to discard, and the discard variant is the *worst* of the three because it throws away
+  real data to solve a problem the field already solved. **Delimit mechanically; do not hand-write `t`
+  ranges** — that was the sole cause of the competing bracket, and it is judgement re-entering exactly where
+  the field was added to remove it.
+
+### Protocol A's GC-slice trade — do not publish it
+
+**One boundary stall emits two spike lines**, so per-line rates over-count this family and *not* by a constant
+factor. Collapsing adjacent lines whose magnitudes agree within 10%: **14,790 in-raid lines → 4,138 events**,
+2,315 of them multi-line.
+
+| arm | min | >100 /line | **>100 /event** | >300 /line | **>300 /event** |
+|---|---|---|---|---|---|
+| arm1 slice 0 (w13–19) | 7.0 | 3.86 | **2.57** | 3.00 | **1.86** |
+| **arm2 slice 6** (w23–25) | 3.0 | 2.33 | **1.33** | 1.33 | **0.67** |
+| arm3 slice 0 (w27–31) | 5.0 | 4.40 | **2.60** | 3.40 | **2.00** |
+
+**The V is real and is not an artifact of double-counting** — arm 2 sits below both slice-0 arms at both cuts,
+ratios 0.52 and 0.35. **And the significance moves the wrong way.**
+
+| cut | k | λ | one-sided p |
+|---|---|---|---|
+| >100 ms | 4 | 7.75 | **0.115** |
+| >300 ms | 2 | 5.75 | **0.074** |
+
+Against **p ≈ 0.048** on the per-line counts. Collapsing removes events from both arms and arm 2's small count
+loses proportionally more, so **the correction moves this further from publishable, not closer.** Both cuts now
+sit above 0.05.
+
+That settles it without needing the clustering argument, which is worth stating because the clustering
+argument was also correct: a V rules out *drift* and not *bursts*, and this family arrives in bursts. Two
+independent reasons, and the arithmetic one is the cheaper to check.
+
+### `frame > period` — 26 of 33 are explained, 7 are not
+
+| population | n | earlier half of a stall pair | **unpaired** |
+|---|---|---|---|
+| all in-raid lines | 5,861 | 5,109 (87.2%) | 752 |
+| **stalls ≥ 100 ms** | **33** | **26** | **7** |
+
+~~4.2% (3 of 71)~~ **was measured on the `period ≥ 100` population, which is the *later* half of every pair.**
+The 26 earlier halves are `frame > period` by construction and sat entirely outside that denominator — so the
+figure was counting the residue of one population against the size of another.
+
+**Seven unpaired large-stall events is the real open question**, and it is far better defined than a
+percentage. **Do not convert it to a rate yet.** The population at risk is not obviously 33, or 71, or 4,138,
+and choosing one now is the move that produced 4.2%.
+
+**The 3–4 raid estimate is retired with it.** It was priced on separating 4.2% from 10.5% at ~71 events per
+raid. The quantity is now 7 unpaired events per raid against a control that predates the latch and has never
+been run through the pairing rule. **Re-price after the control is re-derived, not before.**
