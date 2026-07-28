@@ -1268,6 +1268,93 @@ are `loading`. The hazard is to pooled or loading-regime statistics.
 
 ---
 
+## Process memory — measured from outside, 2026-07-28
+
+**These figures exist nowhere else. The in-process `proc` block reads all zeros** (see below), so every number
+here was captured externally with PowerShell against the live process and would have been lost with the
+session that took them.
+
+| | uptime | working set | private commit | not resident | physical free |
+|---|---|---|---|---|---|
+| session 1, mid-raid | 13.9 min | 22,296 MB | 31,233 MB | 8,937 MB | 10,633 MB |
+| session 1, post-raid | 19.4 min | 21,099 MB | 28,360 MB | 7,261 MB | 11,874 MB |
+| session 2, post-raid | 14.4 min | 21,633 MB | 29,003 MB | 7,370 MB | 11,549 MB |
+
+Machine total is 49,064 MB. **Two independent sessions converge to ~21.5 GB working set and ~29 GB private
+commit after a raid**, and the managed heap sat flat at **2,419–2,676 MB across ten in-raid windows** at 0–2
+collections each. Nothing grows. That is a third independent line of evidence against the "restart SPT every
+few raids" folklore, after the `zoneLeaveCtor` launch-cost finding and the refuted heap-scaling model.
+
+**The managed heap is ~8% of this process's memory.** Every GC finding in this document concerns that corner.
+
+**Private commit exceeds working set by 7.3–8.9 GB**, so that much is committed and paged out on a machine with
+~11 GB free. That motivated a hypothesis — hard page faults blocking outside `PlayerLoop()` would land in the
+inter-frame gap and be invisible to every phase marker — which is **refuted twice over**: the paged portion is
+native rather than managed, and the family it was meant to explain went *down* (12 frames → 1) on the raid with
+far more movement, which is the opposite of what asset-streaming faults predict.
+
+### `proc` is dead and needs a P/Invoke
+
+`proc.wsMb`, `privMb` and `notResidentMb` read **0** in every window of every run. The process demonstrably has
+tens of GB resident, so this is a dead field rather than a real zero. Almost certainly Unity's Mono not
+implementing `Process.WorkingSet64` / `PrivateMemorySize64`; the fix is `GetProcessMemoryInfo` via P/Invoke,
+which is the same route `PageFaultCount` was already known to need. **The substitution made to avoid a P/Invoke
+did not avoid one — it moved where we would discover we needed it.**
+
+A zero and a dead instrument are indistinguishable without an external reference. This was only caught because
+the same quantity had been measured by another route an hour earlier.
+
+## Raid 2, 2026-07-28 — what the new instruments established
+
+Build `88a1166a8fcddaf4848bd29cc19b4a74`. Roaming raid, Streets, knobs at 0, `Spike event ms` 30.
+
+**The component census works and answers the question it was built for.** `roots` reports
+`[[Player, 261], [ControllerGameObject, 155]]`, and **`WeaponSoundPlayer` is present and `enabled: true` on
+all three subject samples — `alive`, `dead0`, and `dead10`.** So death does not disable it, which promotes
+Beta's source read to measurement. Defect to fix: `aliveControl` censused a *bot*, whose
+`ControllerGameObject` subtree is 1,053 components against the player's 155, so it hit the 1024 cap with
+`dropped: 272, truncated: true`. The control sample is incomplete; raise the cap or scope the control.
+
+**Position telemetry works.** Per-window distance in raid: 200.8, 148.1, 207.8, 244.3, 217.4, 150.7, 76.1,
+92.0, 182.9 m. **No window is positionally stable, so this raid cannot support a held-position A/B either** —
+now a measured statement rather than a suspicion, which is the whole purpose of the field.
+
+**A held-position A/B needs an explicit stationary anchor.** Both raids on 2026-07-28 used a correct reversal
+design and neither produced a readable frame-time comparison, because normal play never holds position. `dist`
+near zero is the pass condition and it is now checkable rather than recalled.
+
+**`dist` is a comparability filter, not a predictor.** `corr(dist, p50) = −0.306` at n=9 — more movement is
+*weakly* associated with **better** frame times, plausibly open ground versus dense interiors. Anyone quoting
+that as "movement costs frames" has the purpose and the sign both wrong.
+
+**The pairing instrument validated exactly:** `endOfFrameFires` 28,677 against `startOfFrameFires` 28,677 over
+28,678 frames, the difference being the session's first frame. Zero drift, so `endToStart` is trustworthy by
+measurement rather than by an absence of nulls.
+
+**The inter-frame accounting replicated on a new session and build**, n=1: period 358.70, `unaccounted` 331.57,
+`gap` 331.34 — a −0.23 ms difference. Its position is the spawn point exactly.
+
+**But the family is rare and variable: 12 frames in raid 1, 1 in raid 2**, on a raid with 613 in-raid spike
+lines against 247. Frequency is not yet predictable from anything measured.
+
+### Two corrections to figures reported during the session
+
+**The negative-residual rate is 6.1%, not 23.9%.** The negatives are two populations and pooling them inflated
+the headline 4×. Of 59 negative lines only 15 exceed −1 ms and only 6 exceed −5 ms; the rest is sub-millisecond
+float noise from summing eight accumulators. The real mechanism is unmistakable in isolation: **−199.6, −88.2,
+−56.0, −13.0, −8.0, −6.9 ms.** On the `< −1 ms` cut the current build is *better* than the control run
+(6.1% against 10.5%).
+
+**`frameOverPeriodFrames` at 50.9% is reassuring, not alarming, and the earlier reading of it was backwards.**
+Two clocks measuring the *same* interval with symmetric noise cross at 50% by construction; a systematic offset
+would bias it away from 50%, toward 100% if `period` were consistently short. It reads 50.9% of 28,678 frames.
+
+**The refined mechanism, which explains both observations:** a constant sampling offset produces no discrepancy
+while frame durations are steady, because both windows are one frame long even when shifted. It bites only when
+frame duration **changes between adjacent frames** — a stall landing inside the shifted portion is attributed
+across the boundary. Hence 50% on ordinary frames and a handful of large ± pairs at stalls. So the clock fix
+matters **for spike analysis specifically**, and the claim that the misalignment is "universal" was wrong.
+
 ## Confirmed fixes
 
 ### 1. Cull sleeping bot animators — ~3.3 ms
