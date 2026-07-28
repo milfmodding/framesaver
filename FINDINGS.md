@@ -3399,6 +3399,27 @@ consumes is the window that closed at the most recent boundary. If item 4 also l
 boundary, the alignment changes and this needs re-deriving **before** the raid, not after. Beta owns that
 decision and has been asked.
 
+#### Acceptance criterion — read this before reading the zero
+
+**A zero is only a result if the denominator is large.** `negResidualFrames: 0` is the registered
+prediction, and it is also what a raid produces if the residual test never ran. The two are the same bytes,
+which is the shape this project has now hit four times.
+
+| | |
+|---|---|
+| `clockResidualFrames` ≈ `frames − boundaryMissedFrames`, in the **thousands** per window | the assertion was tested and held |
+| `clockResidualFrames` in the **tens** | the assertion was not tested. **Not a pass** — the run says nothing about the latch either way |
+| `clockResidualFrames` **0** | caught by [`check-boundary-latch.py`](analysis/check-boundary-latch.py) |
+
+The degenerate case is caught in code. **The nearly-degenerate case is the one that slips through**, because
+it looks exactly like a pass and arrives with a plausible-looking number beside it.
+
+**And validate the validator against a pre-latch log before trusting its green.** As first written it
+passed `20260728-100048` — both latch checks skipped for want of the fields, an incidental check ran, exit
+0. An empty file failed correctly while a file with real data in it passed, so the failure got *easier* to
+hit the more data there was. A checking script is an instrument and inherits the rule that applies to all
+of them: it must be shown to fail on a case it should fail.
+
 #### The measurement this fix exists for, and it is not the counter
 
 Once `negResidualFrames` is 0, re-run the stage-4 attribution on a fresh raid and compare the A family
