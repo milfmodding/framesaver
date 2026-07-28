@@ -3212,13 +3212,37 @@ is the entire reason the fields exist, and it is what these predictions are abou
 | `frameOverPeriodFrames / totalFrames` | **~50%** | already measured at 50.9% over 28,678 frames. `frame` and `period` bracket nearly the same span, so symmetric sub-ms noise gives a coin flip |
 | `frameOverPeriodSumMs / Frames` | **< 1 ms** | corollary of the above: if the two clocks measure nearly the same interval the mean excess must be small |
 | `frameOverPeriodWorstMs` | **tens to hundreds of ms** | the rare frame where a stall lands between BSG's frame boundary and our `Update` sample point |
-| `negResidualFrames / totalFrames` | **low single-digit % or less** | `unaccounted` has a *positive* floor — the native inter-frame gap is in no phase — so going negative needs a straddle large enough to overcome it |
-| `negResidualSumMs / Frames` | **several ms to tens of ms** | same reason: the floor filters out jitter, so what remains should be mechanism-sized |
+| `negResidualFrames / frames` | **low single-digit % or less** — but see the denominator note below, this row is the weak one | `unaccounted` has a *positive* floor — the native inter-frame gap is in no phase — so going negative needs a straddle large enough to overcome it |
+| `negResidualSumMs / negResidualFrames` | **several ms to tens of ms** | same reason: the floor filters out jitter, so what remains should be mechanism-sized |
 
 **The signature that confirms the split-`Update` account** is the conjunction, not any single number:
 coin-flip `frameOverPeriod` rate with a sub-millisecond mean and a huge worst, alongside a *much rarer*
 `negResidual` with a mean far above a millisecond. Three of the five could come out as predicted and the
 account still fail — it is the contrast between rows 2 and 5 that carries it.
+
+##### Amended before the run — the two counters do not share a denominator, and row 4 is confounded
+
+Checking the registration against the shipped source rather than against the queue description, which is
+the same check that has caught three claims today:
+
+`CountClockDisagreement` has **two** early returns. `periodMs <= 0` skips both counters; **`!PlayerLoopProfiler.Installed` skips only the residual one** and leaves `frameOverPeriod` counting. So the
+two counters have different eligible populations, and `frames` — which is `_periodSamples`, incremented
+before either guard runs — is the denominator of neither.
+
+That matters because **row 4 predicts exactly the difference the guards produce.** Any stretch of frames
+with the profiler uninstalled — the game rewrites the player loop during raid load and the markers are
+re-armed — depresses `negResidualFrames` while leaving `frameOverPeriodFrames` untouched, which is
+"`negResidual` is much rarer" arriving for a reason that has nothing to do with a positive floor. **The
+number of skipped frames is in no field**, so the confound cannot be measured out afterwards.
+
+**So the test is the conditional means, not the rates.** `SumMs ÷ own Frames` is internally normalised and
+immune to this: it is a mean over whatever frames were counted, whichever those were. Rows 2 and 5 stand as
+written and rows 1 and 4 drop to corroboration. Registered this way *before* the data exists, because
+afterwards "we used the means" is indistinguishable from having picked the statistic that worked.
+
+**One int would fix it properly** — a counter incremented where the residual test is actually evaluated,
+giving `negResidual` a denominator of its own. `Telemetry.cs` is Beta's and `403b1aeb` is frozen; proposed
+to them, not built, and it is not worth a second build on its own.
 
 #### The outcomes that would embarrass us, named in advance
 
@@ -3240,10 +3264,12 @@ account still fail — it is the contrast between rows 2 and 5 that carries it.
   voids the build rather than reporting on it.
 
 **Two counters that must not be compared to today's figures.** The `periodMs > 0` guard means the first
-sampled frame of a run no longer increments either counter, so **every rate in this build is over a
-denominator one frame smaller** than the ones in the corpus. Immaterial at 28,678 frames, and stated
-because [the last two cross-log comparisons in this project were both wrong for reasons of exactly this
-size](analysis/CORPUS.md).
+sampled frame of a run no longer increments either counter, while `frames` counts it either way — so
+**every rate in this build is over a denominator one frame too large**, in the opposite direction to what
+this paragraph first claimed. Immaterial at 28,678 frames; stated because [the last two cross-log
+comparisons in this project were both wrong for reasons of exactly this size](analysis/CORPUS.md), and
+corrected because getting the *sign* of a bias backwards in the same paragraph that warns about bias is
+not a detail.
 
 ### Registration 2 — the boundary latch, not yet built
 
