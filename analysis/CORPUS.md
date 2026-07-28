@@ -184,14 +184,19 @@ findings, written independently of the analysis it checks — the concrete answe
 you cannot re-derive by hand"*. Every figure it prints has two implementations behind it.
 
 **What it assumes, stated so a wrong reading is loud rather than plausible.** It hard-codes the **60 s
-artifact cut** (`ARTIFACT_MS`) and the **0.5 ms phase-emit floor** (`PHASE_EMIT_FLOOR`), both era-C facts, and
-it takes **no threshold parameter at all** — it pools every log it finds. That is correct for the era-A/B
-corpus at a uniform 100 ms and **wrong the moment a 30 ms log is in the directory**, which is now true. Until
-a threshold argument is added, its cross-log rates silently mix the two populations — the same defect it was
-written to catch. **Its within-log outputs are unaffected.**
+artifact cut** (`ARTIFACT_MS`) and the **0.5 ms phase-emit floor** (`PHASE_EMIT_FLOOR`), both era-C facts.
 
-`analysis/ticker-manifest.json` lists the 759 `Assembly-CSharp` types that receive a per-frame Unity message,
-transitively closed over base types — 585 declaring one directly and 174 inheriting without overriding.
+~~It takes **no threshold parameter at all** — it pools every log it finds, which is correct for the era-A/B
+corpus at a uniform 100 ms and wrong the moment a 30 ms log is in the directory.~~ **Fixed 2026-07-28.** It now
+reads `spikeEventMs` from **each log's own header** and normalises pooled statistics to `period ≥ 100 ms`,
+printing the drop count and the thresholds present. Deliberately *not* a parameter: a caller who must remember
+to state the era is a caller who will forget, which is the same reasoning as renaming a config key when its
+meaning inverts rather than documenting the hazard.
+
+**Two things it will not do, both found by running it rather than reading it.** It **snapshots the corpus once
+per process** — a log being written by a live game grows between calls, and two sections of one report read
+different corpora and disagreed by two lines, small enough to look like rounding and large enough to be wrong.
+And it does **not** re-read a `live` log, so its numbers age exactly as the provenance table's do.
 
 `analysis/ticker-manifest.json` lists the 759 `Assembly-CSharp` types that receive a per-frame Unity message,
 transitively closed over base types — 585 declaring one directly and 174 inheriting without overriding.
