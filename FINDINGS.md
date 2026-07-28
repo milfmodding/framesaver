@@ -839,6 +839,40 @@ the wrong way — so this is still an improvement, but it was over-claimed withi
 there on both populations; if the thirteen's time is somewhere else, it will not. That is the measurement,
 and it is already built.
 
+##### Registered prediction — written 2026-07-28 by Delta, before `endToStart` has ever run
+
+Recorded before the data exists so it cannot be fitted afterwards, on the precedent of
+[the `zoneLeaveCtor` map-independence call](#registered-prediction-before-arm-2-is-run). **A merge is the
+more interesting outcome, which is exactly why the criteria go in first.**
+
+`endToStart` spans `EndOfFrame` → `StartOfFrame`, so it **contains `TimeUpdate` and `Initialization`** as well
+as the native gap. **The quantity to read is `endToStart − TimeUpdate − Initialization`**, never the raw
+field. Call it `gap`.
+
+| population | `gap` under **merge** | `gap` under **coincidence** |
+|---|---|---|
+| ordinary in-raid frames | ~0–2 ms | ~0–2 ms |
+| the 22 `TimeUpdate`-dominant | ~0–2 ms *(their pause is inside `TimeUpdate`, which is subtracted out)* | same |
+| **the 12 non-GC** | **≈ `unaccounted`, 160–246 ms** | **≈ `unaccounted`** |
+| **the 13 residual + collection** | **≈ `unaccounted`, 80–218 ms** | **small, ≪ `unaccounted`** |
+
+- **Merge** — the thirteen's residual is in the same native gap as the twelve, so GC *rides along* on a block
+  it does not cause. The residual half of the GC attribution is then wrong, though
+  [the forward direction](#amended-2026-07-28-delta--36-of-36-is-true-and-it-invites-an-inverse-that-is-a-coin-flip)
+  — `TimeUpdate`-dominant ⇒ a collection, 38 of 38 — is untouched either way.
+- **Coincidence** — the thirteen's time is somewhere neither the eight phases nor the gap reach, and the
+  boundary story needs a different home.
+- **Common cause**, Gamma's variant, sits between them and is distinguishable by *size* rather than presence:
+  the twelve at ~200 ms and the thirteen at ~125 ms with a 3 ms slice inside. Predicted by the existing data.
+
+**Falsification of the merge is either of the last two rows failing**, and one further outcome would be the
+most useful of all: **if the twelve also read a small `gap`, the residual is in none of the eight phases *and*
+none of the inter-frame interval** — which would make it an artifact of how the residual is computed rather
+than a real family. That is an instrumentation defect, and it is a better result than a named cause.
+
+**The run is void, not negative, if `gap` is large on ordinary frames too.** That is the pairing-drift failure
+mode below, and it produces exactly the signature being hunted.
+
 #### The corrected finding is stronger than the one it replaces
 
 This is not a retreat. The published claim was about a **phase** — "collections land in `TimeUpdate`" — and
