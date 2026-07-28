@@ -1909,3 +1909,43 @@ needs no discipline from the reader. Four artifacts were misnamed on 2026-07-28 
 tree cleanliness. `403b1aeb` reports `3bf008f` and its `Telemetry.cs` matched no commit. So the sequence
 stays **commit, then build, then record** — that makes the correspondence hold by construction, and the stamp
 only lets a later reader verify it.
+
+## 2026-07-28 — Delta: what the drawCalls drift says about Protocol B's floor
+
+Gamma asked whether `drawCalls.avg` doing double duty — manipulation check *and* arm label — is sound.
+
+**Sound for the prediction.** The slope Δ`render` ÷ Δ`drawCalls` is **sign-invariant to arm identity**: swap
+which window is "wall" and both deltas flip, the ratio does not. Labelling arms from `drawCalls` cannot
+corrupt the registered prediction even if labelled backwards.
+
+**What it costs** is the distinction between *the view drove draw calls* and *something else did while the
+view was held*. The check certifies draw calls changed, not that the view changed. A fire, a vehicle, bots
+piling into frame — all pass, all yield a clean ratio, and Protocol B silently degrades from an intervention
+back to an observation with nothing in the log recording it.
+
+**Step 1 / step 3 is what closes that, for a reason worth stating: a spontaneous scene change is unlikely to
+revert exactly.** arm1 ≈ arm3 with arm2 apart means the confound would have to appear and disappear on the
+same schedule as the feet that did not move. That makes the replication the thing that makes Protocol B an
+intervention, not merely a comparability check.
+
+### The drift is the same order as the manipulation
+
+`drawCalls.avg` movement between in-raid windows, **while roaming** — an upper bound on held-position drift,
+and the only estimate that exists:
+
+| gap | median | p90 | max |
+|---|---|---|---|
+| adjacent | 570 | 1,583 | 2,339 |
+| two apart (the step1↔step3 gap) | **962** | **2,113** | **2,976** |
+
+The registered void floor is Δ`drawCalls.avg` < 2,000. **That sits below the p90 of natural roaming drift**,
+and the expected manipulation is ~3,300–4,700 against a drift bound of ~3,000 — the same order of magnitude.
+
+So both thresholds are bounds, not measurements, exactly as TESTING.md already says of `pos` and `dist`:
+**add `drawCalls.avg` to the list the first held window calibrates**, and set the floor at a multiple of
+measured held drift rather than at a number chosen against roaming noise. The step1/step3 tolerance has no
+number for the same reason, and the same run supplies both.
+
+**This is the case for the yaw/pitch build item**, which has been sitting as a convenience. It is the only
+thing that would let the log separate the two explanations without leaning on the replication argument. Six
+lines beside the existing per-axis code.
