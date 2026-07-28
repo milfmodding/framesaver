@@ -423,7 +423,16 @@ its `Has(...)` probes, so the first caller latches the result permanently — an
 `Telemetry.Awake()`, when `Chainloader.PluginInfos` need not yet contain plugins that load after Framesaver.
 BigBrain would read absent, the latch would stick, and **`SuppressSlicing` would return false for the whole
 session: the compatibility guard silently off, from a change that only meant to log something.** Gamma caught
-this before building it; verified here against `ModCompat.cs:134` and `Telemetry.cs:297`.
+this before building it; verified here against the `_detected = true` assignment preceding the `Has(...)` probes
+in `EnsureDetected`, and the `WriteHeader()` call inside `Telemetry.Awake()`.
+
+> **Cite the predicate, not the line.** Gamma shifted the spike gate sixteen lines by adding fields to the same
+> file and invalidated their own citation of it — `Telemetry.cs:966` is now 981, and nothing warned anyone. **A
+> line number is invalidated by any edit above it, including your own.** These files point into a codebase three
+> agents edit in parallel, so where a citation is load-bearing — and the spike gate is, since the
+> `period`-not-`frame` rule rests on it — quote the text: `if (periodMs >= Plugin.SpikeEventMs.Value && …)`
+> survives the edits that the number does not. Same reasoning as dating a log by its `cfg` key count rather than
+> its filename: prefer the identifier that travels with the thing.
 
 The safe shape is split by *when the value is knowable*: **`deferToAiMods` in the header**, a pure config read
 that triggers no detection, and **`suppressSlicing` in the per-window `agents` block**, by which point the
