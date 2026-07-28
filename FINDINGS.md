@@ -804,10 +804,40 @@ an absent field is not a zero, and here it is a threshold.
 
 `frame` is BSG's own `GClass1357` measurer and `period` is our wall clock between `ReadAndReset` calls — two
 clocks sharing no code. **On the thirteen, BSG's measurer reports an ordinary 12.6–27.5 ms frame while the
-period is 104–246 ms**, so the block sits outside the interval the game measures and inside ours. That is the
-boundary mechanism read off an instrument that knows nothing about GC and was not selected on collections.
+period is 104–246 ms.**
 
 `PostLateUpdate` is 3.8–15.3 ms on both and separates nothing. It was never the discriminator.
+
+##### Corrected 2026-07-28, Delta — the separation is real, the mechanism I attached to it is not
+
+I wrote that the block *"sits outside the interval the game measures and inside ours"*, and called it the
+boundary mechanism. **Withdrawn. Two problems, and the second is the one that bites.**
+
+**1. The alignment does not support it.** `GameFrameMeasurer` stops and restarts inside `method_0`
+([GClass1357.cs:83,96](../../Src/Assembly-CSharp/Assembly-CSharp/GClass1357.cs:83)), which is subscribed to
+`StartOfFrame` — inserted as the **first subsystem of `EarlyUpdate`**. So its window runs
+`StartOfFrame` → `StartOfFrame` and is a **complete tiling of wall time**: it contains the native inter-frame
+gap and the next frame's `TimeUpdate`. There is no interval that `period` covers and `frame` structurally does
+not. So "outside the interval the game measures" cannot be the explanation, and what actually produces
+`frame ≪ period` is an **alignment or lag effect between two differently-anchored clocks** that has not been
+worked out. `frame` is a lagged counter — the off-by-one it caused once already is
+[in the methodology notes](#methodology-notes).
+
+**2. It does not generalise as a GC classifier.** Within the control run's residual-dominant set the split is
+perfect, and that is a fact. Across all logs it is not: **29 in-raid spike frames have `frame < period / 2`,
+28 of them residual-dominant, and only 14 carry a collection.** So roughly half the population showing this
+property has no collection at all, and using it to *identify* collections would repeat the error one field
+over — again.
+
+**What survives, and it is narrower than what it replaced.** Inside the control run's 25 residual-dominant
+in-raid frames, `frame < period / 2` and `TimeUpdate ≥ 0.5 ms` each separate the 13 from the 12 without
+error. That is a **classifier on that population**, useful for reading those lines, and it is *not* a
+mechanism and *not* a general GC test. The `unaccounted / period` ratio it replaced was worse — it pointed
+the wrong way — so this is still an improvement, but it was over-claimed within a day of being written.
+
+**`endToStart` settles it and needs no argument.** If the block is in the native inter-frame gap it will show
+there on both populations; if the thirteen's time is somewhere else, it will not. That is the measurement,
+and it is already built.
 
 #### The corrected finding is stronger than the one it replaces
 
@@ -863,8 +893,9 @@ unexplained in-raid family left is **the same size as the GC one and has never h
 inside a block gated on `_gcThisFrame > 0`, so it is present on 13 of 13 of the collection frames and **0 of
 12** of the others. The comment at the gate claims a negative delta *"confirms the pause was a collection
 rather than something correlated with one"* — it cannot. It confirms a collection **completed**; the twelve
-counterexamples are invisible to it by construction. Use `frame ≪ period` instead, which is emitted
-unconditionally.
+counterexamples are invisible to it by construction. ~~Use `frame ≪ period` instead, which is emitted
+unconditionally.~~ **`frame ≪ period` is a classifier on this population and not a general GC test — see the
+correction above.** `endToStart` is the field that answers it.
 
 **This is the seventh instance of [a population defined by the instrument's success](#methodology-notes), and
 it is inside the correction written to fix the sixth.** The class of defect is not retired by fixing an
