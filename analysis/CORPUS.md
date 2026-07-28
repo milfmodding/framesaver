@@ -389,6 +389,47 @@ different facts and collapsing them is how the hole opened. Found by Gamma, 2026
 inside this verification tool, and the argument for fixing the tool rather than noting the hazard: a rule about
 how to read output depends on someone remembering to read it that way.
 
+### And `--key` did not close the class, so here is the third level
+
+`--key defer` against the deployed binary returns **ok, `#US/utf16`** — a genuine emitted literal, exactly what
+the flag demands. It is the **drain budget's** `defer` counter. Different field, same name.
+
+So **`--key` proves a literal exists; it does not prove which field owns it.** That is not fixable without
+parsing the metadata tables properly, so it is a usage rule rather than a tool change: **a `--key` pass on a
+name that could plausibly belong to another field is not evidence about your field.**
+
+Three levels of one failure, and the progression is the lesson:
+
+| instrument | matched | and was wrong because |
+|---|---|---|
+| `grep` | the UTF-8 heap | the literal lives in UTF-16 |
+| `probe-symbols` | either heap | a *member* name is not an emitted key |
+| `probe-symbols --key` | a UTF-16 literal | a *different field* has the same name |
+
+**An instrument that matches on a name can only ever tell you that a name matched.** The fix is never a better
+matcher — it is asking what else could have produced this match. Applied forward rather than only recorded:
+new fields get names that cannot collide, which is why the AI-mod defer setting will ship as `deferToAiMods`
+and not as `defer`.
+
+## Two provenance fields are absent, and the obvious way to add them is dangerous
+
+`Defer to other AI mods` appears **nowhere in any log** — not in the header, not in `cfg`. It gates
+`ModCompat.SuppressSlicing` (`defer && (Orbit || BigBrain)`), and BigBrain ships as a SAIN dependency, so **two
+runs with byte-identical `cfg` blocks can have opposite slicing behaviour with no field distinguishing them.**
+Worse than `cfg.brainPeriod` being a request rather than a state: there is no field to misread.
+
+**Do not close it by reading `ModCompat` from the header.** `EnsureDetected()` sets `_detected = true` *before*
+its `Has(...)` probes, so the first caller latches the result permanently — and `WriteHeader()` runs inside
+`Telemetry.Awake()`, when `Chainloader.PluginInfos` need not yet contain plugins that load after Framesaver.
+BigBrain would read absent, the latch would stick, and **`SuppressSlicing` would return false for the whole
+session: the compatibility guard silently off, from a change that only meant to log something.** Gamma caught
+this before building it; verified here against `ModCompat.cs:134` and `Telemetry.cs:297`.
+
+The safe shape is split by *when the value is knowable*: **`deferToAiMods` in the header**, a pure config read
+that triggers no detection, and **`suppressSlicing` in the per-window `agents` block**, by which point the
+patch has caused detection naturally. Recorded here rather than only in a queue because the gap is visible in
+every existing log and the tempting repair is the harmful one.
+
 ## Re-deriving the numbers
 
 `analysis/delta-rederive.py` is a dependency-free second implementation of the derivations behind the headline
