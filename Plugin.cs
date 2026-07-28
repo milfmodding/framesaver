@@ -49,6 +49,7 @@ namespace Framesaver
         // ---- 4. Telemetry -------------------------------------------------------------------
         public static ConfigEntry<bool> TelemetryEnabled;
         public static ConfigEntry<string> RunTag;
+        public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> ProtocolKey;
         public static ConfigEntry<float> TelemetryWindow;
         public static ConfigEntry<float> SpikeEventMs;
         public static ConfigEntry<bool> ProfilePlayerLoop;
@@ -169,6 +170,23 @@ namespace Framesaver
                 "3. Telemetry", "Run tag", "baseline",
                 "Appended to the log filename so runs are self-identifying. Change this between A/B runs, " +
                 "e.g. baseline / standby / sliced-50ms.");
+
+            // Deliberately awkward. An accidental press advances the protocol and voids the arm in
+            // progress, so this wants to be hard to hit by mistake and easy to hit on purpose. F12 is
+            // ConfigurationManager and EFT binds most bare keys and single modifiers. Confirmed with
+            // Sophia, who is the one who will hit it wrong at minute eleven.
+            ProtocolKey = Config.Bind(
+                "3. Telemetry", "Protocol step key",
+                new BepInEx.Configuration.KeyboardShortcut(
+                    UnityEngine.KeyCode.PageDown,
+                    UnityEngine.KeyCode.LeftControl,
+                    UnityEngine.KeyCode.LeftAlt),
+                new ConfigDescription(
+                    "Advances the measurement protocol one step: applies that step's config values, closes "
+                    + "the current telemetry window immediately, and stamps the new arm onto every line "
+                    + "after it. Replaces changing knobs through the F12 overlay, which moves the view, "
+                    + "costs a large IMGUI draw, and lands the change mid-window. Does nothing and says so "
+                    + "if no protocol is loaded - see framesaver.protocol.ini."));
 
             TelemetryWindow = Config.Bind(
                 "3. Telemetry", "Window seconds", 60f,
