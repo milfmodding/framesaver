@@ -2058,3 +2058,37 @@ reading the commit **out of the deployed assembly** at the moment of use.
 The common property, and it is Gamma's phrasing: **a control works because it does not require you to have
 guessed the failure mode in advance.** All three are unilateral and blind to intent. All three were found by
 hitting the failure first.
+
+---
+
+## Index: every rule, and what it was bought with
+
+Gamma's proposal, and it is the right one: *a rule without its failure attached is one someone will optimise
+away as ceremony.* Every rule that failed today was already written down here, stripped of the incident that
+produced it. This index exists so the price stays attached to the rule.
+
+Nothing below is new. It is the same rules, re-stated with what they cost, in one place a fresh context can
+read before it re-learns any of them the expensive way.
+
+| rule | bought with |
+|---|---|
+| **Run a positive control in the same invocation as the query.** A null result is the only error class that does not announce itself — and it is *comfortable*, because it usually means less work. | Four instrument-saw-nothing failures in one day, across all four of us: Beta's tree-wide grep read before it finished; Beta's `strings` miss on the launcher; Gamma's PowerShell `>` mangling a binary to 130,485 bytes from 113,664; Delta's MSYS-path glob matching nothing and read as *"no `gpu` block exists in any log"* — while auditing someone else for exactly that. |
+| **Keep a short window between edit and commit.** The only countermeasure here that is unilateral — it needs no model of what three other agents are doing with files you cannot see. | Three sweeps. Beta's `1b0569a` over Gamma's in-flight work; Delta's `git add -A` in `25ae53f` taking two untracked binaries; Gamma's Protocol B rewrite landing inside `64ac832`, a commit about something else. Announce-the-file, stage-by-path and diff-before-staging each failed in the hands of someone who knew the rule. |
+| **`git commit --only <paths>`**, not `git add <path>` then `git commit`. `add` stages a file; `commit` takes the whole index. | The third variant of the same sweep. |
+| **Assign by file, not by topic. Serialise when two topics share a file.** | Alpha dispatching Beta and Gamma into `Telemetry.cs` minutes apart with no overlap check. Staging by explicit path is per-file atomicity, which is exactly the granularity that fails when both agents are inside one file. |
+| **Gate the build's deploy copy behind a property.** A freeze any build can break is a note, not a control. | `Framesaver.csproj:91` copying to `plugins/` on every build, so Gamma's verification build of an unrelated fix silently replaced Beta's frozen plugin. Nobody violated the protocol. |
+| **md5 cannot answer "same source".** | Three different hashes from what each of us called "the current tree" — the SDK stamps the commit into `AssemblyInformationalVersion`, and the build command changes the hash independently. |
+| **A `TimeDateStamp`/MVID/debug-directory diff means "no IL differs" and nothing more.** | Beta stating the stronger claim; Delta repeating it to Gamma an hour later as evidence two builds were equivalent. |
+| **An artifact filename may carry only what was measured *from the artifact*.** | Two misnamed artifacts, the second written an hour after the rule against it. |
+| **Read the commit out of the deployed assembly at the moment of use.** | Six staleness instances in one day, including a GO issued against a superseded binary. |
+| **For a forwarded parameter, grep the body for the parameter name — not the call sites for the argument.** A signature match is a match on the name, not on the dataflow. | Beta's `BotCreatorClass.cs:131` row (a `withDelete` parameter never read in the body) and Delta's `BotsPresets.cs:209` row (a `ChooseProfile` call listed as a `GetNewProfile` site). Same chain, wrong in opposite directions, one over and one under. |
+| **Do not quote a rate off a top-N sampler correlated with the mechanism.** | Delta's own 80% / 74% figures, struck four hours after being published — `worstCallbacks` keeps the three slowest callbacks per window, and cost is linear in the response size the batch inflates. |
+| **A registered prediction needs a manipulation check, or its null is forged.** Below the floor the run is **void, not negative**. | Protocol B's pass criteria certifying that each arm was *held* and nothing certifying the arms *differed* — with the failure landing on the one outcome row written up in advance as a positive finding. |
+| **When a cut is adopted, restate every rate in the document under it** — not only the one that prompted it. | Two rates left standing at 29.2% / 15.8% under a cut that made them 8.3% / 10.5%. |
+| **Fix forward. Do not rewrite history anyone else has observed.** | A commit whose message was wrong about its own contents, cheaper to correct in the log than in the graph — and an agent mid-work should not have history moved under them. |
+
+**What the three countermeasures that actually worked have in common** — the positive control, the short
+window, and the moment-of-use assembly read — is that **none requires you to have guessed the failure mode in
+advance.** All three are unilateral and blind to intent. And all three were found by hitting the failure
+first: none was derived, each is a scar. That is worth knowing about any rule proposed here that *does* ask
+someone to anticipate something.
