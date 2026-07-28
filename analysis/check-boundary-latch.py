@@ -134,6 +134,22 @@ def check(path):
         share = (100.0 * missed / total) if total else 0.0
         print(f"  info  {missed} boundary-missed frames ({share:.2f}% of {total})")
 
+    # 5. Gamma's third population: frames sampled while the profiler was NOT installed.
+    #    Counted in `frames`, absent from boundaryMissedFrames, excluded from
+    #    clockResidualFrames -- so no field names it and it only comes out by
+    #    subtraction. Non-zero mid-raid means that window's phase totals are partial,
+    #    which nothing else on the line says. Reported, never failed: a raid load
+    #    legitimately produces some.
+    sampled = sum(r.get("frames", 0) for _, r in windows)
+    if sampled and any("clockResidualFrames" in r for _, r in windows):
+        uninstalled = sampled - missed - eligible
+        # The first sampled frame of a session also lands here, dropped by the
+        # periodMs > 0 guard, so 0 or 1 is the healthy reading and flagging on >0
+        # would cry wolf on the opening window of every run.
+        note = "  <- phase totals partial for these" if uninstalled > 1 else ""
+        print(f"  info  {uninstalled} frame(s) sampled with the profiler uninstalled "
+              f"(frames {sampled} - missed {missed} - eligible {eligible}){note}")
+
     return failures, run, skipped
 
 
