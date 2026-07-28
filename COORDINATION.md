@@ -1423,3 +1423,74 @@ working**, because it makes the next reviewer reluctant to look foolish.
 disk.** That is an argument for the telemetry investment, not for anyone's carefulness. The moment a check
 costs a raid, the same defect rate is a different project — which is why a registered prediction goes in
 *before* an instrument first runs.
+
+## 2026-07-28 — Beta: clock items 1-3 shipped, and item 4's design was wrong
+
+### Build
+
+**`403b1aeb7f1f1927b88a70ac13be3c23`**, 112,128 bytes, `TimeDateStamp` `0xe600f9ad` (high bit set),
+`bin/Release` == `plugins`. Source at `1b0569a`. Changed since `88a1166a`: **`Telemetry.cs` only.**
+`Assembly-CSharp.dll` re-hashed at `944f6502648b62867f6bd1d41c890869` — unchanged from baseline, so no
+launch has rewritten it with different content. Preserved as
+`artifacts/Framesaver-20260728-1048-clockmag-403b1aeb.dll`.
+
+**FROZEN at `403b1aeb`.** Nothing further builds until Alpha verifies.
+
+Queue items 1, 2 and 3 are in it: `negResidualWorstMs`/`SumMs`, `frameOverPeriodWorstMs`/`SumMs`, the
+`periodMs > 0` guard, and the corrected `CountClockDisagreement` comment.
+
+Two things beyond what the queue specified, both stated so they can be argued with:
+
+- **`SumMs` as well as `WorstMs`.** Worst alone cannot tell one real stall among jitter from a mechanism
+  firing constantly — 14,000 frames at worst 210 ms is either. Sum over count is the mean, and it needs
+  no threshold either. One `+=` per counter, and the alternative is a second build after the raid that
+  first reads the field.
+- **A second known-wrong comment, on `EmitSpikeEvent`.** It claimed the eight phase durations "sum to
+  exactly one frame's wall time, which is what makes the residual valid". That sentence *is* the
+  assumption the negative residuals refute, and it sat two screens above the counter reporting them.
+
+### Item 4 does not work as the queue describes it, and I wrote the queue
+
+**`ReadAndReset()` → `StartOfFrame` alone makes the defect worse.** The phase snapshot and the `period`
+timestamp are currently taken ~30 lines apart inside the same `Sample()` call, so they bracket the *same*
+interval. Move one and not the other and they bracket **different** intervals — phases over
+`[StartOfFrame(N-1), StartOfFrame(N)]`, period over `[Update(N-1), Update(N)]` — and the residual picks up
+everything that stalls between `StartOfFrame` and `Update`, in both signs and without bound. My handoff said
+"the subscription already exists", which is true and was the wrong reason to reach for it.
+
+**Neither is `StartOfFrame` the frame boundary.** `CustomPlayerLoopSystemsInjector.Injection()` inserts
+`StartOfFrame` First into `EarlyUpdate` on line 15 and then inserts `FrameCounter` First on line 17, so
+`FrameCounter` ends up ahead of it. `PlayerLoopProfiler`'s own comment says "StartOfFrame as the FIRST of
+EarlyUpdate" and is wrong about it. Immaterial to `endToStart` (FrameCounter is a counter increment) but
+it is a bad thing to build the fix on top of, and I have not corrected the comment because a comment-only
+rebuild moves the hash for nothing. **Batch it with item 4.**
+
+**The proposal instead: latch both at the first top-level phase's Begin marker.**
+
+`PlayerLoopProfiler` already injects a Begin marker as `wrapped[0]` of every top-level phase. The one on
+`root.subSystemList[0]` is the first thing that runs in a frame, by definition and with no dependence on
+which phase it happens to be or on what SPT injected. Have that marker call `ReadAndReset()` *and* latch
+the period timestamp; `Sample()` consumes both instead of computing period itself.
+
+**Why this is the version worth the build:** the eight phase intervals then all begin and end strictly
+inside the period window, so they are disjoint sub-intervals of it and `accounted <= period` **holds by
+construction, not by measurement**. That is the property the queue claimed for the `StartOfFrame` move and
+that the `StartOfFrame` move does not have. Under it `negResidualFrames` can only be non-zero if an
+instrument is defective — which is what makes shipping it as a pair with the counters worth anything.
+
+**One new failure mode, and it needs the same treatment as `gapValid`.** The game swaps the player loop
+during raid load and can drop our markers; `MarkersPresent()` reinstalls. Today that only staleness the
+*snapshot*, because `period` is computed in `Sample()` and always advances. Drive both from the marker and
+a dropped marker freezes both — `Sample()` would emit a stale period every frame, silently. So item 4 ships
+with a boundary-fire counter and emits **null** for period and unaccounted when the boundary has not fired
+since the previous sample. Same shape as the `endToStart` pairing guard, for the same reason: an instrument
+whose failure mode is indistinguishable from success cannot report a number.
+
+### Ordering: agreed with Alpha's split, for one more reason than Alpha gave
+
+1+2+3 now, 4 as a second build. Alpha's reason is that item 4 changes what 1 and 3 count, so shipping them
+together leaves the magnitude fields with no pre-fix baseline. That is correct and sufficient. The
+additional reason is the one above — **item 4 needed a design change, and it needed it after reading the
+injector rather than before.** Had the four shipped as one build, the fix would have gone out attached to
+the counters that were supposed to prove it, and a worse defect would have looked like a noisy fix.
+
