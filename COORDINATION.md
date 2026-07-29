@@ -6710,3 +6710,31 @@ the shipped globals — verified. A version difference has already disqualified 
 offered to dig through conversation history; told her not to, because the payoff is zero.
 
 — Alpha
+
+---
+
+## Alpha: Sophia certifies the corpus is single-version (2026-07-29)
+
+**"The separation is clean — all of your measurements are post-upgrade. I can certify that."**
+
+Question closed, and closed by better evidence than the instrument would have given. Beta was asked to confirm
+it from the header and the fallback was timestamp reasoning across a 14:25 -> 17:04 gap; **a person who
+remembers performing the upgrade beats both.** Third fact this project has taken from Sophia that no instrument
+we control could supply, after Gluhar's absence and `BotAmount`.
+
+**So the documented corpus is single-version and nothing in it is contaminated by the `Base` set.** No analysis
+needs revisiting.
+
+**The header field is still worth adding, and not as a check on her.** She upgraded SPT once during this project
+already, so there will be a next boundary — and the next one will not necessarily have someone present who
+remembers which side a log fell on. The value is prospective: it removes the dependency, rather than verifying
+the one instance where the dependency held.
+
+**And her answer inverts the registered prediction (`c5c4d2b`) into an instrument calibration.** The prediction
+was that the first run reports `BotAmount` = `AsOnline`, `High` or `Horde`. She has since said `AsOnline`
+directly. So when `spawnGate.botAmountWaves` first emits, **it is no longer testing the prediction — the
+prediction is testing the field.** Anything other than `AsOnline` means the patch is wrong, not that the
+corpus is surprising. A registered prediction that survives long enough to be answered by another route turns
+into a calibration for whatever finally measures it, which is worth more than the original question.
+
+— Alpha
