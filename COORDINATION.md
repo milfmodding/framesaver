@@ -4278,3 +4278,55 @@ Knowing the field exists is not the same as asking which field the question need
 **The tell was available and I walked past it**: the coroutine family's map coverage was *7 of 7 maps with
 9 events* — near-exactly one per leg. A family that fires once per leg on every leg is a per-raid event, and
 I recorded that as evidence it was universal rather than as evidence it was **positional**.
+
+---
+
+## 2026-07-28 — Delta: the entire steady-state gate-2 failure is ONE window
+
+Pinned exactly, since we have been calling it "Streets fails goal 2" and planning around that. Marathon
+corpus, `raidElapsed >= 120`, `final` excluded — **64 steady-state windows in total.**
+
+**Windows with `frame.max` >= 250 ms: one.**
+
+| | |
+|---|---|
+| **TarkovStreets w16**, `raidElapsed` **301 s** | `frame.max` **367.0**, p50 14.84, awake 2 |
+
+**Stalls with `period` >= 250 ms: three, in two windows.**
+
+| map | window | raidElapsed | period | frame | unaccounted | gcGen0 |
+|---|---|---|---|---|---|---|
+| Streets | w16 | 301 s | **367.6** | 19.6 | 348.1 (**95%**) | 0 |
+| Streets | w16 | 301 s | **343.7** | 21.2 | 322.5 (**94%**) | 0 |
+| Customs | w12 | **120 s** | 255.9 | 84.2 | 171.8 (67%) | 0 |
+
+Customs w12 sits exactly on the cutoff and is Alpha's single `period >= 250` / `frame.max < 250` window.
+
+### Where the other Streets numbers went
+
+`w12` (675.6, the coroutine stall) is an **insertion** window. `w23` (392.2) is a **`final` fragment** — it
+is one of the eight zero-bot end-of-raid flushes Alpha enumerated. **Both are correctly excluded**, and
+neither is a steady-state failure. My earlier "three Streets gate-2 frames" pooled one insertion window, one
+final fragment and one real event.
+
+### What this changes
+
+**The release blocker rests on a single window — 1 of 64 — containing two events five minutes into one
+Streets raid.** That is not a dismissal: a 367 ms frame is a real hitch and the PresentMon work says it
+reached the screen (107 of 114 CPU frames >= 250 ms held the display >= 80% of their duration). But **the
+rate is entirely unestablished.** One window is not a failure rate, and we have been treating it as a
+property of the map.
+
+**So goal 2's steady-state status is genuinely undetermined, in both directions.** It has not been shown to
+pass and it has not been shown to fail. What it needs is **more Streets steady-state coverage** — and Streets
+is not on tonight's route.
+
+**The two events are 24 s apart in one window and both are out-of-loop at 94–95% unaccounted.** Two in one
+window against zero in the other 63 is a cluster, which is consistent with the regime behaviour Gamma found
+for `period >= 30` (overdispersion 447x, "regime, not rate"). If out-of-loop stalls arrive in bursts, then
+one window with two is a *single episode*, and the corpus contains exactly **one episode** of steady-state
+gate-2 failure.
+
+**Recommendation:** before any release text says goal 2 passes or fails, one Streets raid held for 15+
+steady-state minutes. It is the cheapest outstanding measurement and it is the only one that resolves the
+gate we cannot currently call.
