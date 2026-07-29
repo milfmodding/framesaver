@@ -89,10 +89,18 @@ def load(paths):
     collide on (raid, map) and merge. Offset each file's raid index past the last
     one seen - otherwise Lighthouse in file 1 and Lighthouse in file 2 look like one
     leg, which is exactly the pair the session-age control depends on telling apart.
+
+    Also returns the largest `period` seen on each window's spike lines, keyed
+    on (log, window). Only section 5b uses it, and only to say what choosing
+    `period` over `frame.max` costs - the release claim "no hitches above
+    250 ms" does not yet say which quantity it means, and Delta has that ruling.
+    Keyed on the log as well as the window because window counters restart per
+    file exactly as `raid` does.
     """
-    hdr, rows, offset = {}, [], 0
+    hdr, rows, peak, offset = {}, [], {}, 0
     for path in paths:
         seen, first = set(), True
+        tag = os.path.basename(path)[20:-7]
         with open(path, encoding='utf-8') as fh:
             for line in fh:
                 line = line.strip()
@@ -107,16 +115,20 @@ def load(paths):
                         hdr = hdr or d
                         first = False
                     continue
+                if d.get('type') == 'spike':
+                    k = (tag, d.get('window'))
+                    peak[k] = max(peak.get(k, 0.0), d.get('period') or 0.0)
+                    continue
                 if d.get('type') != 'sample' or d.get('state') != 'raid':
                     continue
                 r = d.get('raid')
                 if r is not None:
                     seen.add(r)
                     d['raid'] = r + offset
-                d['_log'] = os.path.basename(path)[20:-7]
+                d['_log'] = tag
                 rows.append(d)
         offset += max(seen) if seen else 0
-    return hdr, rows
+    return hdr, rows, peak
 
 
 def legs(rows):
@@ -222,7 +234,7 @@ def main(argv):
         print(__doc__)
         return 2
     paths = argv[1:]
-    hdr, rows = load(paths)
+    hdr, rows, peak = load(paths)
     if not rows:
         print('no in-raid sample lines - nothing to read')
         return 1
@@ -454,8 +466,9 @@ def main(argv):
     print('\n5b. the same legs with NO warm-up discard - UNREGISTERED, NUMBERS ONLY\n')
     print('    Section 5 is the registered result. This is here so nobody has to')
     print('    guess how much of it rests on discarding the first %.0f s.\n' % STEADY_S)
-    print('%-4s %-19s %-5s %-9s %-9s %-9s %s'
-          % ('leg', 'map', 'n', 'p50 fps', 'worst ms', 'win>=250', 'excluded n / worst'))
+    print('%-4s %-19s %-5s %-9s %-9s %-11s %-11s %s'
+          % ('leg', 'map', 'n', 'p50 fps', 'worst ms', '>=250 frame', '>=250 period',
+             'excluded n / worst'))
     for i, l in enumerate(ls):
         name = KNOWN.get(l['map'], l['map'])
         whole = [w for w in l['w']
@@ -468,10 +481,18 @@ def main(argv):
         mx = [w['frame']['max'] for w in whole if (w.get('frame') or {}).get('max')]
         cmx = [w['frame']['max'] for w in cut if (w.get('frame') or {}).get('max')]
         over = sum(1 for v in mx if v >= 250.0)
-        print('%-4d %-19s %-5d %-9.1f %-9.1f %-9s %s'
+        # BOTH QUANTITIES, because the release claim does not say which it means
+        # and Delta has that ruling open. The emit gate tests `period` alone, so
+        # a large `frame` can sit on a line whose `period` is under threshold -
+        # and the divergence runs the other way too. Printing both says exactly
+        # what the choice costs instead of making it here.
+        overp = sum(1 for w in whole
+                    if peak.get((w.get('_log'), w.get('window')), 0.0) >= 250.0)
+        print('%-4d %-19s %-5d %-9.1f %-9.1f %-11s %-11s %s'
               % (i + 1, name, len(whole), st.median(fps(whole)),
                  st.median(mx) if mx else float('nan'),
                  '%d of %d' % (over, len(mx)),
+                 '%d of %d' % (overp, len(whole)),
                  '%d / %.1f ms' % (len(cut), max(cmx)) if cmx else '%d / -' % len(cut)))
     print('\n    `excluded` is what section 5 drops. If its worst frames are the')
     print('    largest on the row, the discard is removing the phenomenon and not')
