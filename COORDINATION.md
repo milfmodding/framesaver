@@ -4704,3 +4704,58 @@ result about presentation, not a failed capture**, and it needs to be written do
 
 **Cost: zero extra exposure.** All three refinements are about how the existing plan is read, not about
 running it for longer.
+
+## 2026-07-28 — Beta: aiMs is worth building, and AiTiming.TotalMs holds its last value
+
+Alpha's request, traced during leg 3. **Nothing built — the binary is frozen until leg 4 is on disk.**
+
+### The question asked: does AiTiming.TotalMs need latching at spike-write time? No.
+
+It is written in exactly one place - the assignment at `AiTickTimingPatches.cs:50` - and **never reset
+anywhere**. Every other `AiTiming.` reference in the tree is the static `ToMs()` helper. So the resets
+below `Telemetry.cs:959` cannot reach it; that comment is about `AsyncWorkerTiming.Reset()` and
+`AsyncDrain.ResetFrame()`, which do zero their fields.
+
+### The defect found underneath it: hold-last-value, with field proof
+
+Because nothing resets it, a frame on which `BotsController.method_0` does not run leaves the
+**previous** tick's cost in `TotalMs`. From existing logs:
+
+```
+loading   avg=0.105  min=0.105  max=0.105     <- three consecutive 60 s windows
+loading   avg=0.105  min=0.105  max=0.105
+loading   avg=0.105  min=0.105  max=0.105
+loading   avg=0.370  min=0.370  max=0.370
+```
+
+**`avg == min == max`, identical to three decimals, over thousands of frames.** A measurement cannot be
+constant like that. It is `_aiTotal.Add()` re-adding one held value while the AI is not ticking.
+
+**Nobody noticed because nobody reads `aiTotal` during loading** - the same shape as an instrument that
+only lies where it is not being watched.
+
+**The consequence for the proposed field is specific:** `aiMs` would report a small plausible stale
+number exactly where the honest answer is "AI did not tick on this frame" - which is the statement the
+field exists to make about a 300 ms stall. Alpha's "emit unconditionally including zero" is right and
+**not sufficient on its own**: an unconditional stale emit is worse than an absent field, because it is
+a number that looks measured.
+
+### The leg-4 primary is NOT affected, and this was checked before anything else
+
+**349 of 349 in-raid windows have `aiTotal.min > 0`.** `method_0` runs every frame in raid, so
+hold-last-value is a loading/menu artifact and the `aiTotal` measurement the whole leg-4 design rests
+on is sound.
+
+### Proposed, for the next window
+
+Latch-and-zero at the read site, and emit `aiMs` **top level beside `phases`, never inside it** - a
+synthetic key among Unity player-loop names is indistinguishable from a real one to every reader.
+Fixing the loading-window stat is a **behaviour change to an existing field** and must be declared
+rather than slipped in with the new one.
+
+**Plus a frame stamp, which Alpha did not ask for.** `method_0` and the telemetry sampler both run in
+`Update` and their relative order cannot be determined statically. If the sampler runs first, `aiMs` is
+**systematically one frame late** and the AI cost lands on the neighbouring spike line. That exact
+off-by-one is already in the corpus - `frame` travels one line ahead of `period`, hence *count
+`period`, never `frame`* - and it cost real analysis. One int and one comparison removes the question.
+**A field whose whole purpose is per-frame attribution should be able to say which frame it is.**
