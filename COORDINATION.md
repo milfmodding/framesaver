@@ -4529,3 +4529,58 @@ the sparsity; it does not remove it.**
 >= 150 out-of-loop population.** n=20 supports a distributional statement far better than n=3 supports a
 rate, and it grows **~23% per 15 steady-state minutes** (~4.7 events). Every additional minute of *any* map
 improves it, including tonight's legs — which is why it is worth registering now rather than after Streets.
+
+---
+
+## 2026-07-28 — Alpha: the upward record, and what was retracted
+
+Gamma's `4cfb988` carries the numbers. **This entry carries what Sophia has actually been told**, because a
+compaction loses the upward record first and she cannot re-derive it herself. If this contradicts `4cfb988`,
+`4cfb988` is right.
+
+### Standing state as she holds it
+
+| | |
+|---|---|
+| **goal 1** | every map clears the 60 floor. Lighthouse **65.8** on **n=1** — leg 1 is what makes it real |
+| **goal 2, steady state** | **3 events in 2 windows of 64.** 1 window / 1 map on `frame.max`, 2 / 2 on `period` |
+| **goal 2, insertion** | **9 of 9**, every map, every raid. Named: delayed-task coroutines |
+| **goal 3** | met everywhere, 1.37–1.83 against 2.0 |
+| **verdict she was given** | steady-state goal 2 is **undetermined in both directions** — one episode is not a rate |
+
+### Four things retracted to her tonight, all mine
+
+She has the corrections; do not re-retract them.
+
+1. **"The release blocker has a name."** Wrong. The coroutine family has **zero** steady-state occurrences —
+   it is entirely insertion, which is the *disclosable* cost. The family that fails her gate is unnamed.
+2. **`UpdatePreloading` / `ScriptRunDelayedStartupFrame` as the insertion mechanism.** Those are
+   `state == 'loading'`. I read them off an unfiltered dump without splitting on `state`, sent it to Delta as
+   verified, and it came back through Gamma as corroboration. **A claim that returns through a teammate is not
+   independent evidence for it.**
+3. **"13 ms of AI inside a 17 ms frame."** A 13.1 ms component cannot sit in a 16 ms frame. It sits inside
+   `w37`'s *worst* frame at 57.5 ms — AI is ~23% of a bad frame, not 76% of a typical one. Container inferred
+   from the window's p50 instead of its `frame.max`.
+4. **"All four events."** Three. My fourth was `w23`, a `final` fragment — re-applying the predicate from
+   memory in the same message where I committed to importing it.
+
+Plus one that arrived as good news: the **54.6 vs 65.8** Lighthouse straddle was never real. Three
+independent defects produced it, all on the one map thin enough for any defect to show.
+
+### The recommendation she is holding
+
+**One Streets raid, 15+ steady-state minutes, PresentMon running.** No build, no deploy. Establishes a rate a
+single window cannot *and* discriminates the mechanism from outside the process, which is the only place it is
+visible — the stall lives between `EndOfFrame` and the next `TimeUpdate`, and `gpu.frameTiming` reports
+*"Frame Timing Stats not enabled in this build"*. Ranked **above** coroutine ownership.
+
+**Owed before that raid, and it is Delta's:** a registered statement of what **zero episodes in 15 minutes**
+would and would not license. At 1 episode in 64 windows a quiet raid is entirely expected, so without it the
+null gets read as reassurance. Same shape as the four exposure failures today, and the one we can pre-empt.
+
+### Also offered to her, still unanswered
+
+Trading **leg 4's ABA for a Streets raid**. Leg 4 measures a lever whose whole-frame ceiling is 0.44–0.68 ms
+against a 1.2 ms neighbour spread, which converges to the control on exactly the slow frames, and whose family
+has zero steady-state occurrences. **She is entitled to decline on the grounds that we have changed the plan
+on her four times** — if she runs the card as agreed, the ABA still answers whether the feature engages at all.
