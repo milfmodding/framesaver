@@ -427,6 +427,57 @@ def main(argv):
                  '%d / %.0f' % (min(awake), st.median(awake)),
                  '%d armed' % dropped if dropped else '-', mark))
 
+    # ---- 3b. the same legs with NO warm-up discard, UNREGISTERED ----------
+    #
+    # STEADY_S IS NOT MOVED AND MUST NOT BE. A threshold changed after seeing
+    # what it excludes is the thing pre-registration prevents. This section
+    # REPORTS a second cut; it does not adopt one, and section 5 above is still
+    # the number.
+    #
+    # Why it exists at all: the discard was chosen to drop raid-init noise - a
+    # 704 ms median worst frame in leg-start windows. But 9 of 9 in-raid windows
+    # BELOW the cutoff carry a >=250 ms event, across all seven maps, every one
+    # of them the first window of its raid. "The first two minutes are the worst
+    # two minutes" is a description of the problem we are trying to fix, and we
+    # currently gate our own goal on excluding it. Delta's 8d8fe83 reached the
+    # same place from the goal side: goal 2 passes on six of seven maps only
+    # because of this discard.
+    #
+    # So the question this answers is not "is 120 s the right cut" but "how much
+    # of the verdict rests on the cut being anywhere at all" - and the windows
+    # exist either way, so refusing to look is a choice rather than a default.
+    #
+    # NUMBERS ONLY, NEVER A VERDICT. A MEETS/under call at an unregistered cut
+    # is precisely the thing that would get quoted, and a second verdict column
+    # invites picking whichever one reads better. The registered table is where
+    # verdicts live.
+    print('\n5b. the same legs with NO warm-up discard - UNREGISTERED, NUMBERS ONLY\n')
+    print('    Section 5 is the registered result. This is here so nobody has to')
+    print('    guess how much of it rests on discarding the first %.0f s.\n' % STEADY_S)
+    print('%-4s %-19s %-5s %-9s %-9s %-9s %s'
+          % ('leg', 'map', 'n', 'p50 fps', 'worst ms', 'win>=250', 'excluded n / worst'))
+    for i, l in enumerate(ls):
+        name = KNOWN.get(l['map'], l['map'])
+        whole = [w for w in l['w']
+                 if not armed(w) and not sliced(w)
+                 and (w.get('bots') or {}).get('total', 0) > 0
+                 and (w.get('framePct') or {}).get('p50')]
+        if not whole:
+            continue
+        cut = [w for w in whole if (w.get('raidElapsed') or 0) < STEADY_S]
+        mx = [w['frame']['max'] for w in whole if (w.get('frame') or {}).get('max')]
+        cmx = [w['frame']['max'] for w in cut if (w.get('frame') or {}).get('max')]
+        over = sum(1 for v in mx if v >= 250.0)
+        print('%-4d %-19s %-5d %-9.1f %-9.1f %-9s %s'
+              % (i + 1, name, len(whole), st.median(fps(whole)),
+                 st.median(mx) if mx else float('nan'),
+                 '%d of %d' % (over, len(mx)),
+                 '%d / %.1f ms' % (len(cut), max(cmx)) if cmx else '%d / -' % len(cut)))
+    print('\n    `excluded` is what section 5 drops. If its worst frames are the')
+    print('    largest on the row, the discard is removing the phenomenon and not')
+    print('    only the noise - which is a finding about the instrument, not a')
+    print('    reason to change STEADY_S here.')
+
     # ---- 4. the exemption floor, read RELATIVELY --------------------------
     #
     # The first version of this section printed min(awake) and called any non-zero

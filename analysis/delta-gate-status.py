@@ -38,7 +38,15 @@ for path in LOGS:
         fp = o.get("framePct") or {}
         if not fp.get("p50") or not fp.get("p99"):
             continue
-        if (o.get("t") or 0) - (leg_start or 0) < STEADY_S:
+        # raidElapsed is EMITTED (read-marathon.py:139 reads it). Deriving it
+        # from a leg start gave two different answers in two of my scripts and
+        # neither matched the field. Do not reconstruct what is on the line.
+        if (o.get("raidElapsed") or 0) < STEADY_S:
+            continue
+        # `final: true` is the truncated end-of-raid fragment every reader
+        # excludes. Including it put Lighthouse at 54.6 fps against the true
+        # 65.8 - a straddle of the release gate invented by one partial window.
+        if o.get("final"):
             continue
         legs[(LOGS.index(path), leg, m)].append({
             "p50": fp["p50"], "p99": fp["p99"], "p999": fp.get("p999"),
@@ -47,8 +55,13 @@ for path in LOGS:
 
 
 def median(xs):
+    """True median. `s[len(s)//2]` silently returns the UPPER of two values at
+    n=2, which is how a two-window map reported its worse window as its p50."""
     s = sorted(xs)
-    return s[len(s) // 2] if s else None
+    if not s:
+        return None
+    m = len(s) // 2
+    return s[m] if len(s) % 2 else (s[m - 1] + s[m]) / 2.0
 
 
 print("marathon legs, steady state only (>= %.0f s into the leg)\n" % STEADY_S)

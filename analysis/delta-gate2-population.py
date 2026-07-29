@@ -38,12 +38,12 @@ for path in LOGS:
         m = str(o.get("map") or "?")
         if m != prev:
             prev, leg_start = m, None
-        if o.get("state") == "raid":
-            if leg_start is None:
-                leg_start = o.get("t")
+        if o.get("state") == "raid" and not o.get("final"):
             rows.append({
                 "map": m,
-                "elapsed": (o.get("t") or 0) - (leg_start or 0),
+                # EMITTED, not derived. See delta-gate-status.py for what
+                # deriving it cost. `final` fragments excluded above.
+                "elapsed": o.get("raidElapsed") or 0.0,
                 "fmax": (o.get("frame") or {}).get("max") or 0.0,
                 "pmax": max(pending) if pending else 0.0,
             })
