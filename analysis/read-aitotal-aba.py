@@ -397,9 +397,28 @@ def main(argv):
           % (CONTROL, base, len(ctrl), TREAT, st.mean(treat), len(treat), diff))
     if t is not None:
         print('   Welch t %.2f, two-sided p ~%.3f (normal tail)' % (t, p))
+    # THE DESIGN BOUND AND THE ACHIEVED TEST ARE DIFFERENT QUANTITIES, AND THE
+    # NOTE USED TO READ AS A DISCLAIMER AGAINST THE RESULT IT SAT UNDER.
+    # `det` is a priori: it assumes the treatment arm's sd equals the control's.
+    # If the treatment came out tighter - which is what a lever removing a
+    # variable cost does - realised power exceeds planned power, and p < 0.05
+    # beside "smaller than this leg can resolve" is not a contradiction. It is
+    # the design bound and the data disagreeing, with the data being the later
+    # and more specific evidence. Printing one of them is how the first person
+    # to quote it drops whichever half is inconvenient.
     if abs(diff) < det:
-        print('   NOTE: the difference is smaller than this leg can resolve. '
-              'Report the bound,\n         not the point estimate.')
+        sd_t = st.stdev(treat) if len(treat) > 1 else float('nan')
+        print('   design bound %.3f ms assumed BOTH arms at the control sd %.3f'
+              % (det, sd))
+        if sd_t == sd_t and sd_t < sd:
+            print('   treatment sd came out %.3f - TIGHTER than assumed - so the '
+                  'achieved test is' % sd_t)
+            print('   stronger than the design. The bound describes the DESIGN; '
+                  'the p-value describes')
+            print('   THIS DATA. Quote both or neither.')
+        else:
+            print('   and the observed difference is below it: report the bound, '
+                  'not the point estimate.')
 
     # ---- 6. RELOCATED OR REMOVED - the contrast that can actually fail ----
     #
@@ -484,14 +503,37 @@ def main(argv):
     # at all. No threshold is encoded on purpose - one invented tonight would be
     # chosen after seeing what it excludes, which is what was refused for
     # treatment drift. The rule is stated and the judgement is the reader's.
-    if len(frac) == 2:
-        lo, hi = min(frac.values()), max(frac.values())
-        print('   -> composition %.0f%% vs %.0f%%. IF THESE DIFFER MATERIALLY THE '
-              'COUNT CONTRAST IS' % (lo, hi))
-        print('      UNINTERPRETABLE - the arms are counting different kinds of '
-              'frame, which looks')
-        print('      exactly like a lever effect. Report section 5 (avg) only, '
-              'and say why.')
+    # THE CHECK IS ASYMMETRIC, AND THE SYMMETRIC VERSION WAS CIRCULAR.
+    #
+    # It used to say: if the two arms' AI fractions differ materially, the count
+    # contrast is uninterpretable. THAT VOIDS EVERY TRUE POSITIVE. If slicing
+    # removes AI-dominated frames, the large frames REMAINING under treatment
+    # are necessarily the non-AI ones, so the treatment fraction MUST fall - a
+    # composition shift is a predicted consequence of the lever working, and the
+    # rule fired hardest exactly when it succeeded. Alpha caught it on the first
+    # real leg, where it flagged a 4.4x count drop as uninterpretable.
+    #
+    # The control arm is untreated, so its composition cannot be confounded by
+    # the effect and IS diagnostic: a low fraction there means the metric was
+    # never measuring AI on this map, whatever the contrast says. The treatment
+    # arm's fraction is an OUTCOME and is reported as one.
+    #
+    # The count contrast itself was never confounded. Under H1 the AI-driven
+    # events vanish and the non-AI ones persist, so the count falls by exactly
+    # the AI portion - which is the estimand.
+    if CONTROL in frac:
+        print('   -> control composition %.0f%% AI. THIS is the validity check: '
+              'the control arm is' % frac[CONTROL])
+        print('      untreated, so a low figure here means the metric was not '
+              'measuring AI on this')
+        print('      map, and section 6 says nothing about AI whatever the p-value.')
+    if TREAT in frac:
+        print('   -> treatment composition %.0f%% AI. NOT a validity check. If '
+              'slicing removes' % frac[TREAT])
+        print('      AI-dominated frames the survivors are the non-AI ones, so a '
+              'fall here is a')
+        print('      PREDICTED CONSEQUENCE of the lever working - not evidence '
+              'against the contrast.')
     # THE FOURTH LINE, which the three-branch table invites you to forget: at
     # k~20 a null excludes changes above ~4x and nothing smaller. Slicing cuts
     # ticks 5.8x, so a pile-up mechanism should clear that - but a true 2x
