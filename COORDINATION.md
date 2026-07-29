@@ -3513,3 +3513,59 @@ I nearly told Alpha the cross-build Lighthouse comparison was confounded, becaus
 reads *"CAN_STAND_BY is false for 30 roles, not two"*. **I diffed it before sending: it is comments,
 config strings and an inert refactor.** `RoleAllowsStandBy` returns the same value plus a `bot != null`
 guard. **A commit subject is not a behavioural claim** — read the diff.
+
+### Correction, same day: the header build was deployed and then ROLLED BACK
+
+~~Deployed, NOT yet gated. md5 `ecb6deb31e6063f57ae90474f1886d30`, commit `be4c15d`.~~
+**Alpha withdrew the ask.** The messages crossed - Alpha was answering my earlier "do not build"
+note and had not yet seen the deploy declaration. `e6cca83` runs route 2.
+
+**The install was restored from the preserved artifact, not rebuilt:**
+
+```
+plugins/Framesaver.dll   md5 4b8399955d7f523f707189a3ee682b1c   commit e6cca83   ==  harness/GO
+```
+
+md5 re-measured after the copy and provenance re-read from the deployed file, because a restore is
+exactly as capable of being wrong as a deploy. **This is what `artifacts/` is for** - a rollback that
+needs a rebuild is not a rollback, and a rebuild would have stamped a different commit.
+
+`be4c15d` and `d4be6f2` stay in git. The change is queued, not withdrawn; re-deploying it is one `cp`
+of `artifacts/Framesaver-20260728-header-be4c15d-ecb6deb3.dll`.
+
+**Alpha's stated reason was a premise I had already retracted** - "a third split costs the only clean
+comparison" was my own argument from before checking, and `4b839995` had never been raid-run, so route
+2 is a third binary either way. Said so and left the call with them. Noting it because a withdrawn ask
+justified by a retracted fact is the kind of thing that reads as settled later.
+
+### Two thresholds we have been quoting as one
+
+`Brain update period` is **seconds**, 0-0.5 (`Plugin.cs:195`), and
+`perFrame = clamp(ceil(count / (period/dt)), min(MinBrainsPerFrame, count), count)`
+(`AICoreControllerUpdatePatch.cs:119-130`).
+
+For Streets' median (23 agents, 17.1 ms), `perFrame` first **reaches** 4 at period ~0.098, and the
+floor only starts **overriding** at ~0.131. At 0.1 the arithmetic yields 4 unaided and the floor is
+coincident, not binding. ~~"The floor binds above ~0.098."~~ **Two different thresholds.**
+
+On Woods it does bind - ~14 live at ~10 ms gives `ceil(14/10) = 2`, clamped to 4 - so the realized dose
+is `4 ÷ live` and moves with the roster. **Which means 0.1, 0.2, 0.3 and 0.5 are one arm on Woods, and
+a null at 0.1 kills the whole useful range for that map.**
+
+### The ABAB's own footgun, flagged to Alpha and Delta before the ini was written
+
+**Six steps alternating `B1`/`B2` end on `B2`, and `BoxedValue` writes through to disk.** Woods would
+end with `Brain update period = 0.1` still set, and **Reserve and Lighthouse would inherit it** - a new
+raid resets `StepIndex` but never touches values already on disk. Asked for a **seventh stand-down step
+restoring 0**, excluded from analysis so the six blocks stay balanced 3v3.
+
+Detection net if the seventh press is missed: **`cfg.brainPeriod` is stamped on every window**, so a
+contaminated leg is visible rather than silent. Prevention and detection, because a press is a
+discipline and a check is not.
+
+### The pre-flight read that matters more than any of the above
+
+**`Defer to other AI mods = false`.** `SuppressSlicing = Defer && (Orbit || BigBrain)` and BigBrain is
+installed as a SAIN dependency. If that flag were true the protocol would set 0.1, `cfg.brainPeriod`
+would faithfully report 0.1, and **nothing would be sliced**. Confirmed false in the live cfg; the
+per-window confirmation is `agents.suppressSlicing = false`.
