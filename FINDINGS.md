@@ -4540,7 +4540,23 @@ Lighthouse deliberately, because it had ended early twice and was the only goal-
 `e6cca83`, `Defer to other AI mods = false`, `Spike event ms = 30`, protocol installed and unadvanced
 until leg 4.
 
-### Goal 1 is settled: nine of ten maps measured, every one clears 60 fps
+### Goal 1: nine of ten maps measured, every one reads above 60 fps — but NOT certified
+
+**`read-marathon.py` exits 1 on this run and refuses to quote the per-map verdicts below.** The gate fires
+because the one map played twice disagreed by **1.22×**, so map and session age are not separable, and a
+single reading of any map inherits that uncertainty. **It fired on the run it was written for and it is
+right to.** Do not quote the table without this paragraph: **uncertified is not the same claim as wrong,
+and it is also not the same claim as settled.**
+
+**The margin matters here rather than being pedantry.** Lighthouse read **69.1** (n=19, early in the
+session) and **56.7** (n=10, late) — one above the floor and one below it. `69.1 ÷ 1.22 = 56.6`, so within
+the observed drift Lighthouse can sit either side of 60, and **which side is not a question this run
+answers.** The likely explanation is bot count, not time: leg 4 ran at **31–37 live agents against leg 1's
+29–31**, one uncontrolled difference rather than two, because the drift bracket already restricts itself to
+slicing-off windows. A likely explanation is not a measurement.
+
+**The fix is specific and cheap, which is the difference from the previous four failures:** run the repeat
+legs at comparable bot counts, or collect enough repeats to condition on it.
 
 | map | p50 fps | n | | map | p50 fps | n |
 |---|---|---|---|---|---|---|
