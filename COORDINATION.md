@@ -3215,8 +3215,17 @@ interesting.** Five instances today, none of which looked like that from the fro
 | `p999` | rides the frame time it was meant to describe |
 | `LastBrainsTicked` sampled at flush | `perFrame` divides by `deltaTime`, so a slow frame ticks more |
 | mark lookback from `_frameSamples` | cleared at the window boundary, losing the frames she reacted to |
-| `KeyboardShortcut.IsDown()` | refuses while any key is held, so marks survive only when stationary |
+| `KeyboardShortcut.IsDown()` **(fixed — see below)** | refuses while any key is held, so marks survive only when stationary |
 | menu marks | the ring did not fill there, so the hitch was unmeasured as well as unmarked |
+
+**Row 4 is historical, and the window is exact.** `ca2515c` replaced `IsDown()` with our own `Pressed`,
+which tests the main key and the configured modifiers and nothing else. Nothing calls `IsDown()` now.
+The row still describes **the ten marks in `framesaver-20260728-172521-marathon.ndjson`** — that session
+started **17:25:21** and `ca2515c` committed at **17:51:50**, with no deploy in between, so those ten
+really were captured standing still. **Route 2 is the first raid that exercises the fix, so its marks
+are a different population and must not be pooled with the ten.** Alpha caught the live-versus-historical
+error; a row left reading as live would make the next person discount marks that are now clean, which is
+the same failure running the other way.
 
 **Where it stops:** the `frameMs`-versus-`frame` divergence is a caveat that stays a caveat, because
 both quantities are reachable and the note only says not to subtract one from the other. Beta's test
@@ -3357,3 +3366,72 @@ build ran this leg" was answered from wall-clock, which is exactly what the head
 
 Install root is **`F:\SPT\SPT4.0.13\`**, not `F:\SPT\`. Config is **`framesaver.ai.perf.cfg`**, not
 `com.sophia.framesaver.cfg`.
+
+---
+
+## 2026-07-28 — Delta: the marathon gate fails on a confound whose sign is backwards
+
+`read-marathon.py` GATE FAILs with *"Customs drifted 1.49x between visits - map and session age are not
+separable in this run"*, and no per-map verdict is quotable while it does. Alpha proposed buying the missing
+control with field time: two 90-second stationary holds per leg. **The control is already in the logs, and
+the confound it targets is contradicted in sign.**
+
+### Session age predicts the opposite of what happened
+
+The reader orders the visits leg 4 → leg 7: **80.4 fps first, 120.0 fps later.** Session age — heap growth,
+fragmentation, thermal — is monotone degradation, so it predicts the *later* visit is slower. It is 1.49×
+**faster**. Whatever produced the spread, arrow-of-time drift is not it.
+
+### The visits cover the same ground, so the comparison is retroactive
+
+`pos.x` is a `[min, max]` bounding range per window. Both Customs visits span x ≈ −150 → ~500 — she repeated
+the route. **28 window pairs overlap in x.**
+
+| | ratio, later ÷ earlier, ms |
+|---|---|
+| whole-visit, as the gate computes it | **0.67×** — the 1.49× it fails on |
+| **matched position, 28 pairs** | **0.78×** median, range 0.54–0.95 |
+
+**Position accounts for about a third of the spread; a ~1.28× gap survives it.** The gate is right that
+something is there and wrong about what.
+
+The residual tracks `awake` — the widest pairs are the lopsided ones (awake 3 against 9–10 gives 0.63–0.65×;
+6 against 0 gives 0.95×). **That is a candidate, not a finding.** `awake` is itself partly positional, and
+naming it now would repeat the Customs withdrawal from earlier today verbatim.
+
+**Method caveat, and it is load-bearing:** this overlaps x-intervals only, ignores z, and matches wide
+intervals against narrow ones (w13 spans 194–342 against w42's 193–243). It is a screening test that decides
+whether a finer one is worth building. **Not quotable on its own.**
+
+`analysis/delta-matched-position.py <map-id> <log>...` — reusable on any map with two visits.
+
+### What to change: the gate, not the raid
+
+The drift check should compare visits **at matched position** and report the residual next to `awake`, rather
+than differencing whole-leg p50s. Zero field time, and it unblocks the per-map verdicts. The only field-time
+ask worth making is far cheaper than holds: **when she revisits a map, follow roughly the same route.** She
+already did on Customs, which is the only reason this worked.
+
+### On the holds themselves, if they are run anyway
+
+Alpha named three failure modes and ranked (b) fatal. **(c) is the fatal one.** 90 s guarantees exactly one
+whole window per hold, so it is two single windows with no variance estimate — against 1.2 ms median |Δ| at
+p50 between identical-config *adjacent* windows, and far worse in the tail. Three windows a hold needs ~4
+minutes, so 8 min/leg rather than 3.
+
+**(b) — "standing still changes the bot population" — is not fatal for the stated purpose.** Both holds are
+stationary, so hold-to-hold is internally valid whether or not stationary p50 resembles traversal p50; the
+hold is calibrated against the other hold. The real limit is **transfer**: a drift factor measured under
+stationary load cannot be subtracted from a traversal comparison, because heap growth and bot accumulation
+do not act the same under load. Qualitative yes/no, not a correction factor.
+
+### The chronology bug that would have reversed the conclusion
+
+The first draft labelled visits by splitting the *full path* on `-`, which picked up the `Framesaver-logs`
+directory, collapsed every label to the same string, and then ordered them with `sorted()`. That put the
+120 fps visit first and would have produced *"later is slower, session age confirmed"* — the exact opposite
+finding, from the same data, with no error message anywhere. The landed script takes chronology from file
+order then leg order and never sorts labels.
+
+**A label that is wrong in a way that still sorts is worse than one that crashes.** Caught only because the
+reader's own leg numbers disagreed, and I checked which of us was wrong instead of picking.
