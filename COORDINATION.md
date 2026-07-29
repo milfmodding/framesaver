@@ -3814,7 +3814,12 @@ Window 12 tiles completely: `Update` = 630.0 of a 675 ms period, of which
 together are 99.7% of the phase. `gcGen0` = 0. **Not GC, not AI, not rendering, and not
 `ScriptRunBehaviourUpdate`** — it is the delayed-coroutine queues.
 
-### It is a family, and it is on every map
+### ~~It is a family, and it is on every map~~ PARTLY WITHDRAWN — it is an INSERTION family
+
+**The table below pools insertion and steady-state windows.** Its "in-raid" filter is `state == 'raid'`,
+which includes the first minute. Split on `raidElapsed`, **all nine coroutine stalls are insertion windows
+and none are steady state.** See the superseding entry at the end of this file. The per-map spread and the
+`unaccounted` 0.0 / `gcGen0` 0 signature all hold; what does not hold is that it is an in-raid mechanism.
 
 Marathon logs only, because 15 older logs never emit phase children and would score as "parent only" — the
 same era artifact that produced the withdrawn 44% figure. In-raid, period >= 150 ms, **59 events**:
@@ -4213,3 +4218,63 @@ Four of today's population failures were about *which rows*. This one is about *
 fails in the same direction: a summary that is robust to outliers is blind to a gate defined by one. Worth
 carrying next to the population rule rather than inside it — *check the population before the arithmetic*
 would not have caught this, because the population was right.
+
+---
+
+## 2026-07-28 — Delta: the coroutine family is insertion-only, and every steady-state gate-2 failure is unattributed
+
+**This corrects my own headline, and it makes the release blocker harder rather than easier.** I filtered
+stalls on `state == 'raid'` and called the result "in-raid". `state == 'raid'` includes the first minute.
+Split on `raidElapsed`, the picture separates completely:
+
+### INSERTION (`raidElapsed` < 120 s) — 18 stalls >= 150 ms
+
+| family | n | max | median | >= 250 |
+|---|---|---|---|---|
+| **Update → ScriptRunDelayedDynamicFrameRate** | **9** | 675.6 | 350.6 | **9 of 9** |
+| out-of-loop / no phase | 7 | 259.4 | 177.5 | 2 |
+| Update → ScriptRunBehaviourUpdate | 2 | 242.3 | 167.0 | 0 |
+
+### STEADY STATE (`raidElapsed` >= 120 s) — 37 stalls >= 150 ms
+
+| family | n | max | median | >= 250 |
+|---|---|---|---|---|
+| **out-of-loop / no phase** | **20** | 367.6 | 199.5 | **3** |
+| TimeUpdate → WaitForLastPresentation | 8 | 208.3 | 155.6 | 0 |
+| Update → ScriptRunDelayedTasks | 5 | 182.4 | 159.2 | 0 |
+| Update → ScriptRunBehaviourUpdate | 4 | 217.2 | 159.1 | 0 |
+| **Update → ScriptRunDelayedDynamicFrameRate** | **0** | — | — | **0** |
+
+**The coroutine family does not occur in steady state at all.** Nine of nine are insertion, and they are
+9 of the 11 insertion stalls above 250 ms.
+
+**And every steady-state stall above 250 ms is out-of-loop and unattributed** — three events, all in two
+Streets windows, `unaccounted` 348–380 ms of a 367–397 ms period, no phase above the 0.5 ms emit floor,
+`gcGen0` 0. The family we already characterised via `endToStart[N−1]` ≈ `unaccounted[N]`, which by
+construction has no phase attribution because it happens outside the instrumented loop.
+
+### What this changes
+
+- **"The release blocker has a name" was wrong.** The named mechanism is the *insertion* phenomenon —
+  which Alpha and Gamma have both argued is arguably an acceptable cost. **The steady-state failure has no
+  named mechanism at all.**
+- **Tomorrow's coroutine-ownership work addresses insertion hitches, not the gate-2 failure.** Worth doing —
+  9 of 9 windows, every map, every raid — but it must not be sold as fixing the steady-state blocker,
+  because it cannot.
+- **It strengthens the two-statement split** rather than weakening it. The mechanistic separation is cleaner
+  than either Alpha or I stated: insertion is coroutines, steady state is out-of-loop. Two families with
+  **zero overlap**, not two intensities of one thing.
+- I also repeated Alpha's `UpdatePreloading` / `ScriptRunDelayedStartupFrame` characterisation as the
+  insertion mechanism. Those dominate **`state == 'loading'`** windows. The in-raid insertion minute is
+  coroutines.
+
+### The error
+
+**Same class, fifth time, and I had already written the rule that would have caught it.** *Do not
+reconstruct a quantity the telemetry emits* — then I used `state` where the question required
+`raidElapsed`, one entry after recording that `raidElapsed` exists and that I had reconstructed it twice.
+Knowing the field exists is not the same as asking which field the question needs.
+
+**The tell was available and I walked past it**: the coroutine family's map coverage was *7 of 7 maps with
+9 events* — near-exactly one per leg. A family that fires once per leg on every leg is a per-raid event, and
+I recorded that as evidence it was universal rather than as evidence it was **positional**.
