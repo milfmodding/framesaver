@@ -73,6 +73,23 @@
       "testabilityCondition": "Gluhar must actually spawn. NOTHING IN THE LOG RECORDS WHETHER HE DID - role appears only for the single bot a census line happens to sample, never as a roster - so this is settled by the runner's note or not at all. THIS IS NOT A PRECONDITION AND MUST NOT BLOCK THE RUN, for the reason perception-level-or-ratio taught: collapsing 'can this be tested' into 'may this proceed' makes the gate fire on the wrong question, and a gate that refuses runs it has no business refusing teaches people to override it.",
       "whyThisWindowAndNotThePool": "exempt counts every role-exempt bot and EVERY PMC IS ONE - roughly half of all roles carry Mind.CAN_STAND_BY false. So early in any raid exempt is large everywhere and discriminates nothing. What separates Lighthouse from Customs is the floor after the map settles: Lighthouse floors at 14 of 29 awake where other maps floor at 0-2, because the exusec Rogue garrison at Water Treatment survives where other maps' PMCs die. Pooling mixes the PMCs-alive phase into that floor - the same aggregation error that made the per-bot slope read 0.623 pooled against 0.294/0.394 per map.",
       "ifItFails": "THREE BRANCHES, STATED IN ADVANCE. (1) awake floors high AND exempt accounts for it: second case confirmed, and the role-list design - replacing the Force for all roles boolean with a role list - is justified by two cases rather than one. (2) awake floors at 0-2 like the ordinary maps: ONE case, not two. Lighthouse is a Lighthouse-specific finding about a surviving garrison, the role list is a general fix for a single-map problem, and it should not be built. (3) awake floors high but exempt does NOT account for it: the awake floor is being held by something other than role exemption, the whole framing is wrong, and the next question is which of the other wake reasons is doing it - not a smaller version of this one. A Gluhar no-show is NONE of these three: it is an untested null and must be recorded as one, because a leg with him and a leg without are indistinguishable in the file."
+    },
+    {
+      "id": "brain-tick-share-of-aitotal",
+      "claim": "On the closing Lighthouse ABA, aiTotal.avg falls on the sliced blocks by >0 and <=0.65 ms; point prediction 0.28-0.39 ms (0.79 -> 0.40-0.51).",
+      "source": "Delta, COORDINATION 2026-07-28, analysis/delta-brain-share.py (29d4911); Alpha refit independently",
+      "precondition": "resolved",
+      "preconditionWas": "Needs a within-map regression whose live range is wide enough to identify an intercept. Three of seven maps return negative intercepts and implied shares of 145-374%, which is a reductio, not an estimate.",
+      "resolvedBy": "Alpha, 2026-07-28",
+      "resolvedNote": "Delta fit share=58% from Factory alone (live 1-10, r=0.82, intercept +0.052). Refit reproduces it at 60% (intercept +0.048, r=0.80) and finds a SECOND physically possible map Delta did not count: Sandbox_high, live 12-20, intercept +0.271, share 43%, r=0.45. So the share is a 43-60% RANGE with two supporting maps, not a point on one, and the predicted drop widens to 0.28-0.39 ms. Lighthouse's own 2-window fit returns intercept -7.833 and share 1066%, which demonstrates the extrapolation failure on the very map being run.",
+      "outcomes": {
+        "dropIsZero": "The lever never engaged. Check agents.slicing and agents.suppressSlicing before concluding anything about cost.",
+        "dropAbove065": "The model is wrong - the drop cannot exceed aiTotal x 0.828 if the tick's share is at most 1.",
+        "dropInRange": "The brain tick is 43-60% of aiTotal, and slicing's whole-frame ceiling stands at 0.44-0.68 ms.",
+        "dropBelowRange": "The tick is a smaller share than Factory and Ground Zero imply - most likely because Bots.UpdateByUnity also scales with live, so the slope credits the tick with cost that is not its own."
+      },
+      "ifItFails": "Every assumption in the estimate pushes the same way, so it is safe to argue AGAINST the lever and unsafe to argue for it. If the drop lands above 0.65 ms the ceiling table is wrong and Delta's 1.6-4.9% AI share needs re-deriving before any release claim quotes it.",
+      "note": "Delta-A-aiTotal > 0 is a NON-TAUTOLOGICAL engagement check, which tickedSum/liveSum cannot be: that ratio is 1.0000 by construction in the control arm. Keep both - agents.slicing false means the flag never set, delta-aiTotal zero means it set and did nothing."
     }
   ]
 }
