@@ -3694,3 +3694,69 @@ default, no AI path.**
 **Both freezes are kept.** `...-be4c15d-ecb6deb3.dll` was live for two minutes and rolled back;
 `...-3c8263c-e85bada5.dll` is live now. Deleting the superseded one would destroy the only record
 that could answer "which one ran" for anything captured in those two minutes.
+
+---
+
+## 2026-07-28 — Delta: installing a protocol ini marks every leg as a protocol leg
+
+Found while writing the Lighthouse A/B ini, before it was installed. **It would have voided goal-1 scoring
+and coverage for all four legs of route 2, including the three clean ones** — the exact outcome the route
+reorder existed to prevent, arriving through a different door.
+
+### The chain
+
+| | |
+|---|---|
+| `ResetForRaid()` calls `Load()` | `ProtocolRunner.cs:249-252` — so `Loaded` is true on **every raid once the file exists**, not just the leg with presses |
+| telemetry emits `protocol` non-null whenever `Loaded` | `Telemetry.cs:1463`; before any press that is `{name, step: 0, steps: N, arm: null}` |
+| `leg_is_clean` keys on `protocol is None` | `read-marathon.py:181` → **False for every leg** |
+| excluded from goal-1 scoring *and* coverage | `read-marathon.py:234-240`, verdict `protocol leg` at `:356` |
+
+Beta's persistence defect leaks **forward** through a value (`BoxedValue` survives the leg). This one leaks
+**sideways** through a load flag: the file existing on disk classifies legs that never touched it.
+
+**The per-leg fix at `:172-181` is right and insufficient**, for a reason its own docstring cannot see — it
+assumes *carries a protocol* means *the ini was armed for that leg*, but `Loaded` is a property of the file
+existing. Per-leg granularity does not help when every leg looks armed.
+
+### The discriminator is `arm`, not `protocol`
+
+`Arm` returns null while `StepIndex == 0` (`ProtocolRunner.cs:60-63`), so a loaded-but-never-advanced
+protocol is behaviourally identical to no protocol, and `sliced(w)` already covers the behavioural half.
+
+```python
+def leg_is_clean(leg):
+    return all((w.get('protocol') or {}).get('arm') is None and not sliced(w)
+               for w in leg['w'])
+```
+
+This still excludes the whole A/B leg including its `B1` control blocks, which is correct: **a control arm is
+still an arm**, and pooling it into a coverage figure is what `:352-356` refuses on purpose.
+
+`:227`'s `unexplained` test is the one place `protocol is None` stays correct — slicing under a loaded but
+unadvanced protocol really is unexplained contamination.
+
+### The rule this retires
+
+**"No ini installed, so `protocol` reads `null`" stops being available the moment the file lands.** The clean
+legs are still clean — `cfg.brainPeriod = 0`, no press, `agents.slicing` false — but the marker for it is now
+`protocol.arm == null` **and** `cfg.brainPeriod == 0`. Anything keying on `protocol == null` as a proxy for
+*clean* now reports contamination that did not happen.
+
+### Two corrections to my own earlier claims, both in the ini header
+
+**`tickedSum ÷ liveSum` = 1.0000 under `brainPeriod = 0` is a tautology, not an instrument check.**
+`AICoreControllerUpdatePatch.cs:104` assigns `LastBrainsTicked = LiveAgents` on the same frame `_liveSum`
+counts it. I proposed that ratio as a pre-flight discriminator and Alpha reported the flat baseline as
+reassuring; it cannot be anything else. It is a real **dose** measurement in the sliced arm only.
+`agents.slicing` / `suppressSlicing` separate "lever did not engage" from "sums are broken". Gamma's catch.
+
+**I had the floor-binding threshold at the wrong operating point.** The period binds above `4 × period ÷ dt`
+agents — 25 at 16 ms, 40 at 10 ms. I computed Lighthouse at 100 fps and called it floor-bound; at its actual
+~16 ms frames the **period binds** (`perFrame` 5 against the floor's 4), making Lighthouse the only map in
+the corpus where `Brain update period` is the live variable. Gamma's figures are right.
+
+**And one framing I changed rather than passed through:** "the realized dose is small" conflates two
+quantities. `perFrame` 5 against control's ~29 is a **~5.8× cut — a large dose**. What is small is the
+period's *margin over the floor*, 5 against 4. Stated as one sentence it invites an analyst to discount a
+real effect as an underdosed arm. **The dose is large; the attribution to `0.1` specifically is weak.**
