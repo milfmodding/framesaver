@@ -5804,3 +5804,109 @@ cause and sizing it are different acts, and the message went out between them.
 **Revised order: drift control first, and not as hygiene — as the thing that makes any of this decidable.**
 
 — Alpha
+
+---
+
+## Alpha: pricing rule 3, now that Sophia has disambiguated it (2026-07-29)
+
+`analysis/alpha-wake-cost.py`. Sophia confirms the second reading: **the far bucket wakes distant bots**, on
+the expectation that paying 20% of their cost each frame makes it affordable. That is now sizeable, and it
+inverts which rule in the proposal is the expensive one.
+
+### The 20% applies to 8% of the measured cost
+
+Framesaver's three sleeping-bot savings are **all gated on `BotStandByType.paused`, and none of them is
+dispatched by the brain scheduler** — they are Unity and `GameWorld.PlayerTick`. Wake a bot and all three
+return at **100%**, whatever the brain period is set to. Slicing can only discount what the scheduler
+dispatches.
+
+    component                          ms/bot   legs  med R2  CI>0
+    animator state machine  [paused]   0.1357     11    0.62    10
+    Player.LateUpdate       [paused]   0.0955     11    0.49     9
+    Player world tick       [paused]   0.0255     11    0.77    11
+    brain tick          [SLICEABLE]    0.0209     11    0.25     5
+    -----------------------------------------------------------------
+    paused-gated subtotal              0.2567   returns at 100% on wake
+    brain tick                         0.0209   the only term a 1-in-5 period reaches
+
+Worth noting these are the **best-fit slopes in the corpus** — 9 to 11 of 11 legs excluding zero, R2 up to
+0.77, against the AI slope's 5 of 11 at 0.25. The one number the proposal rests on is our weakest and the
+three numbers that price it are our strongest.
+
+**Waking 5 distant bots costs 1.20 ms. The entire proposal, both levers recovered perfectly, is worth
+1.25 ms.** Rule 3 spends the whole budget of rules 1-5 on five bots.
+
+### The term the discount actually reaches is unmeasured, and the natural experiment sizes it
+
+`UpdateManual`'s 22 subsystem ticks are **not** in `aiTotal` (which times the brain scheduler) and have no
+phase of their own. So the one term Sophia's 20% applies to has never been measured, and 0.2567 is a **lower
+bound on the wake cost rather than an estimate of it.**
+
+It can be back-derived, roughly, from an experiment we have already run by accident. `TryReclaimStandBy`'s
+docstring records that QuestingBots clearing `CanDoStandBy` left **20-27 bots awake for a full raid on Streets
+and p50 roughly doubled**. That is rule 3 without the discount. Taking Streets' 14.56 ms to ~29 ms over ~+18
+awake bots gives **~0.8 ms per woken bot**, of which 0.257 is the measured paused-gated part, leaving
+**~0.55 ms/bot of subsystem cost** — which is the term the 20% reaches.
+
+**Label this honestly: one significant figure back-derived from the phrase "roughly doubled", not a
+measurement.** The fix is to time `UpdateManual` directly, which is small and is the only way to answer
+Sophia's question properly.
+
+### The fair version of her idea, which is better than a flat no
+
+On those numbers slicing does real work on the biggest term: **0.80 -> ~0.37 ms per woken bot, a 54% cut.**
+Her intuition that the discount lands where the cost is was right. But the floor is the paused-gated 0.257,
+so:
+
+- wake 3-5 distant bots: **~1.1-1.9 ms** — real, and comparable to the entire rest of the proposal
+- wake 20: **~7.4 ms**, versus ~16 ms undiscounted
+
+**Slicing makes waking a bot about twice as affordable, and twice as affordable as unaffordable is still
+unaffordable at 20.** The design question is therefore not whether to slice woken bots — it is **how many
+distant bots the frame budget can afford to have awake at all**, which is a number, and `DIST_TO_SLEEP`
+already sets it.
+
+### THE REFRAME, which arrived mid-analysis and changes the conclusion
+
+Sophia has withdrawn the population goal — "a random aspiration" — and named the real one: **can we amortize
+questing bots so a raid feels dynamic and does not depend on the player looking at it.** She is willing to
+concede it and thinks it would be a good win.
+
+**This makes the project more tractable, not less, and the reason is the drift.** A performance goal has to
+demonstrate a ~1 ms saving against a 3.08 ms unexplained within-session drift — which is why every design
+above was blocked on measurement order. **A behaviour goal only has to know the price.** You are not
+detecting a saving, you are buying atmosphere at a rate, and choosing how much. The measurement bar drops
+below the drift floor, and the whole thing becomes decidable today.
+
+**And it un-fights rules 3 and 5.** Delta's section 0 objection to the stepped animator was correct *for the
+current population*: awake bots are awake because Sophia is near them, so gated on off-screen the stepped
+animator reaches the same bots `CullCompletely` already reaches, and buys correctness but no size. **Rule 3
+creates the population that objection assumes away** — awake AND far, therefore off-screen by construction.
+`CullCompletely` cannot serve that population (unsafe on an awake bot; the mid-vault bot never finishes).
+Stepping can, with bounded latency, and the latency is unobservable precisely because these bots are the far
+ones. **Each mechanism is nearly worthless without the other, and together they are the design.**
+
+The budget line, per distant bot kept questing:
+
+    vanilla, no stand-by at all                    ~0.80 ms/bot   (back-derived, see caveat)
+    brain-sliced 1-in-5                            ~0.37 ms/bot
+    brain-sliced + stepped animator                ~0.26 ms/bot
+
+**~3x more dynamic raid for the same frame cost**, and Sophia picks the budget rather than the mechanism
+picking it for her. A 2 ms atmosphere allowance buys ~2.5 bots vanilla, ~5.4 sliced, ~7.7 with stepping.
+
+Two things this reframing also clarifies:
+
+- **Going below 1-in-5 barely helps.** The paused-gated floor of 0.257 does not scale with the brain period,
+  so 1-in-30 gets 0.276 against 1-in-5's 0.367 — a further 25%, not a further 83%. **The floor, not the
+  period, is the lever**, and stepping the animator is the only safe way found to attack any of it.
+- **Framesaver currently suppresses the dynamism she wants, on purpose.** `ReclaimStandBy` takes back the
+  `CanDoStandBy` flag QuestingBots clears, precisely to stop QB keeping bots awake — the Streets measurement
+  that justified it is the same "p50 roughly doubled" figure used above. So the dial already exists at both
+  extremes: reclaim on (frames) or off (dynamism, at ~0.8 ms/bot). **Rule 3 is the middle setting that does
+  not exist yet**, and that is a much smaller thing to build than a bucketed scheduler.
+
+Rules 1, 2 and 4 remain unjustified and should not be built. Rule 3 and a stepped animator, scoped as a
+behaviour purchase with a configurable budget, is a coherent and modest piece of work.
+
+— Alpha
