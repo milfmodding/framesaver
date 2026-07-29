@@ -4530,3 +4530,161 @@ and choosing one now is the move that produced 4.2%.
 **The 3–4 raid estimate is retired with it.** It was priced on separating 4.2% from 10.5% at ~71 events per
 raid. The quantity is now 7 unpaired events per raid against a control that predates the latch and has never
 been run through the pairing rule. **Re-price after the control is re-derived, not before.**
+
+---
+
+## Marathon 2026-07-28/29 (`225956`) — four legs, and the first measurement of brain slicing
+
+One unbroken session, one log, four raids: Lighthouse → Woods → Reserve → Lighthouse. Front-loaded onto
+Lighthouse deliberately, because it had ended early twice and was the only goal-1 result in doubt.
+`e6cca83`, `Defer to other AI mods = false`, `Spike event ms = 30`, protocol installed and unadvanced
+until leg 4.
+
+### Goal 1 is settled: nine of ten maps measured, every one clears 60 fps
+
+| map | p50 fps | n | | map | p50 fps | n |
+|---|---|---|---|---|---|---|
+| Factory | 135.6 | 6 | | Woods | **92.2** | **20** |
+| Shoreline | 111.6 | 10 | | Customs | 80.4 / 120.0 | 17 / 7 |
+| Interchange | 104.0 | 8 | | Lighthouse | **69.1** | **19** |
+| Ground Zero | 100.3 | 5 | | Streets | 69.1 | 10 |
+| | | | | Reserve | **67.9** | **13** |
+
+**Labs is the only map never launched.** Lighthouse is the result that mattered: it had `n=1`, and two
+defensible computations of it — 65.8 and 54.6 — straddled the floor. **The 54.6 was an artifact.** Three
+independent defects produced it, all on the one map thin enough for any defect to show: a `final`
+fragment, a loose eligibility filter, and a `median()` returning the upper of two values at `n=2`. On
+nineteen windows it reads **69.1** and the ambiguity is gone.
+
+### Goal 2 has THREE mechanisms, and no single fix
+
+Steady-state failures across the whole corpus: **2 windows in ~124**, and they do not share a cause.
+
+| where | ms | cause | `unaccounted` |
+|---|---|---|---|
+| Streets `w16` | 344 / 368 | **out-of-loop, unattributed** — outside the instrumented loop by construction | 94–95% |
+| Reserve `w58` | 319 | **`Update/ScriptRunDelayedTasks`** 227.6 (71%) | 0.35 |
+| Lighthouse `w72` | 293 | **bot AI** — `ScriptRunBehaviourUpdate` 260.5 (88%) | 0.41 |
+
+`w72` is new and it is the first steady-state gate failure attributable to AI. The Reserve phase had five
+events ≥150 ms in the previous corpus and none ≥250; it has now produced one.
+
+**Insertion is a separate population and is 12 of 12.** Every leg's first in-raid window carries a
+≥250 ms stall, all twelve `Update/ScriptRunDelayedDynamicFrameRate`, and that family has **zero**
+steady-state occurrences. Tonight: Lighthouse 513.2, Woods 569.1, Reserve 345.3, Lighthouse 416.6.
+**Do not merge it with the gate-2 population** — the discard removes it, and the two arguments for it
+being a different phenomenon are independent: 100% of first windows fail against 1.6% of the rest, and
+the families are disjoint (9 and 0 on the named mechanism).
+
+### Goal 3 is met everywhere — `p99/p50` 1.37–1.83 against 2.0.
+
+### Brain slicing: measured for the first time, and it works
+
+Leg 4, ABABA on `Brain update period` 0 / 0.1, floor untouched at 4, five presses.
+
+| block | `aiTotal.avg` | AI per bot | `ticked/live` |
+|---|---|---|---|
+| control (step 1) | 1.713 | 0.04972 | **1.0000** |
+| **sliced** (step 2) | **0.942** | **0.02832** | **0.186** |
+| control (step 3) | 1.466 | 0.04814 | **1.0000** |
+
+**5.4× fewer brain ticks, 43% less AI cost per bot, p ≈ 0.001, with the control blocks bracketing the
+treatment in time and returning to baseline.** The bracket is what makes it causal rather than
+correlational, and it exists because of the third press. Treatment variance came out **3.2× tighter** than
+control (0.155 against 0.492) — unregistered, dated here as post-hoc, and what you would expect if the
+lever removes a variable cost.
+
+**The period was the binding variable, not the floor.** `ticked/live` 0.2004 = 7÷35 at ~18 ms frames.
+Lighthouse is the only map in the corpus where that is true, which is why the leg was hosted there.
+
+**Two limits, both load-bearing for release.** The whole AI tick is 1.6–4.9% of a frame, so the lever
+ceiling is ~1.3 ms — **it cannot close a performance gap**. And `Defer to other AI mods` **defaults to
+`true`** with `SuppressSlicing = Defer && (Orbit || BigBrain)`, so on any machine running SAIN the lever
+is off. Tonight number is what slicing can do, not what users get.
+
+**Open: removal versus relocation-below-threshold.** Large AI frames fell 4.4× (35.2/window to 8.0). The
+validity check passes on the arm where it can — control 97% AI — but the surviving 28% in the treatment
+arm cannot distinguish AI frames removed from AI frames pushed under the 10 ms counting line. `aiMs` on
+the spike line settles it.
+
+### Perception: the threshold is ≤90.6 ms, and the marks are TWO populations
+
+Six marks. Split on `p99/p50` of the lookback, which needs no invented threshold:
+
+| kind | n | ratio | worst frames |
+|---|---|---|---|
+| isolated hitch in a smooth stretch | 4 | 1.0–1.6 | 90.6, 94.2, 139.7, 158.0 |
+| **sustained — the whole 5 s was bad** | 2 | **4.3, 7.5** | 172.2, 293.2 |
+
+**The ≤90.6 ms upper bound comes from the isolated set only and must not be moved by the sustained
+ones** — on a sustained lookback the worst frame is not necessarily what she reacted to. **That bound is
+2.8× below our 250 ms gate**, and 13 of 19 Lighthouse windows contain a frame above it. So the gate is not
+the criterion she experiences; the number is hers to set, not ours.
+
+**Two marks joined to a named mechanism, which is new.** Woods `w39`: a 139.8 ms frame, 128.7 ms of it
+`ScriptRunBehaviourUpdate`, with `awake = 2` — two awake bots and 124 ms of AI is **one expensive
+operation, not accumulation**. And Lighthouse `w72`: her press lands on the **296.2 ms / 88% AI** frame, in
+the **control** arm, in the window that is also a gate-2 failure. Perception, gate failure and mechanism
+coinciding, in the untreated condition.
+
+### The exemption fields, first exercised tonight
+
+`bots.exempt`, `bots.roleUnknown`, `agents.suppressSlicing` and header `deferToAiMods` had never emitted a
+value in any log. All four work. **`roleUnknown` is 0 on every window of every leg, so `exempt` is clean.**
+
+- **`exempt` is roster-scoped, and `exempt ⊆ awake` follows from what exemption means** — a bot whose
+  `CanDoStandBy` was cleared never reaches `paused`. 0 violations in 64 windows. **Precondition:
+  `awake + asleep == total`**, because `Telemetry.cs:1586` drops a null `StandBy` from both counts but not
+  from `exempt`. Holds 64 of 64 today, by accident of nothing having had a null `StandBy`.
+- **`awake − exempt` is therefore the proximity-awake count**, as an identity while that holds.
+- **Woods is a second exempt-garrison case, and it is the strongest evidence any field got tonight:**
+  Shturman crew held `exempt` at a constant 4 for eight minutes, then drained **4 → 3 → 2 → 1** as she
+  killed them. A trajectory tracking her actions, not a floor consistent with a hypothesis.
+- **Reserve is NOT a case: `awake 6 / exempt 1 / asleep 12`.** Five of six awake bots by proximity. This is
+  only sayable because **she confirmed Gluhar did not spawn** — the log cannot separate an absent garrison
+  from one she never approached, and it is the single fact on the whole route that no instrument could have
+  supplied. Registered as an operator note *before* the leg, which is why the branch closes rather than
+  staying open indefinitely.
+- Distinct from the above and easily fused with it: `asleep` at 6–12 on Reserve is **stand-by working**,
+  not failing.
+
+### Limits of the bot census, and a defect in a shipped field
+
+**`bots.*` is a once-per-window snapshot, not a maximum.** A firefight that resolves inside 60 s is
+invisible to it — which is why "a ton of PMCs" and "`exempt` ≤ 3 at every snapshot" are both true with no
+defect between them. That bounds every claim about bot populations during fights. The Woods reading
+survives it because eight minutes is sampled repeatedly.
+
+**`AiTiming.TotalMs` is written every frame and never reset**, so on a frame where
+`BotsController.method_0` does not run, the previous tick cost is re-added. Signature:
+**`min == max == avg`** — 40 of 98 loading windows, **0 of 351 in-raid**. So every in-raid figure is sound
+and leg 4 primary is unaffected. **The discriminating test is constancy, not `min > 0`** — a held 0.105
+passes the latter. The fix will make those 40 windows a different instrument from post-fix ones; any
+comparison spanning it compares two instruments.
+
+### Harness: PresentMon now runs itself
+
+Spawned after the client and targeting its pid (`--terminate_on_proc_exit` means "all targets exited",
+which is vacuously true before the client exists), `--qpc_time` for the join column, `--exclude_dropped`
+deliberately **not** passed, and the capture renamed in post-flight from the ndjson stem rather than a
+harness timestamp — the plugin stamps its own clock, so a harness-named file disagrees by however long the
+client took to load. **Verified end to end on its first live run: 368,697 frames, and 100% of the ndjson
+1,979 qpc-bearing events fall inside the capture window.** Requires an elevated shell; pre-flight warns
+rather than blocking.
+
+### Next session, in order
+
+1. **Shoreline** — the recurring out-of-loop family. Irregular arrival (**cv 0.78**), near-constant cost
+   (**cv 0.043**, 203.4 ± 8.7 ms): an event-driven blocking operation with a bounded duration, ~5 events a
+   raid. Registered falsification: PresentMon should show a component with the **same cv ≈ 0.04**, and the
+   test is on the cv, not the magnitude — anything taking 203 ms sums to 203 ms.
+2. **Woods** — the AI spikes. The only map where the `ScriptRunBehaviourUpdate` proxy is valid (96% AI
+   against Lighthouse 8–93%, mixed within one leg) *and* the density is there *and* a press-to-mechanism
+   join already exists to check against.
+3. **Streets** — the *rate*, and it needs **three or four raids**. One raid has a **62%** chance of zero
+   ≥250 ms events, and worse if arrivals are bursty, which the four-episode structure suggests. **Design
+   and report it as an existence test, never a rate test.** A null at 15 windows licenses nothing.
+
+**Still unmeasured after four attempts: the within-session drift control.** Legs 1 and 4 differ 1.22× on
+Lighthouse, but with 31–37 live agents against 29–31 *and* half the leg sliced — two uncontrolled
+differences. **Counting it would be a fifth loss disguised as a success.**
