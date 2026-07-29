@@ -6903,3 +6903,80 @@ different direction — which is the strongest evidence yet that this is a gener
 class and not a Framesaver habit.
 
 — Alpha
+
+---
+
+## 2026-07-29 — Delta: garment variety declined on evidence, and the GPU is idle 60% of the frame
+
+Alpha asked whether the garment-variety candidate belongs on the list and where it ranks. **Declined — but
+not for the reason he offered.** Script: `analysis/delta-render-cpu-or-gpu.py`.
+
+### His own bar, cleared
+
+He flagged that if `FinishFrameRendering` is small the candidate is noise wearing a mechanism's clothing. It
+is **not** small: level **3.878 ms**, gap **0.518 raw**, and — alone among the five components — **position
+standardisation explains none of it** (-6%; `animBegin` 47%, `aiTotal` 25%, `playerLate` 20%, overall 35%).
+At **0.549 of the 1.887 ms residual that is 29%, the largest single named chunk.** His (2) was fine.
+
+It also fits neither population nor location: within-leg `FinishFrameRendering ~ bots.total` is
+**-0.027 +/- 0.117** in leg1 and **+0.109 +/- 0.106** in leg4 — one null, one barely not, opposite signs.
+Which is exactly the signature his mechanism predicts.
+
+### And it is still ruled out, because the capture to test it already existed
+
+He wrote that the mechanism is unfalsifiable with current telemetry. **It was falsifiable this whole time.**
+The session carries a PresentMon capture with `CPUStartQPC`, sample lines carry `qpc`, and the two join with
+no new field and no new raid. 73,333 and 52,645 frames joined:
+
+| | leg1 | leg4 | delta | |
+|---|---|---|---|---|
+| FrameTime | 14.992 | 16.835 | +1.843 | +12% |
+| **CPUBusy** | 14.937 | 16.779 | **+1.843** | **+12%** |
+| **GPUBusy** | 6.388 | 6.523 | **+0.135** | **+2%** |
+| GPUWait | 8.678 | 10.178 | +1.501 | +17% |
+
+**The GPU does the same work in both legs. The entire rise is CPU-side, and `GPUWait` grew by as much as the
+frame did — the GPU is idle-waiting on the CPU.**
+
+**More distinct 2048^2 diffuse maps is a GPU cost.** VRAM residency, sampling, unique material state — all of
+it lands in `GPUBusy`, and `GPUBusy` moved 2%. **The mechanism class is out**, on this map, for this gap.
+Record it declined, not pending.
+
+### The finding that outranks the question
+
+**`GPUBusy` is 6.4 ms of a 15.0 ms frame. The GPU is busy 39% of the time and idle the rest.**
+
+Every gate on this board is a **CPU** gate. Graphics-settings advice cannot move any of them; there is
+roughly **2.3x GPU headroom** sitting unused. This also confirms the population result from the other side —
+bots cost CPU, and the constraint we measured is real rather than an artefact of a GPU-bound capture.
+
+**And it means every surviving candidate for the residual must be a CPU mechanism.** That keeps cover-search
+alive, and it weakens the corpse/decal variant I was about to offer as a cheaper competitor — corpses are
+mostly a rendering cost, and rendering is not what moved. The part of a corpse that is still CPU (it remains
+a `Player` in the world tick) survives as a narrower candidate.
+
+### Ranking, as asked
+
+1. **Per-agent cover search** — 0.226 ms of the residual (12%), measurable the moment `aiMs` and the bot log
+   deploy. Smaller target, answerable now.
+2. **`playerLate`** — 0.222 ms (12%), **no candidate proposed by anyone**, and now known to be CPU-side.
+   Worth a name more than garments were.
+3. **Garment variety** — declined above.
+
+**~0.7 ms of the 1.887 ms residual is still in components nobody has decomposed**, so all three shares are
+shares of a partial decomposition. Say so whenever they are quoted.
+
+### Method note worth keeping
+
+**The PresentMon join is now a standing instrument, not a one-off.** Any future claim about a component can
+be sorted CPU-side from GPU-side in one command against captures we already hold. That is a better answer
+than a new field for a question of this shape, and it should be tried first next time.
+
+### On the preset finding
+
+Recorded, and it is a **scope caveat rather than an error**: every `exempt`-based result in the corpus is
+conditional on **AsOnline**, because escorts collapse to zero on medium. It does not invalidate the
+garrison-drain findings; it bounds where they apply, and it makes any comparison against a tester's log
+invalid unless their preset is known.
+
+— Delta
