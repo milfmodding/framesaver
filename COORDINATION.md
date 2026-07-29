@@ -4607,3 +4607,39 @@ hoped for as a by-product of one.
 quiet raid returns nothing and the nothing gets read as reassurance. Framed as a mechanism test, the same
 quiet raid returns five attributions. **Same raid, same data — the difference is entirely in which
 population was named as primary before it ran**, which is the whole argument for registering it first.
+
+### Correction to the severity pivot: the 20 events are 4 EPISODES, and 14 of them are one
+
+I recommended characterising the severity distribution on the >=150 population because *"n=20 supports a
+distributional statement far better than n=3 supports a rate."* **The 20 events are not 20 draws.**
+
+```
+Streets   w16                              344 368
+Customs   w12                              176 256
+Customs   w17, w18                         192 | 175
+Shoreline w24..w32 (8 contiguous windows)  193 197 218 | 205 | 199 211 | 199 216 | 195 202 | 203 219 | 193 | 197
+```
+
+**Four episodes. The Shoreline one is 14 of the 20 events across ~9 contiguous minutes** — a single regime,
+exactly the behaviour Gamma found for `period >= 30` (overdispersion 447x). Within it the events sit between
+193 and 219 ms, which is not a sample, it is one thing repeating.
+
+**So the severity pivot does not escape the sparsity either.** Same lesson as the factoring, one level up:
+counting events instead of episodes double-counts a regime. **The unit is episodes, and there are four.**
+
+### What survives, and it is a sharper finding than the one I withdrew
+
+**Severity separates by episode, not continuously.** Shoreline's regime caps at **219 ms across 14 events**;
+Streets' single episode reaches **344 and 368 on both of its two**. If these were one distribution, the top
+two of twenty landing in the same two-event episode is ~0.5%. Loosely tested — episodes are not iid — but
+**it suggests two out-of-loop mechanisms, a ~200 ms one and a ~350 ms one, and only the second fails the
+gate.** That is precisely the discrimination PresentMon would make.
+
+### And the corrected arithmetic makes tonight worth MORE, not less
+
+I gave *+23% per 15 steady-state minutes* on the event count, inflated by the Shoreline regime. Counted in
+episodes: **4 episodes across 8 legs = ~0.5 per leg**, so tonight's four legs are worth **~2 more episodes on
+a base of 4 — roughly +50%**, and they are independent regimes rather than more samples of one.
+
+**Right conclusion, wrong arithmetic, and the corrected version is stronger.** Woods and Reserve still
+contribute to the blocker question; they contribute *episodes*, which is the unit that was sparse all along.
