@@ -4021,3 +4021,83 @@ discriminates the two less sharply than it did.
 weakening it: their slopes exclude zero comfortably and still imply shares of 98–675%. That is
 misspecification showing itself, not sampling error — the model is wrong on those maps, not merely
 underpowered.
+
+---
+
+## 2026-07-28 — Gamma: the readers route 2 will be read with, and what each one refuses
+
+Written while the client was still down. Everything below was verified from source or by running
+the tool, and nearly all of it existed only in message history.
+
+### Reading order, and it matters
+
+1. **`analysis/check-boundary-latch.py`** — **exit 2 is not a pass.**
+2. **`analysis/read-marathon.py`** — goal-1 per map, the session-age control, the exemption floor.
+3. **`analysis/read-aitotal-aba.py`** — leg 4's three-press contrast. New file, written before the leg.
+
+### `protocol.arm`, never `protocol is None` — Delta's catch, and it would have scored nothing
+
+`ProtocolRunner.ResetForRaid()` calls `Load()`, so `Loaded` is true on **every raid from the moment
+the ini is on disk**, and `Telemetry.cs` emits the `protocol` object whenever `Loaded`. **Every window
+of every leg carries `protocol{step:0, steps:7, arm:null}`, including legs that never press the key.**
+Both readers tested for the object's presence, so all four legs would have read as protocol legs.
+
+**Two sites, and the second is worse than a mislabel.** The inherited-slicing detector was
+`sliced(w) and protocol is None`, which goes **unreachable** once the ini exists — the check for a
+`0.1` left over from a previous run falls silent exactly when a protocol run makes inheritance
+possible. Alpha caught that the obvious carve-out was backwards.
+
+*Same family as the `BoxedValue` leak rotated ninety degrees: that leaks forward through a value into
+later legs, this leaks sideways through a load flag into legs that never used the file. Both are
+**installing a thing changes runs that do not use the thing**.*
+
+### The rule that came out of getting the exclusion unit wrong twice
+
+> **Ask what the smallest unit carrying the defect is. It is almost never the unit that is convenient
+> to loop over.**
+
+**Per run when it wanted per leg, then per leg when it wanted per window, inside one evening.** The
+second cost more: excluding leg 4 whole would have discarded **thirty clean Lighthouse minutes to
+protect against ten**, on the map whose goal-1 verdict is the only one genuinely in doubt. The
+scoreboard now scores clean *windows* and prints the dropped count **on every row including the
+zeroes** — a column that appears only when there is something to hide teaches the reader to skim it.
+
+### The flush order is settled: FLUSH FIRST
+
+`Telemetry.cs` calls `Flush(false)` and only then `ProtocolRunner.Advance()`, which is where the
+assignments are applied. **A `flushedByProtocol` line's labels describe the arm it measured.**
+`ada1824` fixed this and three comments still said it was broken. The exclusion stands on the weaker
+reason — **the window is short** — which is the argument for writing weak justifications down.
+
+**`read-aitotal-aba.py` acquired the stale text by copying, hours after being created.** No drift to
+catch; a file with no history carried a claim false since `ada1824`. **Copying is how a comment
+outlives the code it describes even in brand-new code.**
+
+### The p50 A/B was never runnable, and what replaced it
+
+Detecting Delta's 0.65 ms ceiling on `framePct.p50` needs **n ≥ 374 pooled, 149 at sd 2.0, 34 at the
+best sd in the corpus** — against a longest-ever completed leg of **19 windows**. Replaced by three
+presses scored on `aiTotal.avg` (sd 0.042–0.106 against means 0.13–0.70), which needs 2–3 per arm.
+
+**The effect size was derived from the quantity the experiment exists to measure** — Alpha priced it
+off an assumed tick share, and the tick's share is the finding. Registered instead as a resolution:
+**at 3 windows/arm the leg resolves the tick being ≳40% of `aiTotal`; a null means the share is
+smaller, not that slicing is free.**
+
+**And `aiTotal.avg` is a mean while stutter is a tail.** Per-map median of the per-window max, with
+the reader's own filter (`bots.total > 0`, not `final`) — **my first table was wrong because it
+admitted final fragments**, the denominator error from the other end:
+
+| Lighthouse | Streets | Customs | Factory | Shoreline | Interchange |
+|---|---|---|---|---|---|
+| **13.14** (n=1) | 7.37 | 6.59 | 6.21 | 3.61 | 3.33 |
+
+**Lighthouse's 13.14 is one window.** Its neighbours are `w36` at **120.6 ms** — excluded at
+`raidElapsed` 60.6, under the warm-up cut — and `w38` at 1.345, the final fragment. **The largest AI
+tail number in the corpus sits in the region every reader discards.**
+
+### The check Alpha asked for when the log lands
+
+**Leg 4's clean-window count should be around 15 — not 3, not 30.** Either extreme means the
+per-window granularity did not take and the drift control is missing or contaminated. It is the
+assertion three synthetic verifications could not make.
