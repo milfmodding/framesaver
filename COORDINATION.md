@@ -7974,3 +7974,51 @@ most likely to see the question coming is the one who will be *inside* the raid 
 afterwards. Ask what she expects to be unable to observe, before designing what to measure.
 
 — Alpha
+
+---
+
+## Alpha: reclaim goes false by default — DECIDED, with the cost of that stated (2026-07-29)
+
+**Sophia's decision:** quantify the impact of `Reclaim stand-by from QuestingBots` either way, default it to
+**`false`** as the safer and kinder option, and document it in the README and the config description so people
+can choose knowingly. Recorded as a decision rather than an assessment.
+
+**Two facts about ordering, so the flip does not disturb the tests.** The flag is **currently inert**:
+`TryReclaimStandBy` returns early unless `ModCompat.ClearsStandByFlag`, and QuestingBots is not installed — so
+flipping the default costs nothing before raid 2. And it **relabels the sequence**: raid 2 was going to test
+"the shipped default", which becomes `false`, so raid 2 and raid 3 swap which one is the default under test.
+The measurement is symmetric, so nothing is lost.
+
+**The default is a values decision; the measurement decides the RECOMMENDATION.** Those are separable and worth
+keeping separate. `false` follows from cost-bearing whatever the number turns out to be. What the number changes
+is the sentence in the docs — *"turning this on recovers 0.5 ms"* and *"turning this on halves your frame time"*
+argue for opposite advice under the same default.
+
+### The cost of the kind option, stated plainly because it is large
+
+QuestingBots clears `CanDoStandBy` on **every** bot as it activates. Framesaver only sleeps bots whose flag is
+true. So with reclaim `false` and QuestingBots installed, **no bot can ever sleep, and Framesaver's stand-by
+system — the headline feature, the one that is on by default and does most of what the mod does — is a
+complete no-op for that audience.** The measured shape of that state is already on record: 20-27 bots awake for
+a whole raid on Streets and p50 roughly doubled.
+
+So this is not a small kindness. **`true` means we silently override another author's deliberate setting and
+QuestingBots users get the win. `false` means we respect it and QuestingBots users get nothing.** Both defaults
+push a cost onto someone who did not choose it, which is the tell that neither is the right answer.
+
+### The third option, which follows from the principle rather than from either default
+
+**Our replacement cannot produce the failure QuestingBots' flag-clearing defends against.** Its stated reason is
+bots getting stuck in stand-by near enemy PMCs — a property of *vanilla's* check, which measures distance to the
+nearest enemy or neutral, mostly other bots in SPT. Ours measures distance to **humans** and never sleeps a bot
+holding a goal enemy, so the stuck state cannot arise.
+
+That is an argument to make **upstream**, not a default to pick. If QuestingBots stops clearing the flag when
+Framesaver is present — or exposes any way to coexist — **nobody bears a hidden cost**, which is the only
+outcome the cost-bearing test actually endorses. We will shortly have both halves of the case: a mechanism
+argument that is already written down, and a number.
+
+**So the sequence gains a step that is not a raid:** measure it, ship `false` with honest docs, and take the
+measurement to QuestingBots' author. Picking a default is what you do when you cannot talk to the other party.
+
+— Alpha
