@@ -1352,8 +1352,33 @@ cleaner test of the mechanism, not merely the most favourable.
 
 ## The mark key — recording perception against the clock
 
-**Ctrl+Alt+End** (provisional — it is a config entry, so changing it is never a build). Press it when you
-notice choppiness. It writes a `mark` line and **does not close the window**, unlike the protocol key.
+Press it when you notice choppiness. It writes a `mark` line and **does not close the window**, unlike the
+protocol key.
+
+### Bind it to a side mouse button
+
+**`Mark key = Mouse3`** in `framesaver.ai.perf.cfg`. Sophia's suggestion and it is better than the keyboard
+default it replaces, on the criterion the default was chosen for: reachable *without looking down
+mid-fight*, because the marks most worth having are the ones you are least able to stop and aim for. A
+thumb button does not mitigate that problem — **it removes the mechanism.**
+
+**It needs no code, and that was verified rather than assumed** (`tests/unwrap`, against the shipped
+BepInEx and Unity assemblies): `KeyCode.Mouse3` and `Mouse4` exist, `KeyboardShortcut.Deserialize("Mouse3")`
+yields `MainKey == Mouse3`, and it round-trips back to the same text.
+
+- **Type it into the `.cfg` with the game closed. Do not try to record it in F12.** BepInEx's shortcut
+  recorder listens for *keyboard* input, so a mouse press will not register — and the failure looks exactly
+  like "the mouse button does not work".
+- **Which thumb button is `Mouse3` and which is `Mouse4` varies by mouse.** Press each once at the menu and
+  read the log. Marks are numbered, so telling them apart is trivial.
+
+**The keyboard default stays `Ctrl+Alt+End`**, and deliberately *not* `Ctrl+Alt+PageUp` despite that being
+the tidier complement to the protocol key. **The failure modes are asymmetric in the dangerous direction:**
+a fumbled mark costs one observation out of many, while a fumbled protocol press **voids an arm in
+progress**. Putting them on adjacent keycaps makes the cheap mistake a route to the expensive one — reach
+for PageUp, hit PageDown, and the protocol silently advances with nothing in the moment to tell you. The
+mouse button avoids the question entirely, which is the strongest argument for it: it cannot be a mis-hit
+of the protocol key at all.
 
 **Why it exists.** Goal 2 is a perceptual claim and we have never once recorded perception against the
 clock — every metric proposed for it, we invented. Alpha's `p99/p50 <= 2.0` is withdrawn for exactly that
@@ -1368,10 +1393,24 @@ the instant of the press.
 
 ### Two biases to know before the data exists, not after
 
-> **1. Absence of marks during firefights is not absence of hitches during firefights.** You may simply be
-> unable to press mid-fight — and combat hitches are precisely the ones we suspect. A written log has the
-> same bias. **Any analysis that segments marks by activity has to state this**, because "no marks during
-> fights" reads as *"fights were smooth"* when it may mean *"hands were busy"*.
+> **1. Absence of marks during firefights is weaker evidence than it looks — but the mouse bind mostly
+> fixes it.** On a keyboard bind you are simply unable to press mid-fight, and combat hitches are precisely
+> the ones we suspect; a written log has the same bias. **A thumb button removes that mechanism**, so with
+> `Mouse3` bound this caveat shrinks to ordinary attention rather than physical inability. It does not
+> vanish — you are still busy — so an analysis segmenting marks by activity should say which bind was in
+> use, because "no marks during fights" reads as *fights were smooth* and on a keyboard bind it may only
+> mean *hands were busy*.
+
+> **1b. The thumb button's own cost: a stray press is a false positive, and false positives drag the
+> perceptual threshold *downward*** — they label a clean moment as a hitch, which is the direction that
+> sends us chasing phantoms. The frame dump only half-catches it: a mark with nothing unusual behind it is
+> *either* a stray *or* evidence your threshold is lower than we assumed, and those are exactly the two we
+> cannot separate from the line alone.
+>
+> **Your existing workflow already answers it and nothing needs building.** You write the event down once
+> you are out of it — so **a mark you cannot account for afterwards is a candidate stray**, and unannotated
+> marks are lower-confidence rather than data. No confirmation step: that would reintroduce the mid-fight
+> cost the mouse button just removed.
 
 > **2. A raid where you watch and report nothing is labelled data, not missing data.** Events above 146 ms
 > run about one per 64 seconds, so a 40-minute raid holds roughly **18** of them, and silence converts all

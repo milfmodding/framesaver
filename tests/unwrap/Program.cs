@@ -73,6 +73,23 @@ class P {
         Check("int accepts 6",  parse.Invoke(null, a), true);
         a = new object[]{ "6.5",   typeof(int),   null };
         Check("int rejects 6.5", parse.Invoke(null, a), false);
+        // Can the mark key be bound to a mouse button from the .cfg alone?
+        // Sophia proposed a thumb button; "it needs no code" rests on two
+        // things neither of us wrote, so both are checked against the shipped
+        // BepInEx and Unity assemblies rather than assumed.
+        Console.WriteLine("\nKeyboardShortcut accepts a mouse button from config text");
+        var keyCode = Type.GetType("UnityEngine.KeyCode, UnityEngine.CoreModule");
+        Check("KeyCode.Mouse3 exists", Enum.IsDefined(keyCode, "Mouse3"), true);
+        Check("KeyCode.Mouse4 exists", Enum.IsDefined(keyCode, "Mouse4"), true);
+
+        var ks = Type.GetType("BepInEx.Configuration.KeyboardShortcut, BepInEx");
+        var deser = ks.GetMethod("Deserialize", BindingFlags.Public | BindingFlags.Static);
+        var shortcut = deser.Invoke(null, new object[] { "Mouse3" });
+        Check("Deserialize(Mouse3).MainKey",
+              ks.GetProperty("MainKey").GetValue(shortcut).ToString(), "Mouse3");
+        Check("round-trips back to text",
+              ks.GetMethod("Serialize").Invoke(shortcut, null), "Mouse3");
+
 
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
         return bad == 0 ? 0 : 1;
