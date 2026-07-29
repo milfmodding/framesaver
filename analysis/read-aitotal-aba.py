@@ -276,17 +276,27 @@ def main(argv):
         fails.append('agents.slicing disagrees with the arm label - the lever did '
                      'not do what the label says')
 
-    # ---- 2. the drift bracket, which is what the third press buys ---------
+    # ---- 2. the drift bracket, on BOTH arms ------------------------------
     #
-    # Two control blocks separated by everything the treatment block did. If they
-    # disagree by more than the effect we are looking for, position and session
-    # age move aiTotal more than the knob does and no arm contrast on this leg is
-    # readable. THIS IS THE ONLY REASON THERE IS A THIRD PRESS: without it a
-    # two-block ABA cannot tell a treatment effect from a trend.
+    # Repeated blocks of one arm, separated by everything the other arm did. If
+    # they disagree by more than the effect we are looking for, position and
+    # session age move aiTotal more than the knob does and no arm contrast on
+    # this leg is readable. That is what the repeated blocks buy: without them a
+    # two-block design cannot tell a treatment effect from a trend.
+    #
+    # THE DESIGN IS NOW FOUR PRESSES, B1/B2/B1/B2, AND THE REASON IS THE NULL.
+    # Three presses give B1/B2/B1 - two control blocks against one treatment -
+    # so the control arm carries twice the exposure and H0 expects 2/3 of the
+    # events there, not 1/2. Beta warned Alpha about exactly this formula when
+    # the protocol was designed; Alpha agreed the balance mattered and then
+    # specified three presses. Four is balanced 2:2, so the plain binomial is
+    # correct by construction rather than by correction - and it gives a drift
+    # bracket on the treatment side too, which three never did.
     blocks = {}
     for w in keep:
         blocks.setdefault((step_of(w), arm_of(w)), []).append(w['aiTotal']['avg'])
     ctrl_blocks = sorted((s, v) for (s, a), v in blocks.items() if a == CONTROL)
+    treat_blocks = sorted((s, v) for (s, a), v in blocks.items() if a == TREAT)
     print('2. control blocks        %s'
           % ('  '.join('step %s n=%d mean %.3f' % (s, len(v), st.mean(v))
                        for s, v in ctrl_blocks) or 'NONE'))
@@ -324,6 +334,17 @@ def main(argv):
                          'this leg can resolve - position or session age moves '
                          'aiTotal more than the knob does, and no arm contrast '
                          'here is readable' % (gap, tol))
+
+    # The treatment side, reported and not gated. Two treatment blocks is new
+    # with the fourth press and there is no history to set a threshold from, so
+    # printing it beats inventing a bound - and a bound invented tonight would
+    # be a threshold chosen after seeing what it excludes.
+    if len(treat_blocks) > 1:
+        tmeans = [st.mean(v) for _, v in treat_blocks]
+        print('   treatment blocks    %s   gap %.3f ms (reported, not gated)'
+              % ('  '.join('step %s n=%d mean %.3f' % (s2, len(v), st.mean(v))
+                           for s2, v in treat_blocks),
+                 max(tmeans) - min(tmeans)))
 
     # ---- 3. arm sizes ----------------------------------------------------
     ctrl = [w['aiTotal']['avg'] for w in keep if arm_of(w) == CONTROL]
@@ -408,11 +429,16 @@ def main(argv):
     print('   %s %d events / %d windows      %s %d events / %d windows'
           % (CONTROL, a, len(ctrl), TREAT, b, len(treat)))
     if k:
-        # EXPOSURE-WEIGHTED NULL. The control arm is two blocks and the treatment
-        # is one, so under H0 it holds len(ctrl)/(len(ctrl)+len(treat)) of the
-        # events - not half. detectable_ratio assumes a balanced 1/2 design, so
-        # its figure is optimistic here and is labelled as the balanced bound
-        # rather than silently reported as this leg's.
+        # EXPOSURE-WEIGHTED NULL, FROM REALISED WINDOWS AND NEVER THE STEP COUNT.
+        # The design is balanced 2:2, so this should come out at 50% - but the
+        # design is not what happened, it is what was intended. She may die after
+        # three presses, or press five times, or lose a block to the warm-up cut.
+        # Weighting by the windows actually present makes a 2:1 outcome read as
+        # 2:1 instead of as the plan. The share is printed for the same reason.
+        #
+        # detectable_ratio assumes p=1/2, so it is exact under the balanced
+        # design and optimistic if the realised split is not - labelled as the
+        # balanced-design bound rather than silently reported as this leg's.
         share = len(ctrl) / float(len(ctrl) + len(treat))
         dr = detectable_ratio(k)
         print('   k=%d, control holds %d of %d windows so H0 expects a %.0f%% share'
