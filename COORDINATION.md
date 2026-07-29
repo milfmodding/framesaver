@@ -4643,3 +4643,35 @@ a base of 4 — roughly +50%**, and they are independent regimes rather than mor
 
 **Right conclusion, wrong arithmetic, and the corrected version is stronger.** Woods and Reserve still
 contribute to the blocker question; they contribute *episodes*, which is the unit that was sparse all along.
+
+### The Shoreline regime: random arrival, fixed cost
+
+Alpha read the 26 ms spread across 14 events as *"something firing repeatedly at a fixed cost"* and that is
+testable from the `qpc` on the spike lines. It separates into two very different statistics.
+
+| | value | interpretation |
+|---|---|---|
+| **inter-arrival** | mean 37.8 s, median 28.6 s, range 2.1–123.5, **CV 0.78** | ~Poisson. **Not periodic** — no timer |
+| **cost** | 192.9–218.7 ms, mean 203.4, sd 9.0, **CV 0.044** | **near-constant** |
+
+**Arrival varies by 78%; cost varies by 4%.** That is the signature of an **event-driven blocking operation
+with a bounded duration** — something triggered irregularly that costs the same every time it happens.
+
+**It rules out the two obvious readings.** Not a timer (arrivals are not periodic). Not a variable-size
+operation such as streaming an asset whose cost tracks its bytes — that would spread the cost, and the cost
+is the *tightest* quantity in the whole family.
+
+**Leading hypothesis, offered as a hypothesis: a synchronous wait hitting a fixed timeout.** ~200 ms is a
+common timeout value and a timeout produces exactly this pair of statistics. **Not established** — n=14 in a
+single episode on a single map, and the alternatives (a fixed-cost lock acquisition, a driver operation with
+a bounded retry) produce the same signature.
+
+**What it means for the gate: this family is not the blocker.** It caps at 218.7 across 14 events and sits
+entirely under 250. The blocker is the Streets pair at 344/368, which is **1.7×** this cost — not a clean
+multiple, so *"the same mechanism twice over"* is not supported either.
+
+**And it makes the Shoreline regime the better PresentMon target, not the worse one.** It recurs, it is
+frequent (~5 events per raid), its cost is predictable, and it has already survived the obvious deflation —
+our own window flush was ruled out on it earlier, median 18 s from a boundary, 1 of 18 within 2 s. **A
+mechanism you can provoke reliably is worth more than a rarer one you cannot**, and if the ~200 ms and
+~350 ms families turn out to share a mechanism, the cheap one names it.
