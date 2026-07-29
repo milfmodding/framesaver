@@ -3792,3 +3792,73 @@ which needs a precondition ProtocolRunner can expose but does not yet."*
 (`ada1824`, `Telemetry.cs:456-474`). The comment describes a **fixed** bug in the present tense, so a
 reader checking whether the protocol lines are trustworthy would conclude they are not. Flagged to
 Gamma; their file, and no build tonight.
+
+---
+
+## 2026-07-28 — Delta: the Streets gate-2 failures are two mechanisms, and the larger one has a name
+
+Alpha handed me the gate-2 blocker with *"don't let it get filed under the out-of-loop family without
+evidence."* It should not be: **the largest one is not out-of-loop at all.**
+`analysis/delta-stall-families.py`.
+
+### The three gate-2 frames split two ways
+
+| window | period | frame | unaccounted | verdict |
+|---|---|---|---|---|
+| 12 | 675.6 | **671.7** | **0.0** | **in-loop, fully attributed** |
+| 16 | 367.6 | 19.6 | 348.1 | out-of-loop |
+| 23 | 396.6 | 16.8 | 380.0 | out-of-loop |
+
+Window 12 tiles completely: `Update` = 630.0 of a 675 ms period, of which
+**`Update/ScriptRunDelayedDynamicFrameRate` = 487.6** and `Update/ScriptRunDelayedTasks` = 140.5 — the two
+together are 99.7% of the phase. `gcGen0` = 0. **Not GC, not AI, not rendering, and not
+`ScriptRunBehaviourUpdate`** — it is the delayed-coroutine queues.
+
+### It is a family, and it is on every map
+
+Marathon logs only, because 15 older logs never emit phase children and would score as "parent only" — the
+same era artifact that produced the withdrawn 44% figure. In-raid, period >= 150 ms, **59 events**:
+
+| family | n | max | median |
+|---|---|---|---|
+| out-of-loop / no phase | 31 | 396.6 | 197.4 |
+| **Update → ScriptRunDelayedDynamicFrameRate** | **9** | **675.6** | **350.6** |
+| TimeUpdate → WaitForLastPresentation | 8 | 208.3 | 155.6 |
+| Update → ScriptRunBehaviourUpdate | 6 | 242.3 | 167.0 |
+| Update → ScriptRunDelayedTasks | 5 | 182.4 | 159.2 |
+
+The delayed-coroutine family holds **the top nine attributed stalls by period**, `unaccounted` = 0.0 and
+`gcGen0` = 0 on **every one**, and it appears on **7 of 7 maps played** — Streets 675.6, Shoreline 460.2,
+Lighthouse 413.6, Ground Zero 382.4, Customs 350.6 / 343.9, Factory 320.1 / 289.5, Interchange 311.0.
+**Its median alone is above the 250 ms gate.**
+
+So the out-of-loop family is the *frequent* one and this is the *severe* one. They are not the same problem
+and a fix for one is not a fix for the other.
+
+### The next test, and it is a real fork
+
+`ScriptRunDelayedDynamicFrameRate` runs delayed coroutine continuations. **It does not say whose.**
+`SAIN.dll`, `skwizzy.LootingBots.dll` and `DrakiaXYZ-Waypoints.dll` are all installed and all use coroutines.
+If these are a mod's, the fix is a mod-compat guard; if they are EFT's own, it is not ours to fix and the
+release claim has to say so. **Do not write either into a claim before that is settled.**
+
+### And gate 2's verdict depends on which quantity scores it
+
+My earlier table scored gate 2 on `frame.max` per steady-state window and found **Streets only**. Scored on
+`period` — the quantity the emit gate actually tests, and the one Gamma's rule says to count — **every map
+has events above 250 ms**, e.g. Shoreline 460.2 against the 198.1 that `frame.max` reports for it.
+
+**The two quantities disagree materially on the goal that gates release.** That is Gamma's call to settle,
+not mine to reinterpret unilaterally, and it needs settling *before* anyone writes "no hitches above 250 ms."
+
+### I nearly published the exact error I have spent two days finding in others
+
+First pass reported **"0 spike lines over 150 ms"** in all three gate-2 windows — which read as *the only
+gate failures in the corpus are invisible to the spike instrument*, a finding that would have sent someone to
+redesign the emit gate. The spike fields are `period` / `frame` / `unaccounted`, **not** the `*Ms` forms I
+assumed from the sample line. Every comparison was `max(None or 0, None or 0) > 150`, so the filter matched
+nothing and the emptiness read as a result.
+
+Caught by asking what a 671.7 ms frame *should* have emitted, instead of accepting that it emitted nothing.
+**Third instrument-saw-nothing of mine in two days, and the first where the null was the headline.** The
+field names cost nothing to check and I checked them only after writing the conclusion down.
