@@ -92,6 +92,12 @@
       <HintPath>$(ManagedDir)\UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- UnityEngine.Input. Needed because we test keybinds ourselves rather than through
+         KeyboardShortcut.IsDown, which refuses to fire while any other key is held. -->
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(ManagedDir)\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <!--
