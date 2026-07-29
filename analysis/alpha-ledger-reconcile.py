@@ -236,6 +236,28 @@ def check(path):
         note("of %d named-killer deaths, %d were killed by a human (Sophia)"
              % (len(named), len(by_player)))
 
+        # Beta carries `killer` (the game's judgement about attribution) AND `damageBy`
+        # (the blow's own account) rather than choosing, because they can disagree and
+        # the disagreement is the finding. Artillery is the known case: the game sets
+        # LastAggressor to null AFTER a branch that may have named a player, so the blow
+        # names someone the game deliberately un-named. Anyone attributing from
+        # `damageBy` would overstate player involvement - which is the exact direction
+        # this whole field exists to prevent, so it is counted rather than assumed rare.
+        unnamed_by_game = [d for d in ai_deaths
+                           if d.get("killer") is None and d.get("damageBy")]
+        if unnamed_by_game:
+            note("%d death(s) where the blow names a source but the game did NOT attribute "
+                 "it (killer null, damageBy set) - artillery and its kin. Attribute from "
+                 "`killer`, never `damageBy`, or these inflate player involvement."
+                 % len(unnamed_by_game))
+        disagree = [d for d in ai_deaths
+                    if d.get("killer") and d.get("damageBy")
+                    and d["killer"].get("id") != d["damageBy"].get("id")]
+        if disagree:
+            note("%d death(s) where killer and damageBy name DIFFERENT sources - visible "
+                 "rather than settled by whichever field a reader happened to open"
+                 % len(disagree))
+
 
 def main():
     if not PATHS:
