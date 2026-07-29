@@ -146,8 +146,19 @@ def main(argv):
     # with no arm labels every branch above is skipped and this reported OK --
     # a check that cannot fail is not a check, and it read as the strongest
     # possible confirmation of the thing the raid rests on.
+    #    An empty population is not a pass, and the LABEL has to say so too. The
+    #    gate below already refuses at zero, so only the line lied - and the line
+    #    is what gets skimmed. This fix was applied once and then reverted when
+    #    this file was moved into analysis/ from a scratchpad; restored, and worth
+    #    knowing that two agents converging on one file can silently undo a fix
+    #    while the behaviour stays correct.
     tested = sum(1 for w in keep if arm_of(w) in (CONTROL_ARM, TEST_ARM))
-    verdict = "OK" if not bad else f"{len(bad)} MISMATCHED {bad[:4]}"
+    if not tested:
+        verdict = "UNTESTED"
+    elif bad:
+        verdict = f"{len(bad)} MISMATCHED {bad[:4]}"
+    else:
+        verdict = "OK"
     print(f"2. slicing matches arm {verdict}  ({tested} windows tested)")
     if not tested:
         fail.append("no window carries a B1/B2 arm label -- check 2 tested nothing")
