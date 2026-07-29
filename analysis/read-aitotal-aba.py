@@ -31,6 +31,7 @@ Usage:  python read-aitotal-aba.py <log.ndjson> [more.ndjson ...]
 Exit 0 when the leg is readable, 1 when a gate fails, 2 on bad input.
 """
 
+import importlib.util
 import json
 import math
 import os
@@ -41,25 +42,77 @@ STEADY_S = 120.0        # same warm-up discard as the marathon reader
 MIN_PER_ARM = 3         # below this the drift bracket stops existing
 Z_A, Z_B = 1.96, 0.8416   # two-sided 0.05, 80% power
 CONTROL, TREAT = 'B1', 'B2'
+AI_PHASE = 'Update/ScriptRunBehaviourUpdate'
+# LARGE-AI-FRAME THRESHOLD, and it was chosen for power before the leg ran.
+# Measured on tonight's Lighthouse leg (19 steady windows), events per window and
+# what k they give at the planned 3 windows/arm:
+#
+#     >=5 ms  6.26/win  k=38  detects 2.75x   - no longer "large"; avg covers it
+#     >=10 ms 3.26/win  k=20  detects 4.0x    <- registered
+#     >=15 ms 2.11/win  k=13  detects 7.35x
+#     >=30 ms 1.05/win  k=6   detects >20x    - cannot fail, same defect as max
+#
+# 10 ms is the smallest threshold that still means "a frame you could notice"
+# while giving a k that can fail. I proposed 30 and it would have been
+# unfalsifiable at this leg length - one message after arguing Alpha out of
+# exactly that on aiTotal.max.
+#
+# 4x IS A BIG EFFECT AND THE NULL MUST BE READ AS SUCH. Slicing cuts ticks 5.8x,
+# so a pile-up mechanism should move the count by something near that; but a true
+# ratio of 2x reads null here. See the fourth branch in section 6.
+AI_MS = 10.0
+
+# IMPORTED, NOT RESTATED. Both functions exist in read-slicing-raid.py and
+# copying them is how this file acquired a stale docstring three hours ago.
+# Every ad-hoc reimplementation tonight carried a defect the readers do not
+# have, across two agents - a fresh implementation of the same rules is not
+# independent of anything useful, it is correlated with every mistake a first
+# implementation makes. importlib because the filename is hyphenated.
+_spec = importlib.util.spec_from_file_location(
+    'read_slicing_raid', os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                      'read-slicing-raid.py'))
+_rsr = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_rsr)
+binom_two_sided = _rsr.binom_two_sided
+detectable_ratio = _rsr.detectable_ratio
 
 
 def load(paths):
-    """Sample windows carrying a protocol, in file order."""
-    out = []
+    """Sample windows and spike lines, in file order.
+
+    Spikes are kept because the arm contrast that can actually fail is a COUNT
+    of large AI frames, and those live on spike lines. Keyed to arms through the
+    sample window they fall in - see `ai_events`.
+    """
+    out, spikes = [], []
     for path in paths:
-        with open(path, 'r', encoding='utf-8', errors='replace') as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    d = json.loads(line)
-                except ValueError:
-                    continue
-                if d.get('type') == 'sample':
-                    d['_log'] = os.path.basename(path)
-                    out.append(d)
-    return out
+        for line in open(path, 'r', encoding='utf-8', errors='replace'):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            d['_log'] = os.path.basename(path)
+            if d.get('type') == 'sample':
+                out.append(d)
+            elif d.get('type') == 'spike':
+                spikes.append(d)
+    return out, spikes
+
+
+def ai_events(spikes, windows, threshold=AI_MS):
+    """Spike lines inside `windows` whose AI phase clears `threshold`.
+
+    Keyed on (log, window) because window counters restart per file exactly as
+    `raid` does - 64 eligible windows in the marathon corpus shared only 46
+    distinct ids, so keying on the number alone silently merges legs.
+    """
+    keys = set((w.get('_log'), w.get('window')) for w in windows)
+    return [s for s in spikes
+            if (s.get('_log'), s.get('window')) in keys
+            and (s.get('phases') or {}).get(AI_PHASE, 0.0) >= threshold]
 
 
 def arm_of(w):
@@ -121,6 +174,31 @@ def detectable(sd, n):
     return sd * math.sqrt(2.0 * (Z_A + Z_B) ** 2 / n)
 
 
+def binom_weighted(k, a, p):
+    """Exact two-sided binomial at an arbitrary null share, not 1/2.
+
+    THE ABA HAS UNEQUAL ARMS BY CONSTRUCTION AND p=1/2 IS WRONG FOR IT.
+    Three presses give B1/B2/B1 - two control blocks against one treatment
+    block - so the control arm carries twice the exposure. Under the null the
+    expected control share is 2/3, not 1/2, and the imported `binom_two_sided`
+    hardcodes 1/2 (`2.0 ** k`), which is correct for the balanced 7-step
+    protocol it was written for and silently wrong here.
+
+    Found by building the test log out of the REAL block structure instead of a
+    balanced synthetic: 18 control events against 5 treatment came back p=0.011
+    at p=1/2, which is a "significant" reading of data whose control arm simply
+    ran twice as long. A balanced synthetic would never have shown it.
+
+    So the exposure has to enter the null, not the estimate. p is the control
+    arm's share of eligible windows.
+    """
+    if k == 0 or not 0.0 < p < 1.0:
+        return float('nan')
+    pmf = [math.comb(k, x) * p ** x * (1 - p) ** (k - x) for x in range(k + 1)]
+    obs = pmf[a]
+    return sum(v for v in pmf if v <= obs * (1 + 1e-9))
+
+
 def main(argv):
     if len(argv) < 2:
         print(__doc__)
@@ -134,7 +212,8 @@ def main(argv):
     # object would pull the whole marathon into an ABA that only happened on one
     # leg, and the "no ABA here" branch below could never fire. `arm` is null
     # until a press applies a step. Delta found the chain.
-    rows = [w for w in load(argv[1:]) if arm_of(w) is not None]
+    samples, spikes = load(argv[1:])
+    rows = [w for w in samples if arm_of(w) is not None]
     if not rows:
         print('no window carries a protocol ARM - there is no ABA in these files.')
         print('That is not a null result; it is an absent one. Check in this order:')
@@ -278,21 +357,88 @@ def main(argv):
         print('   NOTE: the difference is smaller than this leg can resolve. '
               'Report the bound,\n         not the point estimate.')
 
-    # ---- 6. the tail, descriptive only -----------------------------------
+    # ---- 6. RELOCATED OR REMOVED - the contrast that can actually fail ----
     #
-    # No test, by design. aiTotal.max is one frame per window, so its window-to-
-    # window spread is the spread of a maximum and nothing here is powered for
-    # it. It is printed because it is the ONLY tail number this leg produces,
-    # and because goals 2 and 3 live in the tail while section 5 does not.
+    # THE QUESTION: round-robin slicing changes WHICH brains tick on a frame; it
+    # does not make any one brain's work cheaper. Her Woods mark is the reason to
+    # care - a 139.8 ms frame she pressed on, 128.7 ms of it in this phase, with
+    # `awake` = 2. Two awake bots and a 124 ms AI frame is ONE expensive
+    # operation, not 25 brains at 5 ms each. Slicing cannot make that operation
+    # cheaper, so it can only move it - unless the spikes are pile-ups of many
+    # brains coinciding, in which case slicing genuinely prevents them.
+    #
+    # A COUNT, NOT A MAXIMUM, and that choice is the whole section. Alpha
+    # registered `aiTotal.max` for this and withdrew it: max has cv 1.29-1.36 on
+    # tonight's own legs against 0.12-0.13 for avg, so at n=3 it resolves ~300%
+    # of the mean and "max does not fall" was guaranteed whatever the truth -
+    # while being the expected branch. A count is near-Poisson and carries the
+    # conditional binomial already registered for the spike primary.
+    #
+    # An estimator's sensitivity profile has to match the question. A median is
+    # blind where a max is hypersensitive, and neither is a virtue on its own -
+    # same defect as the `worst ms` column, arrived at from the opposite end.
+    ce = ai_events(spikes, [w for w in keep if arm_of(w) == CONTROL])
+    te = ai_events(spikes, [w for w in keep if arm_of(w) == TREAT])
+    a, b = len(ce), len(te)
+    k = a + b
+    print('\n6. RELOCATED OR REMOVED   %s >= %.0f ms, per arm' % (AI_PHASE, AI_MS))
+    print('   %s %d events / %d windows      %s %d events / %d windows'
+          % (CONTROL, a, len(ctrl), TREAT, b, len(treat)))
+    if k:
+        # EXPOSURE-WEIGHTED NULL. The control arm is two blocks and the treatment
+        # is one, so under H0 it holds len(ctrl)/(len(ctrl)+len(treat)) of the
+        # events - not half. detectable_ratio assumes a balanced 1/2 design, so
+        # its figure is optimistic here and is labelled as the balanced bound
+        # rather than silently reported as this leg's.
+        share = len(ctrl) / float(len(ctrl) + len(treat))
+        dr = detectable_ratio(k)
+        print('   k=%d, control holds %d of %d windows so H0 expects a %.0f%% share'
+              % (k, len(ctrl), len(ctrl) + len(treat), 100 * share))
+        print('   observed control share %.0f%%, exact two-sided p = %.4f'
+              % (100.0 * a / k, binom_weighted(k, a, share)))
+        print('   (balanced-design bound: %s x at k=%d - optimistic for unequal '
+              'arms)' % (dr if dr else '>20', k))
+    # BRANCHES STATED WHATEVER THE NUMBERS DID, so the reading is not chosen
+    # after seeing them. The third is the one neither of us would have named:
+    # a mean that falls while the count RISES is relocation plus concentration,
+    # which is worse than either alone.
+    print('   count HOLDS while avg falls  -> RELOCATED. Slicing moves the '
+          'expensive operation;')
+    print('                                   it does not remove it, and the '
+          'frames she feels remain.')
+    print('   count FALLS with avg         -> REMOVED. The spikes were pile-ups '
+          'of coinciding')
+    print('                                   brains, and slicing prevents them. '
+          'Best case.')
+    print('   count RISES while avg falls  -> RELOCATED AND CONCENTRATED. Worse '
+          'than either.')
+    # THE FOURTH LINE, which the three-branch table invites you to forget: at
+    # k~20 a null excludes changes above ~4x and nothing smaller. Slicing cuts
+    # ticks 5.8x, so a pile-up mechanism should clear that - but a true 2x
+    # reduction reads here as "count holds" and would be filed as RELOCATED.
+    if k:
+        dr2 = detectable_ratio(k)
+        print('   NULL MEANS: no change larger than %s x. It does NOT mean the '
+              'count held.' % (dr2 if dr2 else '>20'))
+    if k and detectable_ratio(k) is None:
+        print('   ! k is too small to call any of the three. Report the counts '
+              'and stop.')
+
+    # ---- 7. the tail, printed and NOT tested -----------------------------
     cm = [w['aiTotal'].get('max') for w in keep
           if arm_of(w) == CONTROL and w['aiTotal'].get('max') is not None]
     tm = [w['aiTotal'].get('max') for w in keep
           if arm_of(w) == TREAT and w['aiTotal'].get('max') is not None]
     if cm and tm:
-        print('\n6. DESCRIPTIVE  aiTotal.max   %s median %.2f ms   %s median %.2f ms'
+        cv = st.stdev(cm) / st.mean(cm) if len(cm) > 1 and st.mean(cm) else float('nan')
+        print('\n7. NOT TESTED  aiTotal.max   %s median %.2f   %s median %.2f'
               % (CONTROL, st.median(cm), TREAT, st.median(tm)))
-        print('   No test. This is a mean-shift design; the tail is not powered '
-              'and\n   section 5 says nothing about stutter.')
+        print('   control cv %.2f. At n=%d that resolves ~%.0f%% of the mean, so '
+              'a null here' % (cv, len(cm), 100 * detectable(st.stdev(cm), len(cm))
+                               / st.mean(cm) if len(cm) > 1 and st.mean(cm) else
+                               float('nan')))
+        print('   means nothing at all. Section 6 is the tail question that can '
+              'fail.')
 
     return 0
 
