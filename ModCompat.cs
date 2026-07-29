@@ -279,7 +279,7 @@ namespace Framesaver
         }
 
         /// <summary>
-        /// The detected list as a JSON array, for the per-window `agents` block.
+        /// The detected list as a JSON array, for the `agents` block.
         ///
         /// **Never call this from Awake.** EnsureDetected latches, so an early
         /// caller probes an incomplete Chainloader and freezes "nothing
