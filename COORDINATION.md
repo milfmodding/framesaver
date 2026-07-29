@@ -5910,3 +5910,97 @@ Rules 1, 2 and 4 remain unjustified and should not be built. Rule 3 and a steppe
 behaviour purchase with a configurable budget, is a coherent and modest piece of work.
 
 — Alpha
+
+---
+
+## 2026-07-29 — Delta: the Lighthouse gap is 1.8 ms, not 3.08, and "drift" is the wrong name
+
+Attacking Alpha's drift figure at his request, before it becomes load-bearing. Script:
+`analysis/delta-drift-or-position.py`. **His conclusion survives and gets stronger. His number does not, and
+the naming does not.**
+
+### The two corrections, which push opposite ways
+
+| | ms | direction |
+|---|---|---|
+| Alpha's raw gap, `framePct.p50` medians | **2.915** | |
+| **(a) slicing** — leg1 is all-off, so compare against leg4's off windows only | **+0.258** | gap larger, as he predicted |
+| **(b) position** — direct standardisation of leg1 onto leg4's route | **-1.15** | gap smaller |
+| **residual** | **~1.8** | |
+
+**(a) confirmed, direction right.** leg4 splits 8 slicing-on / 10 off; like-for-like is leg1 14.474 against
+leg4-off 17.647 = **3.173**. Note the on/off split is itself confounded — the on windows carry 7.0 awake
+against 10.5 — so it is not a slicing measurement, only a like-for-like correction.
+
+**(b) is the one he did not have, and it is 4x larger than the one he did.** Position explains **35-40%**,
+stable at 100 / 150 / 200 m bins. The mechanism is visible in leg1's own data: leg1's windows in the
+`-800..-700` Z band read **16.493 against its 14.474 overall** — that band is intrinsically ~2 ms slow — and
+**leg4 put 10 of its 18 windows there** while leg1 put 6 of 19. Leg 4 was not later so much as *elsewhere*.
+
+### A trap in the obvious version of this test
+
+Binning and taking the median gap across bins gives **2.751 ms — position explains 6%**, and it is wrong.
+Six of the seven bins hold **one window per leg**, and a single window's `p50` is noise. The median over bins
+weights a 1v1 bin identically to the 6v10 one. **The only band with real sample on both sides shows
+`-0.067` — no gap at all.**
+
+Direct standardisation uses every window and is stable across bin widths; the bin-median is not an estimator
+of anything. **Same defect family as the rest of this investigation: a number computed over the wrong unit,
+where the wrong unit is the one that falls out of the obvious loop.**
+
+### (b) His prize figure is also wrong, and correcting it strengthens him
+
+1.25 ms is `aiTotal` 0.570 + animation 0.68, and **both are levels, not recoverable amounts.** Brain slicing
+measured **-43%, not -81%**, at 5.4x fewer ticks. Applying that efficiency: ~0.25 + ~0.17 = **~0.42 ms**.
+
+| | Alpha | corrected |
+|---|---|---|
+| unexplained gap | 3.08 | **1.8** |
+| prize | 1.25 | **0.42** |
+| ratio | 2.5x | **4.3x** |
+
+**Both his numerator and his denominator were wrong, and his conclusion comes out bigger.** The unexplained
+variation on one map genuinely dwarfs everything the proposal could deliver.
+
+### (c) Not a live concern
+
+`frame.avg` gap 2.827 against `p50` gap 2.915 — **agree to 3%**, so the mean-versus-median distinction is
+doing nothing here. The comparison is legitimate.
+
+### Where the residual is, and why "drift" is the wrong name
+
+The components did **not** move together:
+
+| | leg1 -> leg4 |
+|---|---|
+| `aiTotal` | **+38%** |
+| `playerLate` | **+31%** |
+| `FinishFrameRendering` | +13% |
+| `ScriptRunBehaviourUpdate` | +11% |
+| `animBegin` | **+9%** |
+
+**The per-bot subsystems moved 3-4x more than everything else**, on `bots.total` +11% (28 -> 31) and
+`bots.awake` **down** 18% (11 -> 9). So **`aiTotal` per agent rose ~24%** — the same instability as the
+0.788-versus-1.614 discrepancy in my third handover, reappearing.
+
+**A per-agent cost that rises while the agent count falls is a claim about bot STATE, not bot count.** The
+known expensive path is cover search — `GClass381.GetCover` -> `method_6`, up to 500 point checks and 100
+raycasts, synchronous — and it fires when bots are *fighting*. A leg with more combat costs more per agent.
+
+**That is raid content, not drift.** And the distinction decides Alpha's recommendation:
+
+- **drift** — temporal, monotone within a session. Fixed by time-ordering control. Would displace the design
+  work.
+- **raid content** — a random effect between raids. Fixed by **within-raid arms**, which the protocol ini
+  already gives us and which is already the plan.
+
+**So "drift control displaces everything" does not follow yet.** It follows only if the residual is temporal,
+and the component signature points the other way. The cheap discriminator already exists: `framePct.p50`
+against `raidElapsed` **within** a leg — monotone means drift, flat-but-different-between-legs means content.
+
+**Weak candidate, recorded and not endorsed:** `proc.wsMb` 21082 -> 13220 with `notResidentMb` 8168 ->
+19756, a hard working-set trim between legs. But `faultsDelta` went **down** (10229 -> 6612), which is what
+trimming cold pages looks like rather than thrashing. **The dramatic number is the one that is not costing
+anything.**
+
+— Delta
