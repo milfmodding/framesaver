@@ -368,6 +368,39 @@ primary comparison until each one names a non-empty population it examined; the 
 Gamma stated the general form after finding the fourth instance in their own gate. It generalises past this
 project: it is the reason a green test suite that runs no tests is worse than a red one.
 
+## The other rule: ask whether the loss is correlated with the signal
+
+**When an observation goes missing, ask whether it goes missing more often when it would have been
+interesting.** Missing-at-random costs precision. Missing-when-interesting produces a confident wrong answer,
+and it is the same output as a clean measurement.
+
+Four instances on 2026-07-28, and none of them looked like this from the front:
+
+| the instrument | what went missing | and it correlated with |
+|---|---|---|
+| `LastBrainsTicked` sampled once at flush | the per-frame value | **a slow frame ticks more brains**, so the sample tracked the quantity the A/B was measuring |
+| `framePct.p999` | a lone catastrophic frame | at ~3,500 frames it sits *above* p999, so the metric was blindest to the largest events |
+| the mark lookback | frames before a window boundary | a boundary is where a flush happens, and a flush is where stalls cluster |
+| `KeyboardShortcut.IsDown()` for the mark key | presses made while any other key was held | **movement and combat**, which is where the hitches we are hunting live |
+
+The last one is the clearest. `IsDown()` requires that *no* other key is down — BepInEx's type summary says so
+outright, while the summary on `IsDown` itself mentions only the configured modifiers, so the permissive
+documentation is the one attached to the method you look up. In Tarkov, moving holds `W`. So marks registered
+only while the runner stood still: **five presses, five marks, and every one of them made stationary.** A
+perception threshold estimated from that population is a threshold *while stationary*, and nothing suggests it
+transfers to the case the release is gated on.
+
+**So the pre-fix mark set is a pilot that proved the instrument, not data.** Four observations from one
+condition, three of them loading screens. Treated as evidence it would have been worse than nothing, because
+the missing half was the informative half — and the bracket built on it was withdrawn twice before that was
+clear.
+
+**How to apply it:** the question is cheap and it works before the data exists. Ask it of every new field at
+design time — *what would make this reading absent, and is that thing correlated with what I am measuring?*
+`tickedSum`/`liveSum` over the window instead of a sample at flush, and `frame.max` instead of a percentile,
+both came from asking it. It also explains why `boundaryMissedFrames` and `clockResidualFrames` are emitted at
+all: an instrument that can go dark must say how often it did.
+
 ## Verifying a field is in a build: probe the key, not the name
 
 `analysis/probe-symbols.py` replaced an ASCII `grep` that could not see UTF-16 string literals. **It then had a
