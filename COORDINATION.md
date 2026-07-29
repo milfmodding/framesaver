@@ -4101,3 +4101,68 @@ tail number in the corpus sits in the region every reader discards.**
 **Leg 4's clean-window count should be around 15 — not 3, not 30.** Either extreme means the
 per-window granularity did not take and the drift control is missing or contaminated. It is the
 assertion three synthetic verifications could not make.
+
+---
+
+## 2026-07-28 — Delta: raid insertion costs a >= 250 ms stall, every map, every time — and I reconstructed a field that already exists
+
+Alpha corrected two numbers of mine. Both were wrong, both from **one root cause**, and the corrected version
+is a stronger finding than what I had.
+
+### The root cause: I recomputed `raidElapsed` instead of reading it
+
+**`raidElapsed` is emitted on all 81 in-raid windows.** `read-marathon.py:139` reads it. I reconstructed
+elapsed time twice, from two different origins, and got two different answers — neither of them the one the
+instrument reports:
+
+| definition | Lighthouse steady-state n |
+|---|---|
+| my `delta-gate2-population.py` — from the leg's first **raid** window | **0** |
+| my `delta-gate-status.py` — from the leg's first **sample** incl. loading | **2** |
+| `raidElapsed >= 120`, the emitted field | **2** |
+| `read-marathon`, which additionally requires `bots.total > 0` and a `p50` | **1** |
+
+So "Lighthouse has zero steady-state windows" is **withdrawn** — it is 2, of which 1 is scoreable under
+read-marathon's filters. The front-loading argument survives as *"its steady-state sample is 2 windows and
+its 569.6 ms event is discarded"*, which is weaker than what I said and still sufficient.
+
+**And 1 versus 2 is not a disagreement** — it is `bots.total > 0`. Worth noting on its own: **one of
+Lighthouse's two steady-state windows records zero bots total**, on the map whose entire significance is a
+permanent 14-bot exempt garrison. That wants explaining before Lighthouse's numbers are quoted.
+
+### The corrected finding, which is deterministic rather than occasional
+
+**9 of 9.** Every in-raid window below the 120 s cutoff, across all three marathon logs, carries a >= 250 ms
+event — and each is the first in-raid window of its leg, closing at `raidElapsed` 60.3–60.7 s.
+
+| map | worst event in the discarded window |
+|---|---|
+| Streets | **675.6** |
+| Lighthouse | **569.6** |
+| Shoreline | 460.2 |
+| Ground Zero | 382.4 |
+| Customs | 350.6 |
+| Factory | 320.1 |
+| Interchange | 311.0 |
+
+My "10 of 18" came from the same reconstruction error — counting two sub-cutoff windows per leg where
+`raidElapsed` gives one. **A pattern that never misses is a mechanism, not a cutoff artifact.**
+
+### So goal 2 is two statements, not one cutoff argument
+
+Alpha's formulation and it is better than the question I posed:
+
+- **after the first minute** — currently fails on Streets, and on Customs by `period`
+- **raid insertion** — costs one >= 250 ms stall, always, on every map
+
+One number could never have said both, and they have different causes and different fixes. The second is
+arguably an acceptable cost; the first is not. Loading-adjacent stalls are dominated by
+`EarlyUpdate/UpdatePreloading` and `EarlyUpdate/ScriptRunDelayedStartupFrame`, distinct from the in-raid
+`ScriptRunDelayedDynamicFrameRate` family.
+
+### The rule
+
+**Do not reconstruct a quantity the telemetry emits.** Both wrong numbers came from deriving elapsed time
+myself when the field was on the line, and the two derivations disagreed with each other as well as with the
+instrument — which is the only reason it surfaced. This is the fourth population failure of mine today and
+the first where the population was *defined by my own arithmetic* rather than inherited from a corpus.
