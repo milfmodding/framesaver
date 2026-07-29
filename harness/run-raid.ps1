@@ -33,8 +33,26 @@
 .PARAMETER Force
   Continue past a failed pre-flight check. Prints what it is overriding.
 
+.PARAMETER NoPresentMon
+  Run without a frame capture, and without prompting for elevation.
+
+.PARAMETER PresentMonExe
+  Path to PresentMon. Defaults to the copy in Downloads.
+
+.PARAMETER Elevated
+  Internal. Set only by the elevated copy this script launches, as the guard
+  that stops a failed elevation from looping. Passing it by hand asserts
+  something it cannot make true - the script reports what it MEASURES.
+
+.PARAMETER TestElevation
+  Exercise the elevation plumbing without a raid: re-exec elevated, then dry
+  run in the elevated copy, so nothing starts. The elevation path is otherwise
+  only reachable by a real run, and a first test that costs a raid is a bad
+  first test.
+
 .EXAMPLE
   .\run-raid.ps1 -DryRun
+  .\run-raid.ps1 -DryRun -TestElevation
   .\run-raid.ps1 -CaptureArgs
   .\run-raid.ps1
 #>
@@ -45,7 +63,17 @@ param(
     [string] $ExpectCommit,
     [switch] $Force,
     [switch] $NoPresentMon,
-    [string] $PresentMonExe
+    [string] $PresentMonExe,
+    # Recursion sentinel for the self-elevation below. Set only by the elevated
+    # child we spawn. A guard that is set by the thing it guards against is the
+    # only kind that cannot loop.
+    [switch] $Elevated,
+    # Exercise the elevation plumbing without a raid. -DryRun normally skips
+    # elevation so pre-flight stays frictionless; with this it re-execs anyway and
+    # the elevated child dry-runs, so nothing starts. It exists because the
+    # elevation path is otherwise untestable except by a real run, and this project
+    # has spent a day learning where untested paths keep their defects.
+    [switch] $TestElevation
 )
 
 Set-StrictMode -Version Latest
@@ -518,8 +546,12 @@ function Test-PresentMon {
         return
     }
     if (-not (Test-Elevated)) {
-        Warn 'not an elevated shell - PresentMon cannot open an ETW session, so'
-        Warn 'this run will have NO capture. Re-run from an admin terminal.'
+        # A real run self-elevates before reaching here, so this now fires almost
+        # only on a dry run - and telling someone to re-run as admin when the tool
+        # does it for them is a message that has outlived its reason.
+        Warn 'not elevated - PresentMon cannot open an ETW session, so NO capture'
+        Note 'a real run self-elevates and prompts once at the start; a dry run does not'
+        Note 'test that plumbing without a raid: -DryRun -TestElevation'
         $script:NoPresentMon = $true
         return
     }
@@ -911,6 +943,110 @@ function Invoke-FieldCensus {
         2 { Warn 'field census: REFUSED to report - it read nothing usable. NOT a pass.' }
         default { Warn "field census: unexpected exit $code - treat as unverified" }
     }
+}
+
+# ------------------------------------------------------------- elevation ----
+
+<#
+Re-exec self elevated, so the UAC prompt lands BEFORE anything starts.
+
+Why not PresentMon's own --restart_as_admin: it relaunches PresentMon elevated and
+the process WE started exits immediately. So $script:PmProc points at a corpse,
+HasExited reads true, and every lifecycle guarantee in Start/Stop-PresentMon is
+built on that handle - we could neither stop it nor tell whether it was running,
+while an elevated process kept an ETW session and a write lock on the capture. The
+flag does not fail loudly; it makes our own bookkeeping confidently wrong.
+
+Why not elevate PresentMon alone: a non-elevated parent gets a Process object for an
+elevated child but cannot Kill() it, so Stop-PresentMon's backstop is gone - and the
+UAC prompt would arrive mid-run, stealing focus while the client is loading and
+Wait-ServerReady is timing.
+
+So: elevate the whole harness, once, at the top. Everything downstream keeps the
+handle it already relies on.
+
+Two costs, both stated rather than hidden. The elevated child gets a NEW CONSOLE, so
+its output does not appear in the shell you launched from - which is why it starts a
+transcript beside the logs, and the transcript is the reason the new window is
+acceptable rather than a nuisance. And the server and client inherit elevation, so
+the files they create are owned by an elevated process.
+#>
+function Invoke-SelfElevate {
+    # Order matters: the sentinel is checked FIRST, so a failure to elevate can
+    # never produce a second attempt.
+    # The sentinel is a DECLARATION; Test-Elevated is a MEASUREMENT. Report the
+    # measurement, because a flag that says "I am elevated" is exactly the shape
+    # this project spent a day cataloguing - a success that survives the failure.
+    if ($Elevated) {
+        if (Test-Elevated) { Ok 'running elevated (re-exec)' }
+        else { Warn '-Elevated was passed but this shell is NOT elevated - there will be no capture' }
+        return
+    }
+    if (Test-Elevated) { return }
+    if ($NoPresentMon) { return }   # no capture wanted, so no reason to prompt
+    if ($DryRun -and -not $TestElevation) { return }   # starts nothing; the warning is the output
+    if (-not (Test-Path -LiteralPath $PresentMonExe)) { return }
+
+    Head 'elevation'
+    Note 'PresentMon needs an ETW session, which needs administrator.'
+    Note 'Re-launching this harness elevated - approve the UAC prompt.'
+    Note 'Pass -NoPresentMon to run without a capture and without prompting.'
+
+    # Switches carry no value and cannot be mangled. The two string parameters can,
+    # so they are quoted with embedded-quote doubling - and the child ECHOES what it
+    # received, so a mangled path is visible rather than silently becoming two args.
+    $argv = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $PSCommandPath), '-Elevated')
+    # Forwarded only under -TestElevation, which is the one path where a dry run
+    # reaches here at all. Without it a dry run returns above and never elevates.
+    if ($DryRun)      { $argv += '-DryRun' }
+    if ($CaptureArgs) { $argv += '-CaptureArgs' }
+    if ($Force)       { $argv += '-Force' }
+    if ($ExpectCommit) { $argv += @('-ExpectCommit', ('"{0}"' -f $ExpectCommit.Replace('"', '""'))) }
+    if ($PSBoundParameters.ContainsKey('PresentMonExe') -and $PresentMonExe) {
+        $argv += @('-PresentMonExe', ('"{0}"' -f $PresentMonExe.Replace('"', '""')))
+    }
+
+    try {
+        # WorkingDirectory is explicit because RunAs does NOT inherit it - an
+        # elevated process starts in system32 and every relative path would resolve
+        # somewhere else entirely.
+        $p = Start-Process -FilePath 'powershell.exe' -ArgumentList $argv -Verb RunAs `
+                           -WorkingDirectory $HarnessDir -PassThru -ErrorAction Stop
+    } catch {
+        Bad 'elevation was declined or failed - nothing was started'
+        Note "reason: $($_.Exception.Message)"
+        Note 'run from an admin terminal, or pass -NoPresentMon to skip the capture'
+        exit 1
+    }
+
+    Note ("elevated harness started as pid {0} in its own window" -f $p.Id)
+    Note 'this shell is done; watch the new window, or read the transcript it writes'
+
+    # A non-elevated parent can wait on a child it created, but querying an elevated
+    # process's ExitCode can be refused - and an unhandled throw here would look like
+    # the run failed when the run is what succeeded. So the wait is best-effort and
+    # says which half it could not do.
+    try {
+        $p.WaitForExit()
+        exit $p.ExitCode
+    } catch {
+        Warn "could not read the elevated run's exit code: $($_.Exception.Message)"
+        Warn 'the run itself is unaffected - read the transcript for its result'
+        exit 0
+    }
+}
+
+Invoke-SelfElevate
+
+# The elevated child owns a console this shell cannot see, so preserve its output
+# unconditionally. Failing to start a transcript must not stop a run - the run is
+# the point and the transcript is a convenience.
+if ($Elevated) {
+    $tr = Join-Path $LogDir ('harness-elevated-{0}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    try { Start-Transcript -LiteralPath $tr -ErrorAction Stop | Out-Null; Ok "transcript $tr" }
+    catch { Warn "no transcript: $($_.Exception.Message)" }
+    Note ('parameters received: DryRun={0} CaptureArgs={1} Force={2} ExpectCommit=[{3}] PresentMonExe=[{4}]' `
+          -f $DryRun, $CaptureArgs, $Force, $ExpectCommit, $PresentMonExe)
 }
 
 # ------------------------------------------------------------------- main ----
