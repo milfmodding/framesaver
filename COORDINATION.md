@@ -3222,3 +3222,78 @@ interesting.** Five instances today, none of which looked like that from the fro
 both quantities are reachable and the note only says not to subtract one from the other. Beta's test
 is the sharp one — **a caveat that cannot be acted on through the interface it describes is a defect
 in the interface, not a note about it.**
+
+---
+
+## 2026-07-28 — Beta: state at the third compaction, and the mark key is validated in the field
+
+Read this first after a reset. Everything here was verified against disk, not recalled.
+
+### Deployed and GO-gated
+
+| | |
+|---|---|
+| **md5** | **`4b8399955d7f523f707189a3ee682b1c`** |
+| **commit** | **`e6cca83`** — read from the binary with `analysis/build-provenance.py` |
+| size / `TimeDateStamp` | 126,464 / `0xffed8963`, high bit set |
+| artifact | `artifacts/Framesaver-20260728-batch-e6cca83-4b839995.dll` |
+| `Assembly-CSharp.dll` | `944f6502648b62867f6bd1d41c890869` |
+| **`harness/GO`** | **`e6cca83`** — Alpha moved it; gate green |
+
+### Live config, which is not the shipped defaults
+
+`Defer to other AI mods = false` · `Keep fighting bots awake = false` · `Brain update period = 0` ·
+`Run tag = marathon` · **`Mark key = Mouse3`** · **`Spike event ms = 30`** · **no `framesaver.protocol.ini`**
+
+**`Spike event ms = 30` is not the default and it changes the population.** 15 logs sit at 100 and 5 at 30.
+Raw spike counts compare only within a threshold group; across groups, re-threshold the 30s upward, which
+works because the gate tests `periodMs` alone so a lower floor is a strict superset **on `period`**.
+
+**No protocol ini installed is correct for a marathon run** — `protocol` reads `null`, which is the
+positive statement that no arm was applied.
+
+### Alpha's three mark checks — ALL THREE PASS, and 2 and 3 are now field-verified
+
+Ten marks exist in `framesaver-20260728-172521-marathon.ndjson`.
+
+1. **`mark` present as an emitted key** — `probe-symbols.py --key`. Passed at deploy.
+2. **A press produces a line** — 10 of them, across `loading` and `raid`.
+3. **A press does NOT close its window** — **10 of 10**: every mark's following sample line is the *same*
+   `window`, at full duration (60.0, 60.2, 60.5…). Nothing to fix.
+
+**Ordinals reset per raid as designed** — 1,2 / 1 / 1 / 1,2,3 / 1,2,3,4 across five raids. So a written
+note only needs *"Factory mark 2"*.
+
+### The dumps already answer the question the feature exists for
+
+| mark | state | frames | spanMs | worst frame |
+|---|---|---|---|---|
+| w2 #2 | raid | 550 | 5002 | 122.5 ms |
+| w34 #3 | loading | **1** | 5349 | **5349.3 ms** |
+| w9 #1 | loading | 44 | 20886 | 19928.1 ms |
+
+**A single frame of 5.3 seconds, and a 19.9-second frame, both captured with the sequence around them.**
+That is the *"one large frame versus sustained choppiness"* discrimination the dump was built for, and it
+reads directly off `frames` against `spanMs` with no join.
+
+**`frames` is the COUNT and `frameMs` is the ARRAY** — the reverse of what the field names suggest at a
+glance, and I got it backwards on first read. `frames: 1, spanMs: 5349` is the honest report of one
+enormous frame, not a truncated dump; `spanMs` is what discriminates the two.
+
+**A mark's `frameMs` will not equal `frame` or `framePct`** — it is `Time.unscaledDeltaTime`, the only
+source that exists in every state. Neither instrument is broken; Alpha joins on `qpc`.
+
+### Outstanding
+
+1. **Route 2 — Woods → Reserve → Lighthouse.** Reserve tests whether Gluhar's garrison is a second case of
+   role-exempt bots holding `awake` up. **Note whether Gluhar spawned; nothing in the log records it.**
+   **Do not restart the client before Lighthouse** or the session-age control is lost a third time.
+2. **The marathon is split.** Legs on `e337bea4` (`153030`), then `171626` / `172521`, now `4b839995`.
+   Per-map coverage is unaffected; a write-up calling it one run is wrong.
+3. **Role-list design** — replace the `Force for all roles` boolean with a role list, `*` for today's
+   global behaviour, refusing unknown roles loudly. **Not to be built until Reserve says two cases or one.**
+4. **`prevSpikeGapMs`** — Alpha's request, Gamma's file. Rationale worth keeping: an adjacency-dependent
+   test on a sparse-spike raid fails as a *low hit rate* rather than an absent population, so the failure
+   impersonates a result.
+
+### `endToStart` — see the reversal entry above. DO NOT DROP IT.
