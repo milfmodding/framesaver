@@ -3979,3 +3979,45 @@ Alpha's framing and it deserves the entry rather than four separate ones: **when
 the same quantity disagree, check the population before the arithmetic — it has been the population every
 time.** The pooled bot slope, Alpha's spike rate, the Customs "drift", and now this. Not one was a technique
 error. Three of the four were mine.
+
+---
+
+## 2026-07-28 — Delta: the registered brain-share range is narrower than the evidence supports
+
+Correction to `brain-tick-share-of-aitotal`, before the log lands. **Factory is still the only support.**
+
+Alpha added `Sandbox_high` as a second support — intercept +0.27, share 43%, r 0.45, live 12–20 — on the
+grounds that a positive intercept over a range 8 wide is not the extrapolation failure the other maps show.
+The intercept reasoning is right. The fit cannot carry it:
+
+| map | n | slope 95% CI | share 95% CI | |
+|---|---|---|---|---|
+| Factory | 20 | [0.0097, 0.0199] | **[38%, 78%]** | the one usable fit |
+| Ground Zero | 7 | **[−0.0164, 0.0421]** | [−54%, 139%] | **slope spans zero** |
+| Shoreline | 12 | **[−0.0372, 0.0660]** | [−242%, 429%] | **slope spans zero** |
+| Streets | 175 | [0.0524, 0.0776] | [163%, 242%] | significant *and* impossible |
+| Customs | 56 | [0.0239, 0.0466] | [98%, 192%] | significant *and* impossible |
+| Interchange | 18 | [0.0174, 0.0834] | [140%, 675%] | significant *and* impossible |
+
+**Ground Zero's slope is not distinguishable from no relationship at all.** A point estimate that lands in a
+physically possible region, drawn from a fit that cannot reject zero, is *consistent with* a 43% share — it
+is not *evidence for* one. Averaging it with Factory widens the range using noise.
+
+**The honest widening comes from Factory's own sampling error**, and it is larger than the registered one:
+
+> share **38–78%** (was a 43–60% point range) → predicted drop **0.25–0.51 ms** (was 0.28–0.39), point 0.38.
+
+**The registered range was narrower than the truth, which is the dangerous direction.** An observed drop of
+0.30 ms would have read as *within the registered range, confirmed*, when the lower end of that range was
+built from a fit that could not distinguish itself from zero. A prediction interval that is too narrow
+manufactures confirmations.
+
+**Power is unaffected** — 0.25 ms against a within-map sd of 0.042–0.106 is still 2.4–6 sd, one to two
+windows per arm. And the assumption-free bound is unchanged and remains the falsifiable part: **> 0 and
+≤ 0.65 ms.** Worth noting the upper CI at 0.51 now sits close to that ceiling, so a large observed drop
+discriminates the two less sharply than it did.
+
+**The three impossible fits are significant, not noisy**, which strengthens the reductio rather than
+weakening it: their slopes exclude zero comfortably and still imply shares of 98–675%. That is
+misspecification showing itself, not sampling error — the model is wrong on those maps, not merely
+underpowered.
