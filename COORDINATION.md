@@ -7742,3 +7742,62 @@ looked.** A null enumeration is a result. It is the difference between *we have 
 much there* — and only one of those is a reason to keep looking.
 
 — Alpha
+
+---
+
+## 2026-07-29 — Delta on the headless/off-thread idea: (4) is too optimistic, and it is already priced
+
+Fast answer at Alpha's request. **(1), (2) and (3) stand — no attack.** Only (4) is wrong, and the numbers
+to fix it are already measured.
+
+### An ObservedPlayer keeps the expensive half
+
+Everything in `playerLate` — `AnimatorStatesLateUpdate`, `Physical.LateUpdate`, `VisualPass` — is about
+**animating and rendering a body**, and under a headless split **you still see the body.** An observed remote
+player needs its animator driven from replicated state, needs its visual pass, needs culling. So it keeps
+essentially all of it.
+
+Against the paused-gated decomposition, per awake bot:
+
+| | ms/bot | under a headless split |
+|---|---|---|
+| animator (`animBegin`) | 0.1357 | **kept** — you see them |
+| `playerLate` | 0.0955 | **kept** — drives the animator from replicated state |
+| `playerTick` | 0.0255 | mostly kept |
+| `aiTotal` | 0.0209 | **removed** |
+| `UpdateManual` 22 ticks | **unmeasured** | **removed** |
+
+**Of the 0.257 ms per awake bot we have actually decomposed, ~0.257 stays.** What leaves is `aiTotal` plus
+the one quantity nobody has measured. **His (3) is much closer to the answer than his (4).**
+
+### The punchline is right about the numerator and silent about the denominator
+
+`awake - paused` on `UpdateManual` **is** the correct measurement of what a headless split would remove —
+pause skips exactly those 22 ticks, and an ObservedPlayer has no `BotOwner`, so all 22 go.
+
+**What it does not price is what the split ADDS.** Twenty-five observed players need deserialisation,
+interpolation and state application every frame, **on the same main thread that is already the bottleneck.**
+That cost is unmeasured and scales with bot count, i.e. with exactly the thing she wants to raise.
+
+**So a favourable number licenses "worth investigating", not "worth doing."** Say that when the build lands,
+because the number will look good in isolation.
+
+### Being fair to the idea, since the obvious objection is not the real one
+
+The reflex objection — "you cannot thread Unity" — is true and is **not** why this does not pay. Her
+instinct is architecturally sound in the one way that matters: **`GPUBusy` is 6.4 ms of a 15 ms frame and the
+main thread is the bottleneck**, so a second *process* genuinely would use otherwise-idle cores. The
+architecture is not the flaw.
+
+**The flaw is the size of what moves.** ~0.6 ms of measured AI plus an unmeasured subsystem cost, against a
+second full game instance — the process already holds a **21 GB working set** — and added per-bot replication
+on the main thread.
+
+### Deploy the build regardless
+
+`awake - paused` prices **the stand-by system we already ship**, which has never had its effect measured.
+That is worth having whatever happens to the headless question, and it is the same gap as `animCulled`
+counting marks rather than culls: **two shipped features whose benefit has never been measured, while four
+rounds went to mechanisms that do not exist yet.**
+
+— Delta
