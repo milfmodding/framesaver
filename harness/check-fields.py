@@ -1,0 +1,237 @@
+"""Post-flight field census: refuse a run whose new telemetry is present-but-degenerate.
+
+Six builds landed on 2026-07-29 and every one of them can fail in the way this project
+keeps cataloguing - a field that emits, reads plausible, and carries nothing. This is the
+check Sophia asked for when she said pre-flight can catch us. It runs on the log the
+harness just produced, so ABSENT IS A FAILURE by default: the deployed build is current
+by construction. Pass --tolerant to read an older log, where absent means the build
+predates the field rather than the field breaking.
+
+Deliberately Python rather than PowerShell: our ndjson carries a UTF-8 BOM and
+ConvertFrom-Json chokes on it, while utf-8-sig reads it without comment. That is a
+recorded trap in this project, not a preference.
+
+THREE VERDICTS, NEVER TWO. `absent` (the build did not record it), `empty` (it looked and
+could not tell), and `bad` (it recorded something wrong) are different facts and get
+different exit paths. Collapsing them is how a missing instrument comes to read as a
+healthy one.
+
+EXIT CODES
+    0  every check passed
+    1  at least one check FAILED - do not trust this run
+    2  REFUSED to report - could not read the file, or read zero raid windows
+
+2 is separate from 1 on purpose. A check that reports a pass over zero rows is the
+defect this project has hit most often, so reading nothing must be its own outcome and
+must never be silent.
+"""
+import json
+import sys
+
+TOLERANT = "--tolerant" in sys.argv
+PATHS = [a for a in sys.argv[1:] if not a.startswith("--")]
+
+# Vsync and a frame cap are not merely unrecorded context - they can PIN p50 at the
+# gate's own budget and produce a pass that is insensitive to anything the mod does.
+# A false pass on the primary success criterion is worse than a null, so these two are
+# hard failures rather than notes.
+VSYNC_KEYS = ("vSyncCount", "targetFrameRate")
+
+fails, notes, refusals = [], [], []
+_blocks_reported = set()
+
+
+def fail(msg):
+    fails.append(msg)
+
+
+def note(msg):
+    notes.append(msg)
+
+
+def block_absent(name):
+    """Report a missing block ONCE, not once per key inside it.
+
+    Found by running this against a real pre-field log: `platform` reported three
+    times and `system` four, turning six distinct problems into twelve failures.
+    An inflated count is not a cosmetic defect - it overstates severity and makes
+    triage read the wrong way round.
+    """
+    if name in _blocks_reported:
+        return
+    _blocks_reported.add(name)
+    if TOLERANT:
+        note("%s: whole block absent (tolerant: build may predate it)" % name)
+    else:
+        fail("%s: whole block ABSENT - this build should emit it" % name)
+
+
+def probe(block, name, key, *, require_truthy=True, allow_zero=False):
+    """One field. Returns the value, or None having already recorded the verdict."""
+    if block is None:
+        block_absent(name)
+        return None
+    if key not in block:
+        if TOLERANT:
+            note("%s.%s absent (tolerant: build may predate it)" % (name, key))
+        else:
+            fail("%s.%s ABSENT - this build should emit it" % (name, key))
+        return None
+    v = block[key]
+    if v is None:
+        fail("%s.%s is null - could not compute, which is not the same as empty" % (name, key))
+        return None
+    if require_truthy and v == "":
+        fail("%s.%s is empty - it looked and could not tell" % (name, key))
+        return v
+    if require_truthy and v == 0 and not allow_zero:
+        fail("%s.%s is 0 - reads as measured-and-zero rather than unmeasured" % (name, key))
+    return v
+
+
+def main():
+    if not PATHS:
+        print("usage: check-fields.py <log.ndjson> [--tolerant]")
+        return 2
+
+    for path in PATHS:
+        print("=== %s" % path)
+        try:
+            lines = open(path, encoding="utf-8-sig", errors="replace").read().splitlines()
+        except OSError as e:
+            refusals.append("cannot read %s: %s" % (path, e))
+            continue
+
+        header, raid = None, []
+        for ln in lines:
+            try:
+                o = json.loads(ln)
+            except ValueError:
+                continue
+            t = o.get("type")
+            if t == "header" and header is None:
+                header = o
+            elif t == "sample" and o.get("state") == "raid" and not o.get("final"):
+                raid.append(o)
+
+        if header is None:
+            refusals.append("%s: no header line - refusing to report" % path)
+            continue
+        if not raid:
+            # A dry run or a launch that never entered a raid. Reporting a pass over
+            # zero windows is the exact defect this file exists to catch, so it is a
+            # refusal rather than a pass, and it says so.
+            refusals.append("%s: 0 non-final raid windows - refusing to report" % path)
+            continue
+
+        print("    header commit %s, %d raid windows" % (str(header.get("commit"))[:12], len(raid)))
+
+        # ---- header blocks: once per file --------------------------------------
+        plat = header.get("platform")
+        probe(plat, "platform", "sptAssembly")
+        probe(plat, "platform", "game")
+        probe(plat, "platform", "unity")
+
+        sysb = header.get("system")
+        probe(sysb, "system", "cpu")
+        probe(sysb, "system", "cores")
+        probe(sysb, "system", "ramMb")
+        probe(sysb, "system", "os")
+
+        disp = header.get("display")
+        if disp is None:
+            block_absent("display")
+        else:
+            for k in VSYNC_KEYS:
+                if k not in disp:
+                    (note if TOLERANT else fail)("display.%s absent" % k)
+                    continue
+                v = disp[k]
+                # vSyncCount 0 and targetFrameRate -1 both mean "uncapped". Any other
+                # value can pin p50 at a refresh budget and pass the gate for free.
+                if (k == "vSyncCount" and v not in (0,)) or (k == "targetFrameRate" and v not in (-1, 0)):
+                    fail("display.%s = %r - a frame cap can PIN p50 and pass the "
+                         "60 fps gate insensitively. Do not score this run." % (k, v))
+                else:
+                    note("display.%s = %r (uncapped)" % (k, v))
+            if disp.get("refreshHz"):
+                note("display.refreshHz = %r" % disp["refreshHz"])
+
+        probe(header, "header", "commit")
+
+        # ---- per-window blocks: checked over raid windows only ------------------
+        um = [w["updateManual"] for w in raid if isinstance(w.get("updateManual"), dict)]
+        if not um:
+            (note if TOLERANT else fail)("updateManual absent from all %d raid windows" % len(raid))
+        else:
+            unstamped = sum(w.get("unstampedCalls") or 0 for w in um)
+            if unstamped:
+                fail("updateManual.unstampedCalls = %d over %d windows - the awake/paused "
+                     "split is INCOMPLETE and the difference is over a partial roster"
+                     % (unstamped, len(um)))
+            else:
+                note("updateManual.unstampedCalls = 0 across %d windows" % len(um))
+            aw = sum(w.get("awakeCalls") or 0 for w in um)
+            pa = sum(w.get("pausedCalls") or 0 for w in um)
+            if not aw or not pa:
+                fail("updateManual awake=%d paused=%d - the paired measurement needs BOTH "
+                     "arms; a zero side makes the difference unavailable, not zero" % (aw, pa))
+            else:
+                note("updateManual awake=%d paused=%d calls" % (aw, pa))
+
+        sg = [w["spawnGate"] for w in raid if isinstance(w.get("spawnGate"), dict)]
+        if not sg:
+            (note if TOLERANT else fail)("spawnGate absent from all %d raid windows" % len(raid))
+        else:
+            nulls = sum(1 for w in sg if w.get("forcedButExcluded", "MISSING") is None)
+            if nulls:
+                fail("spawnGate.forcedButExcluded is null in %d of %d windows - could not "
+                     "compute. Null must not be read as an all-clear." % (nulls, len(sg)))
+            hits = [w for w in sg if w.get("forcedButExcluded")]
+            if hits:
+                fail("spawnGate.forcedButExcluded is NON-EMPTY (%r) - a forced role is "
+                     "blocked by a client setting. This run is void."
+                     % (hits[0].get("forcedButExcluded"),))
+            elif not nulls:
+                note("spawnGate.forcedButExcluded empty in all %d windows" % len(sg))
+
+            amounts = set(str(w.get("botAmountWaves")) for w in sg)
+            note("spawnGate.botAmountWaves = %s" % ", ".join(sorted(amounts)))
+            if amounts - {"AsOnline"}:
+                # Committed in c5c4d2b before either the answer or the patch existed, so
+                # this is a calibration of the field rather than a test of the corpus.
+                fail("botAmountWaves is not AsOnline. Sophia certified AsOnline, so either "
+                     "the setting changed deliberately or THE PATCH IS WRONG - the registered "
+                     "prediction now tests the field, not the corpus.")
+            if len(amounts) > 1:
+                fail("botAmountWaves varies WITHIN one log (%s) - population regime changed "
+                     "mid-run and no analysis may pool these windows" % ", ".join(sorted(amounts)))
+
+        mods = [w.get("agents", {}).get("mods") for w in raid]
+        present = [m for m in mods if m is not None]
+        if not present:
+            (note if TOLERANT else fail)("agents.mods absent from all %d raid windows" % len(raid))
+        else:
+            seen = sorted({m for lst in present for m in lst})
+            note("agents.mods = %s (in %d of %d windows)" % (seen or "[]", len(present), len(raid)))
+
+    # ---- report ---------------------------------------------------------------
+    for m in notes:
+        print("    ok    %s" % m)
+    for m in fails:
+        print("    FAIL  %s" % m)
+    for m in refusals:
+        print("    REFUSED %s" % m)
+
+    if refusals:
+        print("\nREFUSED - read nothing usable. This is NOT a pass.")
+        return 2
+    if fails:
+        print("\n%d FAILED check(s). Do not trust this run until each is understood." % len(fails))
+        return 1
+    print("\nall field checks passed (%d)" % len(notes))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

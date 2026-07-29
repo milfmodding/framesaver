@@ -856,6 +856,61 @@ function Invoke-PostFlight {
     } elseif (-not $NoPresentMon) {
         Warn 'no capture to keep - see the presentmon section above'
     }
+
+    Invoke-FieldCensus $new
+}
+
+# Refuses a run whose new telemetry emitted but carries nothing.
+#
+# Six builds landed on 2026-07-29 and every one can fail the way this project keeps
+# cataloguing: a field that emits, reads plausible, and means nothing. Strict mode is
+# right here because the log was produced by the binary we just verified in pre-flight,
+# so ABSENT is a defect rather than an old build.
+#
+# Python, not ConvertFrom-Json: our ndjson carries a UTF-8 BOM that ConvertFrom-Json
+# chokes on, while utf-8-sig reads it silently. A recorded trap, not a preference.
+#
+# Everything here is inside try/catch because post-flight runs on the way out, above
+# Stop-SptServer. An exception thrown here would strand a headless server - which is a
+# defect this file has already had once, from reading a locked PresentMon capture.
+function Invoke-FieldCensus {
+    param($New)
+
+    $script = Join-Path $PSScriptRoot 'check-fields.py'
+    if (-not (Test-Path -LiteralPath $script)) {
+        Warn 'no check-fields.py beside the harness - new fields NOT checked'
+        return
+    }
+    if ($New.Count -ne 1) {
+        # Silence here would read as a pass, so say which case we are in.
+        Note ("{0} new logs - field census skipped, run it by hand per log" -f $New.Count)
+        return
+    }
+
+    $log = Join-Path $LogDir $New[0].Name
+    try {
+        # `2>&1` here is deliberate and is NOT the recorded PowerShell 5.1 trap. That
+        # trap is that redirecting a native command's stderr sets `$?` to $false even
+        # on exit 0 - and we read $LASTEXITCODE, never `$?`. Verified both ways on a
+        # real log: identical exit code, all lines String. Keeping the redirection so a
+        # Python traceback lands in the output instead of vanishing.
+        $out = & python $script $log 2>&1
+        $code = $LASTEXITCODE
+    } catch {
+        Warn "could not run the field census: $($_.Exception.Message)"
+        Warn 'the new telemetry is UNVERIFIED - check it by hand before scoring this run'
+        return
+    }
+
+    foreach ($line in $out) { Note $line }
+
+    # 2 is separate from 1 deliberately: read-nothing must never present as a pass.
+    switch ($code) {
+        0 { Ok 'field census: every new field present and non-degenerate' }
+        1 { Bad 'field census: FAILED - do not score this run until each line is understood' }
+        2 { Warn 'field census: REFUSED to report - it read nothing usable. NOT a pass.' }
+        default { Warn "field census: unexpected exit $code - treat as unverified" }
+    }
 }
 
 # ------------------------------------------------------------------- main ----
