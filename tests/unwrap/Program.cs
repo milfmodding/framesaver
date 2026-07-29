@@ -154,6 +154,82 @@ class P {
               sb2.ToString(), "{\"awakeMs\":0,\"awakeCalls\":0,\"pausedMs\":0,"
                               + "\"pausedCalls\":0,\"unstampedCalls\":0}");
 
+        // The point of this block is one field: forcedButExcluded must be null when either
+        // half was not observed, and [] only when both were and the answer really is empty.
+        // An empty list IS the all-clear, so "could not compute" must never be able to
+        // impersonate one - that is the exact shape that has cost us four tests already.
+        Console.WriteLine("\nBossSpawnGate intersection, and its absent-vs-empty distinction");
+        var gate = asm.GetType("Framesaver.Patches.BossSpawnGate");
+        var recW = gate.GetMethod("RecordWaves", BindingFlags.NonPublic | BindingFlags.Static);
+        var recS = gate.GetMethod("RecordSettings", BindingFlags.NonPublic | BindingFlags.Static);
+        var gAppend = gate.GetMethod("Append", BindingFlags.Public | BindingFlags.Static);
+
+        var blsType = recW.GetParameters()[0].ParameterType.GetElementType();
+        var botAmount = recW.GetParameters()[2].ParameterType;
+        var ctrlType = recS.GetParameters()[0].ParameterType;
+
+        Func<string, bool, float, object> wave = (name, force, chance) => {
+            object w = Activator.CreateInstance(blsType);
+            blsType.GetField("BossName").SetValue(w, name);
+            blsType.GetField("ForceSpawn").SetValue(w, force);
+            blsType.GetField("BossChance").SetValue(w, chance);
+            // BossType directly rather than via ParseMainTypesTypes, which also parses
+            // escort type and both difficulty strings. What is under test is the
+            // intersection, not BSG's parser.
+            var bossType = blsType.GetProperty("BossType");
+            bossType.SetValue(w, Enum.Parse(bossType.PropertyType, name));
+            return w;
+        };
+
+        Func<string> emit = () => {
+            var b = new System.Text.StringBuilder();
+            gAppend.Invoke(null, new object[] { b });
+            return b.ToString();
+        };
+
+        Func<string[], object> settings = names => {
+            object s = Activator.CreateInstance(ctrlType);
+            ctrlType.GetField("ExcludedBosses").SetValue(s, names);
+            ctrlType.GetField("BotAmount").SetValue(s, Enum.Parse(botAmount, "AsOnline"));
+            return s;
+        };
+
+        var waves = Array.CreateInstance(blsType, 2);
+        waves.SetValue(wave("exUsec", true, 100f), 0);
+        waves.SetValue(wave("bossBoar", true, 100f), 1);
+
+        // Waves only: settings never observed, so the answer is unknown, not clear.
+        recW.Invoke(null, new object[] { waves, true, Enum.Parse(botAmount, "AsOnline") });
+        Check("waves alone -> forcedButExcluded is null, NOT []",
+              emit().Contains("\"forcedButExcluded\":null"), true);
+
+        // Both halves, nothing excluded: this is the real all-clear.
+        recS.Invoke(null, new object[] { settings(new string[0]) });
+        Check("both halves, none excluded -> []",
+              emit().Contains("\"forcedButExcluded\":[]"), true);
+
+        // Both halves, a forced role excluded: the failure announces itself.
+        recW.Invoke(null, new object[] { waves, true, Enum.Parse(botAmount, "AsOnline") });
+        recS.Invoke(null, new object[] { settings(new[] { "bossBoar" }) });
+        Check("forced role excluded -> named in forcedButExcluded",
+              emit().Contains("\"forcedButExcluded\":[\"bossBoar\"]"), true);
+
+        // An unparseable exclusion blocks nothing, because SetBlockedRoles uses TryParse.
+        // It must show in excludedRaw and NOT in the intersection.
+        recW.Invoke(null, new object[] { waves, true, Enum.Parse(botAmount, "AsOnline") });
+        recS.Invoke(null, new object[] { settings(new[] { "BossBoar" }) });
+        string typo = emit();
+        Check("typo'd exclusion is visible in excludedRaw", typo.Contains("\"BossBoar\""), true);
+        Check("typo'd exclusion excludes nothing, matching TryParse",
+              typo.Contains("\"forcedButExcluded\":[]"), true);
+
+        // A new raid whose vmethod_1 never fired must not inherit the last raid's answer.
+        recW.Invoke(null, new object[] { waves, true, Enum.Parse(botAmount, "AsOnline") });
+        string restaged = emit();
+        Check("RecordWaves clears the settings half", restaged.Contains("\"sawSettings\":false"), true);
+        Check("...so a stale intersection cannot survive into a new raid",
+              restaged.Contains("\"forcedButExcluded\":null"), true);
+
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
         return bad == 0 ? 0 : 1;
     }
