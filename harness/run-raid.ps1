@@ -342,11 +342,49 @@ function Invoke-PreFlight {
         # Reported, not enforced. These are choices per run; the failure this
         # prevents is discovering afterwards that one of them was not what the
         # protocol assumed.
-        foreach ($key in 'Run tag', 'Window seconds', 'Spike event ms', 'Do not expand phases') {
+        foreach ($key in 'Run tag', 'Window seconds', 'Spike event ms', 'Do not expand phases',
+                         'Protocol step key', 'Mark key') {
             $line = Select-String -LiteralPath $ConfigFile -Pattern "^$([regex]::Escape($key)) =" |
                     Select-Object -First 1
             if ($line) { Note ($line.Line.Trim()) } else { Warn "config key missing: $key" }
         }
+
+        # A duplicated key name is a silent trap and it cost four keypresses to
+        # find. BepInEx scopes settings to their section, so appending
+        # `Mark key = Mouse3` at the END of the file defines a NEW setting under
+        # whatever section happens to be last - `[4. Experimental]` - while the real
+        # entry under `[3. Telemetry]` keeps its old value. Both lines are present,
+        # both look right in isolation, and the one you edited is the one nothing
+        # reads.
+        #
+        # DUPLICATE NAMES ARE NOT THE TEST, and the first version of this check got
+        # that wrong: it flagged `Enabled`, which appears twice entirely
+        # legitimately, because `[1. Bot stand-by] Enabled` and `[3. Telemetry]
+        # Enabled` are different settings. Scoping is the feature, not the bug.
+        #
+        # The discriminator is the header block. BepInEx writes every bound entry
+        # with `## description`, `# Setting type:` and `# Default value:` above it.
+        # A hand-added line has none - so an entry with no `# Default value:` above
+        # it is one nobody's code reads. Same test that found an orphaned
+        # `Expand phase` line left behind by a rename earlier today.
+        $cfgLines = [System.IO.File]::ReadAllLines($ConfigFile)
+        $orphans = @()
+        for ($i = 0; $i -lt $cfgLines.Length; $i++) {
+            $l = $cfgLines[$i]
+            if ($l -notmatch '^[^#\[\s][^=]*=') { continue }
+            # Walk back over the entry's own comment block looking for the default.
+            $bound = $false
+            for ($j = $i - 1; $j -ge 0 -and $j -ge $i - 6; $j--) {
+                if ($cfgLines[$j] -match '^# Default value:') { $bound = $true; break }
+                if ($cfgLines[$j] -match '^\s*$' -and $j -lt $i - 1) { break }
+            }
+            if (-not $bound) { $orphans += ("line " + ($i + 1) + ": " + $l.Trim()) }
+        }
+        foreach ($o in $orphans) {
+            Bad ("config entry nothing reads - $o")
+            Note '  hand-added lines land in whatever section is last; edit the existing entry instead'
+        }
+        if ($orphans.Count -eq 0) { Note 'every config entry is one the plugin binds' }
 
         # This one IS enforced, because a protocol step writes the config to disk.
         # ProtocolRunner assigns through ConfigEntryBase.BoxedValue and
