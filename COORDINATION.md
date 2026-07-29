@@ -6468,3 +6468,75 @@ data rather than prevented in new data. Beta's `BotAmount` field fixes it going 
 backwards.
 
 — Alpha
+
+---
+
+## Alpha: BotMax is not the ceiling, and my ramp hypothesis was wrong (2026-07-29)
+
+`analysis/alpha-population-ramp.py`. Prompted by Beta finding that `BotControllerSettings.BotAmount` drives
+`MaxBotsAliveOnMap` — a *concurrent* cap, and `bots.total` is a concurrent count, so the two had never been
+compared.
+
+### Falsified: the spawn-ramp hypothesis
+
+Database `BotStart` is 122 s on Streets and 120 s on Ground Zero against 10-20 s everywhere else, and our
+steady-state cut is 120 s. I predicted that "steady state" on Streets was therefore sampling a spawn ramp, and
+that Streets' low readings were an artifact of it.
+
+**Wrong. Streets is flat from the first window:** `1m:22 2m:22 3m:21 4m:19 5m:19 6m:19 7m:19 8m:23 9m:22
+10m:22 11m:22`, first-5-min mean 21.0 against after-5-min 20.9. `BotStart` does not mean bots begin at 122 s.
+Recorded because the prediction was specific enough to be wrong and the cut it would have changed is the one
+Streets analysis depends on.
+
+### `BotMax` is not the ceiling on `bots.total`, on three maps out of nine
+
+    Customs      BotMax 19   observed peak 26   +7
+    Lighthouse   BotMax 29   observed peak 37   +8
+    Factory      BotMax  0   observed peak 10   +10
+
+**The explanation is a field we had already read and not connected: `IgnoreMaxBots = true` on every single
+`BossLocationSpawn` entry on every map checked**, and `BossSpawnerClass.cs:47` is `if (!wave.IgnoreMaxBots)`.
+SPT's 14 injected PMC waves on Lighthouse *are* `BossLocationSpawn` entries. So the population that matters —
+PMCs, garrisons, Raiders — **bypasses the cap entirely, and `BotMax` gates only ordinary scav waves.**
+
+**This is the good news for Sophia's goal: no bot cap blocks raising population.** The ceiling everyone
+assumed was there is not binding on the population she wants more of.
+
+Open for Beta: what `MaxBotsAliveOnMap` is actually set from, and whether it gates anything given that every
+wave of interest opts out.
+
+### Streets has never been measured near its own ceiling
+
+Streets sits at ~21 against `BotMax` 48 — **44% of what the map permits, and flat rather than climbing.** Not
+a sampling artifact, since the ramp hypothesis is dead; it is what Streets does. Worth knowing before Streets
+is used as the stress-test map, because "the most expensive map in the corpus" has been measured at less than
+half its own population.
+
+### Population declines over a raid, in 6 of 9 legs
+
+Ground Zero -4.8, Factory -2.2, Customs -2.1, Lighthouse L1 -1.4, Interchange -1.4, Shoreline -1.2, against
+Woods -0.2, Reserve +0.2, Lighthouse L4 +0.8. Bots die and are not replaced. **Consistent with the independent
+finding that p50 gets slightly *faster* as a raid proceeds** (0 of 11 legs trending significantly up, 4 down) —
+two different fields agreeing, which is the first time this residual has had two instruments pointing the same
+way.
+
+### Lighthouse L4 is the anomaly, and its trajectory is a better story than session age
+
+    L1  27 29 28 30 29 28 28 28 28 28 28 27 28 28 27 26 26 26 24 24      declines 28.5 -> 27.1
+    L4  31 32 31 31 31 37 35 35 35 34 33 31 31 31 30 29 29 29            RISES  31.2 -> 32.0, peak 37
+
+L4 did not merely start higher — it **excursed to 37 at minute 5, held 33-35 for five minutes, and only
+settled to 29 by minute 16.** Different level *and* different trajectory. That is a concrete raid-content
+difference on the leg that read 57 fps, and it is the kind of thing "session age" was standing in for.
+
+### The two predictors disagree in sign, which supports Delta rather than me
+
+L4 against L1: **+3 total bots but -2 awake bots** (medians 31/9 against 28/11). At the measured slopes that is
++0.44 ms on `frame ~ total` and **-0.74 ms** on `frame ~ awake`. **Opposite signs.** So bot count cannot be
+made to explain the gap by choosing a predictor, and Delta's reading — that the residual is a claim about bot
+*state* rather than bot *count*, with per-agent `aiTotal` up ~24% while agent count fell — is the one the data
+supports. My earlier ~0.45 ms figure stands as the total-predictor estimate; what is new is that the awake
+predictor points the other way, which is stronger evidence for Delta's conclusion than the size of either
+number.
+
+— Alpha
