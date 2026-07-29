@@ -1,6 +1,14 @@
 """Read a transit-marathon log: per-map scoreboard, with its own confound checked.
 
-Usage:  python read-marathon.py <log.ndjson>
+Usage:  python read-marathon.py <log.ndjson> [more.ndjson ...]
+
+MORE THAN ONE LOG, BECAUSE A MARATHON NEED NOT BE ONE. The 2026-07-28 sweep was
+split across two binaries and two files: legs 1-4 (Ground Zero, Streets, Interchange,
+Customs) under `e337bea4`, and everything after under the build that added the
+perception mark. Reading one file at a time would have made the sweep look half its
+size and would have reported five maps as never launched while they sat in the
+adjacent log. Logs are read in the order given, so pass them chronologically - leg
+ordering is what the session-age control rests on.
 
 WRITTEN BEFORE THE RUN, deliberately, same as read-slicing-raid.py. Every choice
 here — which windows are eligible, what the session-age control is, what counts as
@@ -74,21 +82,40 @@ FAMILY = {
 ALREADY_MEASURED = ('tarkovstreets', 'bigmap', 'factory4_day', 'interchange')
 
 
-def load(path):
-    hdr, rows = {}, []
-    with open(path, encoding='utf-8') as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                d = json.loads(line)
-            except ValueError:
-                continue
-            if d.get('type') == 'header':
-                hdr = d
-            elif d.get('type') == 'sample' and d.get('state') == 'raid':
+def load(paths):
+    """Concatenate the logs in argument order, keeping the first header.
+
+    Each log's `raid` counter restarts at 1, so legs from different files would
+    collide on (raid, map) and merge. Offset each file's raid index past the last
+    one seen - otherwise Lighthouse in file 1 and Lighthouse in file 2 look like one
+    leg, which is exactly the pair the session-age control depends on telling apart.
+    """
+    hdr, rows, offset = {}, [], 0
+    for path in paths:
+        seen, first = set(), True
+        with open(path, encoding='utf-8') as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                if d.get('type') == 'header':
+                    if first:
+                        hdr = hdr or d
+                        first = False
+                    continue
+                if d.get('type') != 'sample' or d.get('state') != 'raid':
+                    continue
+                r = d.get('raid')
+                if r is not None:
+                    seen.add(r)
+                    d['raid'] = r + offset
+                d['_log'] = os.path.basename(path)[20:-7]
                 rows.append(d)
+        offset += max(seen) if seen else 0
     return hdr, rows
 
 
@@ -122,14 +149,14 @@ def main(argv):
     if len(argv) < 2:
         print(__doc__)
         return 2
-    path = argv[1]
-    hdr, rows = load(path)
+    paths = argv[1:]
+    hdr, rows = load(paths)
     if not rows:
         print('no in-raid sample lines - nothing to read')
         return 1
 
     print('%s\ntag %r, window %ss, spike %sms\n'
-          % (os.path.basename(path), hdr.get('tag'),
+          % (' + '.join(os.path.basename(p) for p in paths), hdr.get('tag'),
              hdr.get('windowSeconds'), hdr.get('spikeEventMs')))
 
     ls = legs(rows)
