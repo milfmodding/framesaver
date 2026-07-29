@@ -42,6 +42,17 @@ STEADY_S = 120.0        # same warm-up discard as the marathon reader
 MIN_PER_ARM = 3         # below this the drift bracket stops existing
 Z_A, Z_B = 1.96, 0.8416   # two-sided 0.05, 80% power
 CONTROL, TREAT = 'B1', 'B2'
+# CONTAINS the AI tick; it is not identical to it, and the name gets shortened
+# to "AI frames" by the second person who reads it. Measured on tonight's log,
+# largest event per map, phase against that window's aiTotal.max:
+#
+#     Woods       SRBU 128.7   aiTotal.max 124.0   AI is 96% of it
+#     Lighthouse  SRBU 101.6   aiTotal.max  10.0   AI is 10% of it
+#
+# So the proxy is excellent on Woods' spikes and BAD on Lighthouse's one large
+# event, which is mostly other MonoBehaviours. It will be looser still at 10 ms,
+# where a small number is more easily dominated by non-AI work. Section 6 prints
+# the check per arm rather than asserting the proxy holds.
 AI_PHASE = 'Update/ScriptRunBehaviourUpdate'
 # LARGE-AI-FRAME THRESHOLD, and it was chosen for power before the leg ran.
 # Measured on tonight's Lighthouse leg (19 steady windows), events per window and
@@ -52,10 +63,22 @@ AI_PHASE = 'Update/ScriptRunBehaviourUpdate'
 #     >=15 ms 2.11/win  k=13  detects 7.35x
 #     >=30 ms 1.05/win  k=6   detects >20x    - cannot fail, same defect as max
 #
-# 10 ms is the smallest threshold that still means "a frame you could notice"
-# while giving a k that can fail. I proposed 30 and it would have been
-# unfalsifiable at this leg length - one message after arguing Alpha out of
-# exactly that on aiTotal.max.
+# 10 MS IS A POWER CHOICE AND NOTHING ELSE. An earlier version of this comment
+# called it "the smallest threshold that still means a frame you could notice",
+# which is false and would have been defended on grounds it never had: her
+# demonstrated perception bound is <=90.6 ms for a WHOLE FRAME, so a 10 ms AI
+# component inside a 14.5 ms frame is an ordinary frame. Alpha caught it. 10 ms
+# is where k stops being unfalsifiable, full stop.
+#
+# I proposed 30 and it would have been unfalsifiable at this leg length - one
+# message after arguing Alpha out of exactly that on aiTotal.max.
+#
+# THE GAP THIS LEAVES IS A FACTOR OF TWENTY AND IT MUST NOT BE CROSSED SILENTLY.
+# Lighthouse has ONE >=100 ms AI-phase frame in 19 steady windows (0.05/win), so
+# leg 4's ~6 protocol windows expect 0.3 of them. A NULL AT >=10 MS SAYS NOTHING
+# ABOUT >=100 MS FRAMES, and the transfer between the two is an assumption, not
+# a result. Woods runs 7x Lighthouse's rate at >=100 ms (0.35/win) and is where
+# that question belongs.
 #
 # 4x IS A BIG EFFECT AND THE NULL MUST BE READ AS SUCH. Slicing cuts ticks 5.8x,
 # so a pile-up mechanism should move the count by something near that; but a true
@@ -412,6 +435,22 @@ def main(argv):
           'Best case.')
     print('   count RISES while avg falls  -> RELOCATED AND CONCENTRATED. Worse '
           'than either.')
+    # PROXY CHECK, printed rather than assumed. The phase CONTAINS the AI tick
+    # and is not it: on tonight's Woods spike AI was 96% of the phase, on
+    # Lighthouse's one large event it was 10%. If the ratio here is low, this
+    # section is counting MonoBehaviour frames and the AI reading does not
+    # follow - which is a fact about the metric, not about slicing.
+    for label, evs in ((CONTROL, ce), (TREAT, te)):
+        if not evs:
+            continue
+        big = max(evs, key=lambda s2: (s2.get('phases') or {}).get(AI_PHASE, 0.0))
+        span = (big.get('phases') or {}).get(AI_PHASE, 0.0)
+        host = [w for w in keep if w.get('window') == big.get('window')
+                and w.get('_log') == big.get('_log')]
+        amax = (host[0].get('aiTotal') or {}).get('max') if host else None
+        if amax and span:
+            print('   proxy check %s: largest phase %.1f ms, window aiTotal.max '
+                  '%.1f ms (%.0f%% AI)' % (label, span, amax, 100.0 * amax / span))
     # THE FOURTH LINE, which the three-branch table invites you to forget: at
     # k~20 a null excludes changes above ~4x and nothing smaller. Slicing cuts
     # ticks 5.8x, so a pile-up mechanism should clear that - but a true 2x
