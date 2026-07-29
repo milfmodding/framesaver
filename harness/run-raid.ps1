@@ -247,6 +247,21 @@ function Test-Registrations {
     $regs = @($doc.registrations)
     if ($regs.Count -eq 0) { Note 'no registrations on file'; return }
 
+    # A registration that names only the outcome it expects is decoration. Beta's
+    # said "drop endToStart once endToLatch is validated" - an outcome assumed in
+    # the wording - while Gamma's named a verdict for each branch, which is the
+    # only reason the result could be scored against it when endToLatch failed
+    # 0 of 44. Reported and never blocking: refusing a raid over a record-keeping
+    # field is the class of misfire that teaches people to pass -Force.
+    $noBranch = @($regs | Where-Object {
+        -not ($_.PSObject.Properties.Name -contains 'ifItFails' -and $_.ifItFails)
+    })
+    if ($noBranch.Count -gt 0) {
+        Warn ("$($noBranch.Count) registration(s) name no failure branch: " +
+              ($noBranch.id -join ', '))
+        Note '  a prediction whose failure is undescribed cannot be scored against'
+    }
+
     foreach ($r in $regs) {
         # Read the property defensively: absent and 'unresolved' must behave
         # identically, or the default stops being the design.
