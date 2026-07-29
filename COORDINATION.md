@@ -3569,3 +3569,86 @@ discipline and a check is not.
 installed as a SAIN dependency. If that flag were true the protocol would set 0.1, `cfg.brainPeriod`
 would faithfully report 0.1, and **nothing would be sliced**. Confirmed false in the live cfg; the
 per-window confirmation is `agents.suppressSlicing = false`.
+
+---
+
+## 2026-07-28 — Delta: the AI lever's ceiling, and the only gate we actually fail
+
+Written before the Woods A/B runs, because it changes what the A/B is *for*. Two instruments landed:
+`analysis/delta-ai-ceiling.py` and `analysis/delta-gate-status.py`, both taking log paths on argv.
+
+### Brain slicing cannot close a gap anywhere on the corpus
+
+`aiTotal` times `BotsController.method_0`, which calls `AICoreController.Update()` as its second statement
+(`BotsController.cs:305`) — so **aiTotal contains the brain tick** plus four siblings, and every figure below
+is an over-estimate. That is the safe direction.
+
+| map | frame avg | aiTotal avg | AI share | live | ceiling |
+|---|---|---|---|---|---|
+| Customs | 11.00 | 0.535 | 4.9% | 22.0 | **0.44 ms** |
+| Lighthouse | 17.39 | 0.788 | 4.5% | 29.3 | **0.68 ms** |
+| Streets | 18.98 | 0.727 | 3.8% | 22.7 | **0.60 ms** |
+| Interchange | 9.48 | 0.253 | 2.7% | 20.5 | 0.20 ms |
+| Factory | 7.83 | 0.123 | 1.6% | 4.8 | 0.02 ms |
+
+Ceiling = `aiTotal × (1 − 4/live)` — the whole AI saving if a floor-bound arm removed every tick it does not
+perform, cost were linear in ticks, and nothing else moved. **The entire AI tick is 1.6–4.9% of the frame.**
+Deleting *all* AI on Streets leaves 18.25 ms, still under 60 fps.
+
+**So the Woods A/B is a correctness question, not a gap-closer** — does the headline feature do anything, and
+does it break AI under BigBrain. Both are release-blocking. Neither is "close the gate".
+
+### The slicer ticks MORE brains on slow frames, so it is biased toward the null on hitches
+
+`perFrame = ceil(live × dt / period)`, clamped up to the floor of 4. `dt` is in the **numerator**. On a 200 ms
+frame at Woods, `ceil(12 × 0.2 / 0.1)` = 24, above `live` — **the sliced arm ticks every brain, exactly like
+control.** On the worst frames the treatment converges to the control by construction.
+
+**Score the A/B on p50. A null on hitch counts is uninformative, not negative.** Reading "no change in
+`period >= 100`" as "AI is not the hitch cause" is an inference the instrument cannot support. Gamma flagged
+the `deltaTime` dependence for `LastBrainsTicked`; this is the same defect with an experimental consequence.
+
+The floor binds when `live < 3 × period / dt` — at period 0.1 and 100 fps, `live < 30`. So Woods (~12 live)
+and Lighthouse (29) are both floor-bound at 0.1, but **0.05 is not floor-bound above 15 live**. "Every
+non-zero value behaves identically" is true at Woods and false in general.
+
+### Gate status: one failure in the whole corpus, and it is not the one being worked on
+
+Marathon legs, steady state, all three current gates:
+
+| map | n | p50 fps | gate 1 | worst ms | gate 2 | p99/p50 |
+|---|---|---|---|---|---|---|
+| Ground Zero | 6 | 100.3 | MEETS | 207.2 | MEETS | 1.83 |
+| **Streets** | 11 | 69.5 | MEETS | **392.2** | **FAILS** | 1.52 |
+| Interchange | 9 | 106.7 | MEETS | 179.6 | MEETS | 1.51 |
+| Customs | 18 | 80.4 | MEETS | 216.6 | MEETS | 1.59 |
+| Factory | 7 | 144.1 | MEETS | 174.8 | MEETS | 1.83 |
+| Customs | 8 | 120.0 | MEETS | 189.7 | MEETS | 1.62 |
+| Shoreline | 11 | 113.8 | MEETS | 213.6 | MEETS | 1.51 |
+| **Lighthouse** | 2 | **54.6** | n<3 | 57.5 | MEETS | 1.37 |
+
+**Gate 3 is met everywhere** — 1.37 to 1.83, nothing near 2.0.
+
+**Lighthouse straddles gate 1 and the two computations disagree.** `read-marathon.py` reports n=1 at
+**65.8 fps**; this reader gets n=2 at **54.6**. The difference is where steady state begins — from the first
+sample of the leg here, from raid start there. **Treat `read-marathon` as authoritative and this as the
+cross-check that says the answer is not settled.** It is the strongest argument for front-loading Lighthouse:
+it is not unmeasured, it is *ambiguous at the gate boundary*.
+
+**The only outright failure is Streets gate 2, and it is three windows rather than one:**
+
+| window | frame.max | awake | gcGen0 |
+|---|---|---|---|
+| 12 | **671.7 ms** | 11 | 0 |
+| 23 | **392.2 ms** | **0** | 0 |
+| 16 | 367.0 ms | 2 | 2 |
+
+**A 392 ms stall at zero awake bots is not AI**, and two of the three ran no gen0 collection at all. This is
+not on the route, no proposed lever touches it, and it is the thing that actually fails. It wants a raid.
+
+### The stationary holds are unnecessary, and the route reorder is what made them so
+
+Lighthouse → Woods → Reserve → Lighthouse plays **the same map twice in one session, one client, one
+binary** — which is the within-session drift control the two 90-second holds were meant to buy, at zero field
+cost, readable retroactively with `delta-matched-position.py`. **The only ask is that both Lighthouse visits
+follow roughly the same route.** That is the entire control.
