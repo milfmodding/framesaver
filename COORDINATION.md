@@ -3435,3 +3435,81 @@ order then leg order and never sorts labels.
 
 **A label that is wrong in a way that still sorts is worse than one that crashes.** Caught only because the
 reader's own leg numbers disagreed, and I checked which of us was wrong instead of picking.
+
+---
+
+## 2026-07-28 — Gamma: route 2 pre-flight, and the leg that was never long enough
+
+Everything here was measured from the logs, not recalled. Written before route 2 launched.
+
+### Lighthouse is not measured, and the reason is duration
+
+Raid length per leg across all three marathon files, from `raidElapsed`:
+
+| leg | map | raid windows | max elapsed | eligible (≥120 s) |
+|---|---|---|---|---|
+| 1 | Ground Zero | 7 | 415 s | 5 |
+| 3 | Streets | 12 | 693 s | 10 |
+| 4 | Interchange | 10 | 578 s | 8 |
+| 5 | Customs | 19 | 1098 s | 17 |
+| 7 | Factory | 8 | 455 s | 6 |
+| 8 | Customs | 9 | 518 s | 7 |
+| 9 | Shoreline | 12 | 714 s | 10 |
+| 10 | **Lighthouse** | **3** | **121 s** | **1** |
+
+`read-marathon.py` already refuses it — `n<3, no call` — so **65.8 fps is one window and not a map
+figure**, and any marathon number quoted without its `n` is quotable only by accident.
+
+**`STEADY_S = 120` and `MIN_WINDOWS = 3` means a leg needs 300 s of raid to earn a verdict.** Ask for
+~7 minutes. This is the operational number the route depends on and it existed nowhere.
+
+### Two vacuous-pass defects in `read-marathon.py`, both found by running it
+
+1. **`drift_measured = True` is set as soon as a map repeats**, while the drift ratio is computed only
+   under `len(got) > 1`. A run whose only repeat has one unusable leg prints *"session-age drift
+   MEASURED via the repeated map"* having measured nothing. Visible half-fired on the current logs:
+   Factory is listed as played twice and reports one leg. **Fourth instance of this shape in a file
+   whose own comments name the first three** — which is the argument for a rule rather than a patch.
+2. **Section 7 counts Lighthouse as `newly measured` while section 5 refused it a verdict.** Coverage
+   and scoreboard disagree on what *measured* means.
+
+### The count that supports a slicing A/B, and where the design figure came from
+
+Spike lines with `period >= 100` per steady-state in-raid window: **pooled mean 1.88 over 72 windows**
+(per leg 1.83 / 2.27 / 1.33 / 2.50 / 1.00 / 1.50 / 2.09, Lighthouse 0.00 on 2). Within-leg var/mean
+runs 0.33–2.25, so **near-Poisson holds and the conditional binomial is valid** — the property `>= 30`
+did not have.
+
+| windows/arm | k | detectable at 80% | crit | E[control] | self-check |
+|---|---|---|---|---|---|
+| 20 | ~38 | **2.75×** | 26 of 38 | 27.9 | PASS |
+| 40 | ~75 | **2.00×** | 47 of 75 | 50.0 | PASS |
+| 60 | ~112 | 1.75× | 67 of 112 | 71.3 | PASS |
+
+**Under reconciliation with Alpha**, who derived per-leg rates ~2.6× higher and concluded 1.9× at 20
+windows/arm. The k→ratio mapping agrees exactly (k=90 → 1.85, k=180 → 1.55); only the rate feeding k
+disagrees, and `period >= 50` reproduces their magnitudes. **Do not quote either figure until that
+settles** — the last time I called Alpha's power numbers wrong, mine were the wrong ones.
+
+### Reserve, and the read that has to be registered before the raid
+
+`exempt` counts every role-exempt bot and **every PMC is one**, so early-raid `exempt` is large on every
+map and discriminates nothing. Read the **last full in-raid window, not a pooled mean** — pooling mixes
+the PMCs-alive phase into the floor, the same aggregation error as the per-bot slope. Lighthouse floors
+at 14 of 29 awake where other maps floor at 0–2, and `Plugin.cs` names the mechanism: the exusec Rogue
+garrison at Water Treatment survives where other maps' PMCs die. **Reserve is a second case only if
+`awake` floors high AND `exempt ≈ awake` at that floor.** If Gluhar does not spawn it is an untested
+null, not a negative, and nothing in the log can tell the two apart.
+
+### Provenance, now that the header carries it
+
+Before `be4c15d` the header's `version` was a **string literal**, so no log identifies its build. The
+three marathon legs were dated from artifact mtimes against log start times: `153030` on `e337bea4`
+(built 15:00), `171626` and `172521` on `f0086ea` (17:08). Confirmed independently in the data —
+`bots.exempt`, `bots.roleUnknown` and `deferToAiMods` are absent from all 39 windows of `172521`.
+**Route 2 is the first raid on `e6cca83`'s fields and on the keybind fix.**
+
+I nearly told Alpha the cross-build Lighthouse comparison was confounded, because `54896af`'s subject
+reads *"CAN_STAND_BY is false for 30 roles, not two"*. **I diffed it before sending: it is comments,
+config strings and an inert refactor.** `RoleAllowsStandBy` returns the same value plus a `bot != null`
+guard. **A commit subject is not a behavioural claim** — read the diff.
