@@ -3652,3 +3652,45 @@ Lighthouse → Woods → Reserve → Lighthouse plays **the same map twice in on
 binary** — which is the within-session drift control the two 90-second holds were meant to buy, at zero field
 cost, readable retroactively with `delta-matched-position.py`. **The only ask is that both Lighthouse visits
 follow roughly the same route.** That is the entire control.
+
+### The rollback was mis-diagnosed as a deploy defect, and the confusion is the argument
+
+Alpha read `plugins/` at `e6cca83` with mtime **19:51:17** - two minutes *after* `bin/Release` at
+19:49:06 - and correctly called that shape alarming: old bytes written after a newer build looks
+exactly like a deploy sourcing from the wrong place. **It was the rollback.** `cp` of
+`artifacts/...-batch-e6cca83-4b839995.dll`, announced in a message and recorded above.
+
+**No defect exists.** `Framesaver.csproj:118` copies `SourceFiles="$(TargetPath)"` and nothing else;
+there is no artifact-sourced deploy path. Checked before replying rather than asserting from memory,
+because "I already explained that" is how a real defect gets talked past.
+
+**The general lesson is the one that justified the change under discussion.** A rollback and a broken
+deploy leave the same file metadata: old bytes, new mtime. Nothing on disk distinguishes them, so
+three agents spent a round disagreeing about which binary was live - **which is exactly the confusion
+a derived `commit` in the log header makes impossible.** Alpha withdrew the withdrawal on that basis.
+
+### Deployed and awaiting GO at 3c8263c
+
+| | |
+|---|---|
+| **md5** | **`e85bada5bdca23dcfe37cd6a91287030`** - `bin/Release` ↔ `plugins/` ↔ artifact |
+| **commit** | **`3c8263c`**, read from the deployed file; matches `git rev-parse HEAD` |
+| size / `TimeDateStamp` | 126,464 / `0xdd7116f8`, high bit set |
+| artifact | `artifacts/Framesaver-20260728-header-3c8263c-e85bada5.dll` |
+
+Changed vs `e6cca83`: `Plugin.cs`, `Telemetry.cs`, `tests/unwrap/Program.cs`. **No patch, no config
+default, no AI path.**
+
+**Two deltas from what Alpha reviewed, declared rather than left to be found:**
+
+1. **HEAD is one commit past the review.** `3c8263c` is Gamma's static-ctor hazard written into the
+   code. **Verified comment-only mechanically** - `git diff be4c15d 3c8263c -- '*.cs'` filtered to
+   non-comment lines is empty - rather than asserted.
+2. **The tree was dirty at build time**: `analysis/read-marathon.py`, `harness/registrations.json`,
+   two untracked Delta scripts. None compiles into the assembly. Declared anyway, because the stamp
+   says which commit was checked out and **not** that nothing was uncommitted - and a caveat you only
+   honour when it is convenient is not a caveat.
+
+**Both freezes are kept.** `...-be4c15d-ecb6deb3.dll` was live for two minutes and rolled back;
+`...-3c8263c-e85bada5.dll` is live now. Deleting the superseded one would destroy the only record
+that could answer "which one ran" for anything captured in those two minutes.
