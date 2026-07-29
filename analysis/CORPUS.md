@@ -262,6 +262,29 @@ that says **which regime bound in a window**. With
 `Minimum brains per frame` at 4 and a Streets roster of 14–29 agents, slicing binds at the top of that range
 and the floor binds at the bottom, so a single arm at `brainUpdatePeriod = 0.1` contains both.
 
+**`bots.awake` conflates two populations, and one of them our mechanism cannot touch.** A bot is awake either
+because a human is near it *or* because its role is exempt from stand-by entirely — `CAN_STAND_BY: false` in
+BSG's own per-role settings, which `RoleAllowsStandBy` reads at runtime. *Wrong conclusion:* that a high
+`awake` count means the stand-by system is underperforming.
+
+**Recovery: none from the line as it stands.** No field separates them, which is why this is filed here rather
+than as a caveat. Requested from Gamma as a `bots.exempt` count.
+
+> **AND THE PROJECT'S OWN STATEMENT OF WHICH ROLES THESE ARE WAS WRONG, IN THE DIRECTION THAT MATTERS MOST.**
+> `Plugin.cs` and `BotStandByUpdatePatch.cs` both say *"bosses that must never sleep (Gluhar, Zryachiy)"*, and
+> FINDINGS repeats it as *"the two roles that cannot stand by at all"*. Counted directly out of
+> `SPT_Data/database/bots/types/*.json` on 2026-07-28: **about thirty roles carry `CAN_STAND_BY: false`,
+> including `pmcusec`, `pmcbear`, `exusec`, `pmcbot`, every boss, every boss follower, and every cultist.**
+>
+> **So every PMC in every raid is exempt from the central mechanism this mod is built on.** Other maps floor at
+> 0–2 awake only because their PMCs are dead by mid-raid; Lighthouse floors at **14 of 29** because the `exusec`
+> Rogue garrison at Water Treatment does not die. Measured: median excess over `snipersAwake` is **+13 on
+> Lighthouse against +0 on every other map in the same sweep.**
+>
+> The two-role claim was never checked against the data files — it is the shape of thing that reads as settled
+> because it is specific, and it survived because nothing in the pipeline had to look at it. Same family as the
+> stale scoreboard and the stale line citation: **a confident sentence nobody re-derives.**
+
 ### Recoverable, but only from outside the ndjson
 
 **`cfg.brainPeriod` is the value *requested*, not the value in force.** It reads `BrainUpdatePeriod.Value`, so
