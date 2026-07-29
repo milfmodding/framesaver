@@ -609,6 +609,23 @@ def main(argv):
             direct = '%d awake / %d exempt' % (aw, exm)
             if unk:
                 direct += '  (%d roleUnknown)' % unk
+            # `awake - exempt` IS THE PROXIMITY-AWAKE COUNT, AND THIS IS ITS
+            # PRECONDITION. An exempt bot cannot be asleep - exemption clears
+            # CanDoStandBy so it never reaches `paused` - so exempt is a subset
+            # of awake and the subtraction is exact. But CountBots drops a bot
+            # with a null StandBy from awake AND asleep while still counting it
+            # in exempt, so one of those makes the subtraction meaningless and
+            # can drive it negative.
+            #
+            # `awake + asleep == total` is the free test for that, and it holds
+            # on 64 of 64 windows today. ASSERTED RATHER THAN NOTED because
+            # being true today is exactly the state c0acaf5 was about: the
+            # protection works for a reason nobody has checked, and the day it
+            # stops it will stop silently.
+            if aw is not None and last.get('asleep') is not None                     and last.get('total') is not None                     and aw + last['asleep'] != last['total']:
+                direct += '  ! awake+asleep != total, so awake-exempt is void here'
+            elif aw is not None and exm is not None:
+                direct += '  -> %d awake by proximity' % (aw - exm)
         print('%-19s %-11d %-13.0f %+-21.0f %-9s %s%s'
               % (KNOWN.get(l['map'], l['map']), lo, sn, ex,
                  'w%s' % e[-1].get('window'), direct,
