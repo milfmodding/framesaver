@@ -1432,3 +1432,66 @@ else here.
 **The mark must not be attributable as an event.** Building the line and reading input costs time, so a
 mark that manufactures its own spike would be self-confirming. It queues to the existing writer thread, and
 the frame carrying the press is identified so analysis can exclude it.
+
+---
+
+## Route 2 — Woods → Reserve → Lighthouse, and what each leg is for
+
+Marathon legs 1–4 (Ground Zero, Streets, Interchange, Customs) are in
+`framesaver-20260728-153030-marathon.ndjson` on binary `e337bea4`. **This route is a second log on a
+second binary** — additive-only, so per-map coverage is unaffected, but say so in any write-up that treats
+"the marathon" as one run.
+
+| leg | why this one, in this order |
+|---|---|
+| **Woods** | never launched, low death risk — likeliest to yield a *full* sample, not a truncated one |
+| **Reserve** | the test case below. **Note whether Gluhar spawned** — nothing in the log records it |
+| **Lighthouse** | second visit, **deliberately last** — see the session-age control below |
+
+> **Do not restart the client between Reserve and Lighthouse.** The Lighthouse repeat is only a session-age
+> control if both legs share a process — heap, fragmentation and warm-up all reset on relaunch. We have
+> lost this control twice already, and the natural thing to do after a death is restart, which is exactly
+> what destroys it.
+
+### The finding that makes Reserve the interesting leg
+
+**`Mind.CAN_STAND_BY` is false for 30 roles of 57, not for two.** Counted directly from
+`SPT_Data/database/bots/types/*.json` — every boss and follower, every cultist, the event and spirit roles,
+and **`pmcusec`, `pmcbear`, `pmcbot`, `exusec`.**
+
+~~Bosses that must never sleep (Gluhar, Zryachiy).~~ **That phrasing was in two of our own code comments
+and in FINDINGS, and naming two examples is what stopped anyone re-deriving it for weeks.** Corrected in
+place to a count.
+
+**So every PMC in every raid is outside the stand-by system.** Other maps floor at 0–2 awake because their
+PMCs *die*, not because we slept them. Lighthouse floors at **14 of 29** because the `exusec` Rogue
+garrison at Water Treatment does not die — median excess over `snipersAwake` **+13 on Lighthouse against
++0 on every other map in the same sweep.**
+
+**Reserve is the second case.** Gluhar's garrison is the same shape: static, scripted, and exempt. If
+Reserve also floors far above 2, the role-override idea below has two independent cases instead of one
+anecdote. If it floors near zero, Lighthouse is a Rogue-specific quirk and the knob has a much smaller
+target. **Either answer is worth the leg**, which is why it goes second rather than being skipped.
+
+### The design that follows, and why it is not the shipped knob
+
+`Force stand-by for all roles` is **false in all 18 logs** and overrides exactly this. At ~0.5 ms per awake
+bot — measured three independent ways — Lighthouse's 13 exempt bots are **~6.5 ms on a 15.2 ms frame**,
+which is 66 fps against roughly 115.
+
+**I would not ship the global switch, and the reason is that the 30 roles are not one kind of thing.** A
+sleeping PMC does not patrol or hunt; BSG set that flag deliberately and overriding it changes what a raid
+*is*. `exusec` is a **static garrison with nothing to do when no human is near** — precisely the case
+stand-by was invented for. One boolean cannot tell those apart, so it is either too dangerous to ship or
+too blunt to help.
+
+**Proposal, and it removes a knob rather than adding one:** replace the boolean with a role list —
+`Force stand-by for roles = exusec` — where `*` reproduces today's global behaviour and keeps the
+measurement lever. `RoleAllowsStandBy` already reads the per-role flag, so the change is small.
+
+**It must refuse an unknown role loudly**, validated against the role names at load. A typo would silently
+exempt nothing, which in the data is indistinguishable from the override having no effect — the same
+failure the protocol's unknown-key refusal exists to prevent, and the same one the BigBrain guard produced.
+
+**This is a design note, not a build.** It should not be built before Reserve says whether there are two
+cases or one.

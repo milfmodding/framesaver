@@ -181,8 +181,10 @@ namespace Framesaver.Patches
         /// state it defends against cannot arise here. Left alone, its flag costs the entire stand-by
         /// system: measured on Streets as 20-27 bots awake for a full raid and p50 roughly doubled.
         ///
-        /// Only reclaims for roles the bot's own settings already permit, so bosses that must never sleep
-        /// (Gluhar, Zryachiy - Mind.CAN_STAND_BY false) stay exempt exactly as InitPoints intended.
+        /// Only reclaims for roles the bot's own settings already permit, so the 30 roles of 57 whose
+        /// Mind.CAN_STAND_BY is false stay exempt exactly as InitPoints intended. That set is far wider
+        /// than the bosses it is easy to picture - every PMC is in it - so "exempt" is a large fraction
+        /// of a live roster rather than a handful of scripted characters.
         ///
         /// Caveat: this cannot tell QuestingBots' flag apart from one cleared by BotsPatrolGeneratorGameEvent
         /// for a scripted patrol, so with this on such an event would be overridden within one check

@@ -82,8 +82,9 @@ namespace Framesaver
                 + "measures distance to the nearest enemy or neutral (mostly other bots in SPT); our "
                 + "replacement measures distance to humans and never sleeps a bot that has a goal enemy, so "
                 + "it cannot get stuck that way. Turn off to let QuestingBots win and accept the frame cost. "
-                + "Only ever applies to roles whose own Mind.CAN_STAND_BY is true, so bosses that must never "
-                + "sleep (Gluhar, Zryachiy) stay exempt.");
+                + "Only ever applies to roles whose own Mind.CAN_STAND_BY is true, so the 30 roles of 57 "
+                + "that carry it false stay exempt - every PMC, every boss and follower, the cultists, "
+                + "and the event and spirit roles.");
 
             StandByEnabled = Config.Bind(
                 "1. Bot stand-by", "Enabled", true,
@@ -124,9 +125,13 @@ namespace Framesaver
 
             ForceStandByForAllRoles = Config.Bind(
                 "1. Bot stand-by", "Force for all roles", false,
-                "Vanilla disables stand-by entirely for roles whose Mind.CAN_STAND_BY is false (typically bosses " +
-                "and their guards). Enabling this lets those sleep too. Off by default - boss scripting is the " +
-                "most likely thing to break.");
+                "Vanilla disables stand-by entirely for roles whose Mind.CAN_STAND_BY is false. That is 30 of " +
+                "57 roles and it is NOT just bosses: pmcusec, pmcbear, pmcbot and exusec are all exempt, so " +
+                "every PMC in every raid is outside the stand-by system. Most maps still floor near zero awake " +
+                "because their PMCs die; Lighthouse does not, because the exusec Rogue garrison at Water " +
+                "Treatment survives the raid. Enabling this lets all 30 sleep. Off by default, and the reason " +
+                "is not only boss scripting - a sleeping PMC does not patrol or hunt, which is presumably why " +
+                "BSG set the flag on them.");
 
             IncludeAllHumanPlayers = Config.Bind(
                 "1. Bot stand-by", "Consider all human players", true,
