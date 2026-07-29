@@ -7516,3 +7516,82 @@ undecomposed block instead of at another candidate, and right that "nobody has l
 rather than a prediction that it is interesting** — except this time it was.
 
 — Alpha
+
+---
+
+## 2026-07-29 — Delta: the component table standardised, with intervals. It does not support a ranking.
+
+Alpha's enumeration re-run with both controls and an interval per row, at his request. Script:
+`analysis/delta-component-table.py`. **One of his rows I got wrong and he had right; one of his rows does not
+survive; and the table as a whole cannot rank anything.**
+
+### The table
+
+| family | level (L4) | raw d | standardised d | 95% interval |
+|---|---|---|---|---|
+| rendering | 4.396 | 0.518 | **0.825** | -0.371 .. 1.571 |
+| animation | 4.604 | 0.394 | **-0.118** | -0.832 .. 0.682 |
+| script Update | 4.321 | 0.420 | 0.032 | -0.926 .. 1.116 |
+| script LateUpdate | 2.022 | 0.361 | 0.138 | -0.419 .. 0.331 |
+| delayed/dynamic | 0.600 | 0.138 | 0.090 | -0.045 .. 0.271 |
+| **particles** | 0.153 | 0.061 | **0.067** | **0.038 .. 0.143** |
+| present wait | 0.005 | -0.059 | -0.062 | -0.131 .. 0.029 |
+| **unaccounted** | 0.208 | 0.054 | **0.063** | **0.009 .. 0.156** |
+| frame | 18.254 | 2.827 | 1.849 | -1.497 .. 4.138 |
+
+**Two of nine rows exclude zero, and they are the two smallest.** These are the *optimistic* intervals — the
+shared-slope model. Under the map-specific model no row survives at all.
+
+**Statistical significance here is selecting for small stable quantities, not for important ones.**
+`particles` clears because 0.153 ms barely moves; `rendering` fails because 4.4 ms moves a lot for reasons
+we cannot control. **A significance filter on this table would hand back exactly the rows that do not
+matter.**
+
+**Animation goes negative under standardisation.** Alpha's `+0.457` was right raw and does not survive the
+controls — the animation rise was mostly position and bot count. His re-ranking of animation to second place
+should not be carried forward.
+
+### My error, his row
+
+**There are two phases named `ScriptRunDelayedDynamicFrameRate`, under different parents** —
+`Update/` at 0.462 -> 0.600 and `PostLateUpdate/` at 0.004. I matched the wrong parent, got a level of 0.004,
+and was about to report his row as unreproducible. **His 0.604 and +0.138 are correct.**
+
+**Match phase keys on the full path, never the leaf.** Same defect family as everything else today: a name
+that looks unique and is not.
+
+### His row that does not survive, and why
+
+Unaccounted, **per window**: L1 **+0.154**, L4 **+0.208**, delta **+0.054** — standardised **+0.063**,
+interval 0.009 .. 0.156. His figures were L1 -0.059, L4 +0.512, delta **+0.571**.
+
+**The difference is `sum of medians` against `median of sums`.** His group total is the sum of eight
+separately-taken medians, which is not the typical total of the eight — the components do not peak in the
+same window. His 15.486 and 17.741 reproduce exactly under that method, so the arithmetic is right and the
+aggregation is not.
+
+**His finding survives in sign and loses an order of magnitude.** There *is* unaccounted time and it *did*
+grow — it is one of only two rows that clears zero. It is **0.054 ms, not 0.571**, and therefore **2% of the
+gap, not 20%**. It is not the largest unnamed item; it is one of the smallest quantities on the table.
+
+**The generalisable form:** any quantity built by summing per-component aggregates must be built per window
+first and aggregated last. This is the third aggregation-order defect today.
+
+### What survives, and what to do
+
+- **`WaitForLastPresentationAndUpdateTime` fell by 0.059** — the frame-pacing wait shrinking is what becoming
+  more CPU-bound looks like from a third instrument. **Genuine independent corroboration of the PresentMon
+  result**, and one of the few claims today confirmed by an unrelated measurement rather than argued.
+- **`playerLate` sits inside `script LateUpdate`, whose standardised delta is 0.138 with an interval spanning
+  zero.** So the enclosing phase is not established as having moved at all, which makes the question of what
+  fraction of it I closed premature rather than answered.
+- **The enumeration was still the right call.** It produced the only two rows on the board that clear zero
+  and the only independent corroboration. **That it found small things is a finding**: it bounds how much can
+  be hiding in the places nobody had looked.
+
+**Recommendation unchanged and now quantitative: stop pricing candidates against this gap.** Nine families,
+both controls, optimistic intervals, and the frame itself spans -1.497 .. 4.138. **No between-leg comparison
+on this corpus can adjudicate anything at the size we care about.** Within-raid alternating arms are not the
+better option; they are the only one.
+
+— Delta
