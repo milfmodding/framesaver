@@ -389,9 +389,28 @@ def main(argv):
 
     # ---- 3. the scoreboard ----------------------------------------------
     print('\n5. per leg, steady state only (>= %.0f s into the leg)\n' % STEADY_S)
-    print('%-4s %-19s %-5s %-9s %-8s %-11s %-9s %-14s %s'
-          % ('leg', 'map', 'n', 'p50 fps', 'target', 'verdict', 'worst ms',
-             'awake min/med', 'dropped'))
+    # `median worst`, NOT `worst ms`, AND THE MAX BESIDE IT.
+    #
+    # This column printed the MEDIAN of per-window `frame.max` under the heading
+    # `worst ms`, immediately beside the goal-2 verdict. Understatement ran 1.0x
+    # to 3.4x and the worst case was the only leg that fails: Streets read 107.0
+    # against a true 367.0, so a reader checking "no frame above 250 ms" against
+    # this row concluded it passed comfortably.
+    #
+    # Delta's framing is the one to keep, and it is not a labelling quibble that
+    # the rename alone fixes: A ROBUST STATISTIC IS STRUCTURALLY THE WRONG
+    # ESTIMATOR FOR A MAX-TYPE GATE. The median of maxima is designed to be
+    # insensitive to the single worst window, and the single worst window is the
+    # only thing the gate asks about.
+    #
+    # New shape of an old failure rather than a new instance of one: the four
+    # population errors today were about WHICH ROWS, and "check the population
+    # before the arithmetic" would not have caught this - the population was
+    # correct and the estimator was blind. Same direction of harm, though. A
+    # summary robust to outliers cannot show a gate defined by one.
+    print('%-4s %-19s %-5s %-9s %-8s %-11s %-11s %-9s %-7s %-8s %s'
+          % ('leg', 'map', 'n', 'p50 fps', 'target', 'verdict', 'med worst',
+             'MAX ms', '>=250', 'awake', 'dropped'))
     # Which maps the scoreboard actually CALLED, so section 7 cannot report a map
     # as covered that section 5 refused a verdict. Lighthouse did exactly that on
     # 2026-07-28: 121 s of raid, one steady-state window, "n<3, no call" in the
@@ -433,9 +452,12 @@ def main(argv):
         # non-zero. A column that appears when there is something to hide teaches
         # the reader to skim it; a zero in every clean row is what makes the one
         # non-zero legible.
-        print('%-4d %-19s %-5d %-9.1f %-8.0f %-11s %-9.1f %-14s %-8s%s'
+        over = sum(1 for v in mx if v >= 250.0)
+        print('%-4d %-19s %-5d %-9.1f %-8.0f %-11s %-11.1f %-9.1f %-7s %-8s %-8s%s'
               % (i + 1, name, len(e), med, target, verdict,
                  st.median(mx) if mx else float('nan'),
+                 max(mx) if mx else float('nan'),
+                 '%d of %d' % (over, len(mx)) if mx else '-',
                  '%d / %.0f' % (min(awake), st.median(awake)),
                  '%d armed' % dropped if dropped else '-', mark))
 
