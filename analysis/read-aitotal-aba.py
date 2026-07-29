@@ -73,10 +73,23 @@ def step_of(w):
 def eligible(w):
     """In-raid, past warm-up, whole, and not the window a keypress cut short.
 
-    `flushedByProtocol` is excluded for a reason stronger than the window being
-    short: Advance() applies the step's config BEFORE the flush, so the labels
-    name the arm about to start while the numbers describe the arm that just
-    ended. The label is wrong on exactly those lines, not merely noisy.
+    `flushedByProtocol` is excluded because THE WINDOW IS SHORT - it was cut
+    mid-window by the press, so its per-window statistics are drawn from fewer
+    frames than every other row.
+
+    I FIRST WROTE THE STRONGER REASON HERE AND IT WAS FALSE, copied from
+    read-slicing-raid.py, which predates the fix. That text said `Advance()`
+    applies the step's config before the flush, so the labels name the incoming
+    arm while the sums describe the outgoing one. That WAS true, and `ada1824`
+    reversed it: Telemetry.cs flushes and only then calls `Advance()`, so a
+    flushed line's labels correctly describe the arm that just ended. Verified
+    by reading both call sites, not by trusting either comment.
+
+    So a brand-new file acquired a stale comment by copying, on the same evening
+    two other stale comments were found. Copying is how a comment outlives the
+    code it describes even in a file with no history - and the reason to write
+    the weaker justification down is that the weaker one is the one that is
+    still true.
     """
     return (w.get('state') == 'raid'
             and not w.get('flushedByProtocol')

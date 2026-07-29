@@ -54,10 +54,21 @@ def arm_of(w):
 def eligible(w):
     """In-raid, whole, and not the window a keypress cut short.
 
-    flushedByProtocol lines are excluded for a reason stronger than being
-    short: Advance() applies the step's config before the flush, so the
-    labels name the arm about to START while the sums describe the arm that
-    just ENDED. `slicing` is wrong on exactly those lines.
+    flushedByProtocol lines are excluded BECAUSE THEY ARE SHORT - cut
+    mid-window by the press, so their per-window statistics come from fewer
+    frames than every other row.
+
+    This used to give a stronger reason: that Advance() applied the step's
+    config before the flush, so the labels named the arm about to START while
+    the sums described the arm that just ENDED. That was true when written and
+    `ada1824` fixed it - Telemetry.cs now flushes and only then calls
+    Advance(), so a flushed line's labels describe the arm it measured.
+    Verified against both call sites.
+
+    COMMENT-ONLY EDIT TO A PRE-REGISTERED READER, and the distinction is the
+    point: the exclusion is unchanged, so nothing about what this file computes
+    moves. Leaving a false statement in place would be the larger risk, because
+    it sits on the field a reader trusts to answer "was the lever pulled".
     """
     return (w.get("state") == "raid"
             and not w.get("flushedByProtocol")
