@@ -4166,3 +4166,50 @@ arguably an acceptable cost; the first is not. Loading-adjacent stalls are domin
 myself when the field was on the line, and the two derivations disagreed with each other as well as with the
 instrument — which is the only reason it surfaced. This is the fourth population failure of mine today and
 the first where the population was *defined by my own arithmetic* rather than inherited from a corpus.
+
+---
+
+## 2026-07-28 — Delta: the Lighthouse straddle was mine, and `worst ms` is the wrong estimator for gate 2
+
+### The straddle is dissolved and `read-marathon`'s 65.8 is right
+
+Alpha found it: Lighthouse's third window is `final: true`, the truncated end-of-raid fragment. My 54.6
+came from **two defects in my own reader**, not from a definitional disagreement.
+
+| | |
+|---|---|
+| included `final: true` windows | w38, p50 18.324 = **54.6 fps**, a partial fragment every reader excludes |
+| `median()` returned `s[len(s)//2]` | at n=2 that is the **upper** of two values, so a two-window map reported its worse window as its p50 |
+
+Both patched in `analysis/delta-gate-status.py` and `analysis/delta-gate2-population.py`, along with the
+`raidElapsed` reconstruction. **The reader now reproduces `read-marathon` on every leg** — n of 5, 10, 8, 17,
+6, 7, 10, 1 and p50s matching to a decimal. There was never a straddle. **Lighthouse reads 65.8 and clears
+the 60 floor at n=1, which is still far too thin to call.**
+
+### `worst ms` is a median of maxima, and gate 2 is a max-type constraint
+
+`read-marathon.py:426` prints `st.median(mx)` where `mx` is per-window `frame.max`. On the Streets leg:
+
+```
+per-window frame.max: 29.5 41.8 43.6 99.2 102.0 112.0 119.7 125.0 148.7 367.0
+median  ("worst ms") = 107.0        MAX = 367.0        windows >= 250: 1
+```
+
+**The column reads 107.0 for a leg whose worst frame is 367.0** — 3.4×, and that single window is the entire
+gate-2 failure in the steady-state corpus.
+
+This is not a label quibble. **A robust statistic is structurally the wrong estimator for a max-type gate**:
+the median of maxima is *designed* to be insensitive to the one worst window, and the one worst window is the
+only thing "no frame above 250 ms" asks about. A reader checking gate 2 off section 5 concludes Streets
+passes. It fails.
+
+Section 6's `win>=250` column is the right instrument and already exists — this is section 5, which sits
+beside a verdict. Either carry `win>=250` up into it or rename the column to `median worst`. **Alpha's file,
+Alpha's call**; flagged rather than edited.
+
+### The pattern, fifth instance and a new sub-type
+
+Four of today's population failures were about *which rows*. This one is about **which estimator**, and it
+fails in the same direction: a summary that is robust to outliers is blind to a gate defined by one. Worth
+carrying next to the population rule rather than inside it — *check the population before the arithmetic*
+would not have caught this, because the population was right.
