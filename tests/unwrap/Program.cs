@@ -230,6 +230,28 @@ class P {
         Check("...so a stale intersection cannot survive into a new raid",
               restaged.Contains("\"forcedButExcluded\":null"), true);
 
+        // The header must carry the SPT version, because the criterion that excludes the
+        // Base corpus lives outside the data and would otherwise stay there. Reflection
+        // rather than a literal, so a version bump cannot leave the field stale - which
+        // is the same failure the build-commit stamp above exists to prevent.
+        Console.WriteLine("\nHeader records what the numbers were measured against");
+        // AppendPlatform itself cannot run here - Application.version and unityVersion are
+        // engine ECalls that throw outside the Unity runtime. SptVersion is split out for
+        // exactly that reason, and it is the field that actually needs checking.
+        var sptVersion = tel.GetMethod("SptVersion", BindingFlags.NonPublic | BindingFlags.Static);
+        Check("Telemetry.SptVersion exists", sptVersion != null, true);
+        Check("Telemetry.AppendPlatform exists",
+              tel.GetMethod("AppendPlatform", BindingFlags.NonPublic | BindingFlags.Static) != null, true);
+        if (sptVersion != null) {
+            string got = (string)sptVersion.Invoke(null, null);
+            // Must come from the loaded assembly, never a literal someone forgets to bump -
+            // the same failure the build-commit stamp above exists to prevent.
+            string want = Assembly.LoadFrom(Path.Combine(Sptdir, "spt-reflection.dll"))
+                          .GetName().Version.ToString();
+            Check("spt version is read from the assembly, not written down", got, want);
+            Check("spt version is non-empty", got.Length > 0, true);
+        }
+
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
         return bad == 0 ? 0 : 1;
     }

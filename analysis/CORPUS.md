@@ -40,6 +40,87 @@ file over what is on it.
 
 ---
 
+## The excluded corpus, and the one criterion that is not in the data
+
+**`F:\SPT\Base\BepInEx\plugins\Framesaver-logs` — 17 logs, 211 raid-state windows,
+2026-07-25 through 2026-07-26 14:25 — is deliberately NOT part of this corpus.**
+
+**Excluded because it was recorded against an older SPT install.** That makes the program
+under test different — every patch, every timing, every spawn table, and a different
+Framesaver build besides. Unlike a missing field, it is **not recoverable by adding one**.
+Sophia upgraded and restarted from scratch on purpose; the earlier set would, in her words,
+"muddy the waters because they're missing so much".
+
+### Every in-data check says those logs belong
+
+This is the part worth writing down, because the rule at the top of this file — *read the
+`cfg` key count, not the filename* — **gets this wrong**:
+
+| check | verdict on the Base set |
+|---|---|
+| `cfg` key count | **11 — era A, identical to documented era-A logs** |
+| date | 2026-07-26, same day as the documented corpus |
+| run tag | `baseline` appears in **both** sets |
+| `bots.total` present | yes, all 211 windows |
+| header `version` | `0.1.0`, same literal as every other log |
+
+**No field in those 211 windows can tell you.** The criterion is the install directory the
+file sits in, plus an SPT version nothing recorded — a fact about *where a file lives*
+rather than about what it contains.
+
+**A criterion that lives outside the data has to be stated, because the in-data check
+disagrees with it.** That is the whole reason this section exists.
+
+### What actually keeps them out today
+
+Every analysis script hardcodes `F:/SPT/SPT4.0.13/BepInEx/plugins/Framesaver-logs/...`. But
+each one is `LOGS = sys.argv[1:] or sorted(glob.glob(...))`, so a hand-run passing paths
+bypasses it — and a glob for `*baseline*` over a shared parent would pool
+`20260725-162802-baseline` with `20260726-170412-baseline` while every check above says
+that is fine.
+
+**Exclusion by hardcoded path and exclusion by decision are indistinguishable from inside.**
+This section is the decision; the path is not.
+
+### The documented corpus is single-version, and here is the evidence rather than the inference
+
+The tempting argument is that the Base set ends 14:25 and this corpus begins 17:04 the same
+day, so the upgrade sits in the gap. **That is filename reasoning, which is what this file
+opens by warning against.** The actual evidence:
+
+- **`SPT4.0.13/EscapeFromTarkov.exe` has mtime `2026-07-26 15:46:54`** — after the last Base
+  log and 77 minutes before the first log here. Nothing in this directory can predate the
+  install.
+- **Corroborated from inside the logs.** All four `.BepInEx.log` companions open with
+  `BepInEx 5.4.23.2 - EscapeFromTarkov (7/26/2026 3:46:54 PM)` — the same instant, recorded
+  by a different program.
+- **The two trees are genuinely different installs**: `Base` ships `spt-reflection.dll` dated
+  2026-01-01 and an exe dated 2025-10-01; this one is 2026-03-02 / 4.0.13.0.
+- Every `.BepInEx.log` here records `spt-prepatch 4.0.13.0`, and every EFT `Logs/log_*`
+  directory is stamped `0.16.9.0.40087`.
+
+**Coverage caveat, because it is the honest half:** only 4 of the 17 logs have `.BepInEx.log`
+companions, and EFT's own log directories reach back only to `20260728-100048`. **Ten of the
+seventeen have no in-directory version evidence at all** — they rest on the install mtime and
+on nothing having been added to the directory afterwards.
+
+### The fix, forward only
+
+Logs from `0.1.0+<commit after the platform header lands>` carry:
+
+    "platform": { "spt": "4.0.13.0", "game": "...", "unity": "..." }
+
+`spt` is read from spt-reflection's assembly version at runtime, so it cannot go stale the way
+a literal can. **It fixes this forwards and cannot fix it backwards** — for every log written
+before it, this section is the record.
+
+**Do not spend effort identifying which Base sessions were Horde.** The only thing that set
+could offer is an existence proof that Streets reaches 43-44 concurrent bots, and
+`WAVE_COEF_HORDE = 10` in the shipped globals predicts that directly. A version difference has
+already disqualified the empirical version of the same claim.
+
+---
+
 ## Per-log provenance
 
 `animCulled infl` counts in-raid windows where `animCulled` exceeds `asleep`. **`line-pairing slip` is
