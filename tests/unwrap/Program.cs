@@ -1,5 +1,7 @@
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 
 class P {
@@ -91,7 +93,44 @@ class P {
               ks.GetMethod("Serialize").Invoke(shortcut, null), "Mouse3");
 
 
+        // The log header derives `version` and `commit` from AssemblyInformationalVersion.
+        // Nothing in the build fails if the SDK stops stamping it: Plugin's split just
+        // yields commit:"" and every header goes back to being unattributable, which is
+        // the state this replaced. That is a silent regression, so it gets a loud test.
+        //
+        // The SHAPE is what is checked, not the value. Asserting the sha equals HEAD would
+        // fail on any build older than the newest commit - normal, constant, and the fast
+        // way to teach everyone to ignore a red line.
+        Console.WriteLine("\nBuild stamp the log header reads");
+        string dll = FindUp("bin/Release/Framesaver.dll");
+        Check("bin/Release/Framesaver.dll found", dll != null, true);
+        if (dll != null) {
+            // Same string Plugin's static constructor reads: the SDK writes
+            // AssemblyInformationalVersion into the Win32 ProductVersion too.
+            string informational = FileVersionInfo.GetVersionInfo(dll).ProductVersion ?? "";
+            int plus = informational.IndexOf('+');
+            Check("informational version has a '+'", plus > 0, true);
+            string version = plus < 0 ? informational : informational.Substring(0, plus);
+            string commit  = plus < 0 ? "" : informational.Substring(plus + 1);
+            Check("version before '+' is non-empty", version.Length > 0, true);
+            Check("commit after '+' is a 40-hex sha", commit.Length == 40
+                  && commit.All(Uri.IsHexDigit), true);
+        }
+
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
         return bad == 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// Nearest ancestor of the test binary containing <paramref name="relative"/>, or null.
+    /// Searched rather than counted in "../.." because the test output path has moved once
+    /// already and a wrong count fails as "file not found", which reads like a missing build.
+    /// </summary>
+    static string FindUp(string relative) {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent) {
+            string c = Path.Combine(d.FullName, relative);
+            if (File.Exists(c)) return c;
+        }
+        return null;
     }
 }

@@ -10,6 +10,46 @@ namespace Framesaver
     {
         public static ManualLogSource LogSource;
 
+        /// <summary>
+        /// What this assembly says it is, and which commit it was built from.
+        ///
+        /// Read from AssemblyInformationalVersion rather than written down. The log header used
+        /// to append the literal "0.1.0", which is correct in every log we have only because
+        /// nobody has bumped the csproj yet - the first bump would have made every header quietly
+        /// wrong, with nothing asserting on it. Same shape as the hand-maintained role count.
+        ///
+        /// BuildCommit is HEAD at BUILD time, stamped by the SDK's SourceLink. It says which
+        /// commit was checked out, NOT that the tree was clean: a build over uncommitted edits
+        /// stamps the commit it was edited from. The md5 in COORDINATION.md is what distinguishes
+        /// those, which is why both are announced on a deploy rather than either alone.
+        ///
+        /// Empty rather than absent when the attribute is missing - building outside a git repo
+        /// does that. An empty string in the header is a visible "we do not know"; a fabricated
+        /// or omitted one is not.
+        /// </summary>
+        public static readonly string BuildVersion;
+        public static readonly string BuildCommit;
+
+        // One thing to compute, once, and it cannot change during a session.
+        static Plugin()
+        {
+            string informational = "";
+
+            object[] attributes = typeof(Plugin).Assembly.GetCustomAttributes(
+                typeof(System.Reflection.AssemblyInformationalVersionAttribute), false);
+            if (attributes.Length > 0)
+            {
+                informational =
+                    ((System.Reflection.AssemblyInformationalVersionAttribute)attributes[0])
+                    .InformationalVersion ?? "";
+            }
+
+            // The SDK writes "<version>+<sha>". No '+' means no sha, not a malformed one.
+            int plus = informational.IndexOf('+');
+            BuildVersion = plus < 0 ? informational : informational.Substring(0, plus);
+            BuildCommit = plus < 0 ? "" : informational.Substring(plus + 1);
+        }
+
         // ---- 0. Compatibility ---------------------------------------------------------------
         public static ConfigEntry<bool> DeferToOtherAiMods;
         public static ConfigEntry<bool> ReclaimStandBy;
