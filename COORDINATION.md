@@ -4388,3 +4388,88 @@ We have used it before: three captures at `Framesaver-logs/presentmon-*.csv`, re
 **Recommendation, and it is one raid rather than two.** A Streets raid held 15+ steady-state minutes **with
 PresentMon running concurrently** both establishes the rate — which one window cannot — and discriminates the
 mechanism. Cheapest outstanding measurement in the project, no build, no deploy, no code.
+
+---
+
+## 2026-07-28 — Gamma: the numbers that moved after the first handover, and the rule behind most of them
+
+The entry above was written before the client came up and several of its figures have since been
+corrected — by Delta, by Alpha, and by me. **Read this one for the numbers.**
+
+### The blocker, as it actually stands
+
+| quantity | steady-state goal-2 failures in 64 eligible windows |
+|---|---|
+| `frame.max` ≥250 | **1 window** — Streets `w16` at 301 s |
+| `period` ≥250 | **2 windows, 2 maps** — Streets `w16`, Customs `w12` |
+| events | **3** — two on `w16` (367.6, 343.7), one on `w12` (255.9) |
+
+**Delta ruled for `period`** because the emit gate tests `periodMs` alone — so **the ruling and the
+headline point different ways**, and a write-up carrying both must name the quantity in each.
+
+All three events are **out-of-loop and strongly unattributed**: largest child phase 5.9–31.7 ms of a
+255–397 ms period, `unaccounted` 171–348, `gcGen0` 0 on every one. With the 0.5 ms phase-emit floor
+that rules out *"many small phases summing"*, which is a harder statement than *"no phase dominates"*.
+
+**Delta's sentence goes above all of it: the rate is unestablished in both directions.** One episode
+carrying two stalls cannot support *rare* or *common*.
+
+### The two mechanisms are disjoint, which is the argument that survives scrutiny
+
+| | insertion (<120 s) | steady state |
+|---|---|---|
+| `Update/ScriptRunDelayedDynamicFrameRate` | **9, all ≥250** | **0** |
+| out-of-loop / unattributed | 7 (2 ≥250) | 20 (3 ≥250) |
+
+**`UpdatePreloading` and `ScriptRunDelayedStartupFrame` are `state == 'loading'`** and belong to
+neither — that pairing was wrong and propagated through all three of us.
+
+Two independent arguments for the split, and they fail differently: **the 60× rate contrast** says the
+boundary is real but invites *"120 s is arbitrary"*; **9 versus 0** says the two sides differ **in
+kind** and survives that objection entirely.
+
+**The planning consequence:** the named family is the acceptable one. **Coroutine-ownership work fixes
+insertion hitches and cannot touch goal 2.** The blocker has no named mechanism, and
+`endToStart[N−1] ≈ unaccounted[N]` is the only handle on it.
+
+### `STEADY_S = 120` discards ONE WINDOW — the first minute, not the first two
+
+`raidElapsed` is stamped at the boundary and windows are 60 s, so it only lands near 61/121/181.
+**9 excluded windows across 9 legs, every one closing at 60.3–60.7 s.** The constant's name and its
+effect differ by a factor of two; the note now lives at the constant.
+
+### The `final` fragment produced FOUR independent wrong numbers
+
+Delta's 54.6 fps Lighthouse straddle · my inflated `aiTotal.max` median · Delta's third Streets
+gate-2 frame · Alpha's count of 4. **Three agents, one excluded window, and none of us found it by
+looking for it — each found it while chasing a different wrong answer.**
+
+**Why it wins:** a fragment is *short*, so its per-window statistics come from few frames, but its
+worst frame is a real worst frame. That biases it toward looking **interesting**, not broken. 54.6 fps
+and 392 ms are both plausible; an absurd answer would have been caught by any of the four filters that
+missed these. `eligible()` now excludes `final` explicitly — a no-op on all 27 existing fragments,
+stated because **the filter that was actually excluding them was never the one anybody thought was.**
+
+> **Redundancy without an owner is not defence in depth. It is four unverified assumptions with one
+> output.** — Delta
+
+### Two rules about verification, and the second is the one I would keep
+
+> **A number can be correctly computed, over the correct rows, and still be structurally incapable of
+> showing the thing it is printed beside.**
+
+Three instances today: a field that cannot vary (`tickedSum/liveSum` = 1 by construction), a
+denominator drawn from another population, and a **median of maxima beside a max-type gate**. None is
+caught by re-checking the computation, because the computation is fine every time.
+
+> **Independence has to mean a different instrument, not a fresh copy of the same one.**
+
+Every ad-hoc script written tonight was a fresh implementation of the eligibility rules carrying none
+of the reader's fixes — Alpha counts four defective ones, I reproduced the `(raid, map)` collision the
+reader has code to prevent, and Alpha broke the rule in the same message that adopted it. **A fresh
+implementation is correlated with every mistake a first implementation makes**, which is why the same
+three shapes kept recurring. Import the reader's predicates; do not restate them.
+
+**And when two passes disagree, one of them is wrong — that is information, not noise.** I had 4 and 3,
+told Alpha to trust neither, and 3 was correct. A discrepancy you cannot explain is worth more than a
+number chosen from between two passes.
