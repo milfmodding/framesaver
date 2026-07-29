@@ -454,6 +454,8 @@ namespace Framesaver
             new AICoreControllerUpdatePatch().Enable();
             new BotsControllerTickPatch().Enable();
             new UpdateManualTimingPatch().Enable();
+            new BotSpawnLogPatch().Enable();
+            BotLog.Subscribe();
             new BossWaveSettingsPatch().Enable();
             new BotControllerSettingsPatch().Enable();
             new FastBodyAnimatorPatch().Enable();

@@ -263,6 +263,47 @@ class P {
               asm.GetType("Framesaver.ModCompat")
                  .GetMethod("AppendDetected", BindingFlags.NonPublic | BindingFlags.Static) != null, true);
 
+        // The bot ledger. The hooks and the emitted values need a live game, so what is
+        // checkable here is the contract Alpha's reconciliation is written against: the
+        // type names, the pairing key, and that the three killer states are all reachable
+        // and distinct. A collapse from three to two is the failure that would overstate
+        // Sophia in the one field the segmentation depends on.
+        Console.WriteLine("\nBot ledger contract");
+        var botLog = asm.GetType("Framesaver.Patches.BotLog");
+        Check("BotLog exists", botLog != null, true);
+        foreach (var m in new[] { "Spawn", "Drain", "ResetForRaid", "Subscribe" })
+            Check($"BotLog.{m} exists",
+                  botLog.GetMethod(m, BindingFlags.NonPublic | BindingFlags.Public
+                                      | BindingFlags.Static) != null, true);
+
+        // Read the emitted literals out of the shipped IL, so a rename that silently
+        // breaks the reconciliation fails here rather than in an analysis three weeks on.
+        //
+        // Byte search, not File.ReadAllText(Encoding.Unicode): #US literals are UTF-16 but
+        // not guaranteed 2-byte aligned to the file start, so a decode from offset 0 misses
+        // any literal at an odd offset. That is a check whose failure looks like a missing
+        // field - which is the shape this whole file exists to catch.
+        byte[] image = File.ReadAllBytes(dll);
+        Func<string, bool> inUs = lit => {
+            byte[] pat = System.Text.Encoding.Unicode.GetBytes(lit);
+            for (int i = 0; i + pat.Length <= image.Length; i++) {
+                int j = 0;
+                while (j < pat.Length && image[i + j] == pat[j]) j++;
+                if (j == pat.Length) return true;
+            }
+            return false;
+        };
+
+        foreach (var lit in new[] { "{\"type\":\"botSpawn\"", "{\"type\":\"death\"",
+                                    "\"killerState\":\"named\"", "\"killerState\":\"none\"",
+                                    "\"killerState\":\"unread\"", ",\"canStandBy\":",
+                                    ",\"raidElapsed\":null" })
+            Check($"emits {lit}", inUs(lit), true);
+
+        // A literal the code does NOT emit must not be found, or the search above proves
+        // nothing - every check so far would pass against a matcher that returns true.
+        Check("the search can fail (control)", inUs("{\"type\":\"botDeath\""), false);
+
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
         return bad == 0 ? 0 : 1;
     }
