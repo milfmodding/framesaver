@@ -248,8 +248,8 @@ class P {
             // the same failure the build-commit stamp above exists to prevent.
             string want = Assembly.LoadFrom(Path.Combine(Sptdir, "spt-reflection.dll"))
                           .GetName().Version.ToString();
-            Check("spt version is read from the assembly, not written down", got, want);
-            Check("spt version is non-empty", got.Length > 0, true);
+            Check("sptAssembly is read from the assembly, not written down", got, want);
+            Check("sptAssembly is non-empty", got.Length > 0, true);
         }
 
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
