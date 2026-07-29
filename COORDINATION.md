@@ -3842,14 +3842,16 @@ and a fix for one is not a fix for the other.
 If these are a mod's, the fix is a mod-compat guard; if they are EFT's own, it is not ours to fix and the
 release claim has to say so. **Do not write either into a claim before that is settled.**
 
-### And gate 2's verdict depends on which quantity scores it
+### ~~And gate 2's verdict depends on which quantity scores it~~ WITHDRAWN
 
-My earlier table scored gate 2 on `frame.max` per steady-state window and found **Streets only**. Scored on
-`period` — the quantity the emit gate actually tests, and the one Gamma's rule says to count — **every map
-has events above 250 ms**, e.g. Shoreline 460.2 against the 198.1 that `frame.max` reports for it.
+**Struck 2026-07-28 by Alpha, and I verified the refutation rather than accepting it.** I compared a
+*steady-state* `frame.max` against an *all-windows* `period` — two populations — and read the gap as a
+property of the quantities. Shoreline's all-windows `frame.max` is **454.0**, not the 198.1 I quoted; 198.1
+is its steady-state figure. On matched populations the two quantities **agree on every map**: 7 of 7 fail on
+both over all in-raid windows, 1 of 6 fails on both in steady state, and exactly **one window** in the whole
+corpus has `period >= 250` with `frame.max < 250`.
 
-**The two quantities disagree materially on the goal that gates release.** That is Gamma's call to settle,
-not mine to reinterpret unilaterally, and it needs settling *before* anyone writes "no hitches above 250 ms."
+**The point relocates rather than dying, and it gets bigger.** See the entry below.
 
 ### I nearly published the exact error I have spent two days finding in others
 
@@ -3926,3 +3928,54 @@ Alpha caught it.
 
 I traced what the line was *for* and asserted it was fine without evaluating what it *returns* in the new
 population — one line below the bug I had just found by doing exactly that.
+
+---
+
+## 2026-07-28 — Delta: goal 2 passes on six of seven maps only because of the warm-up discard
+
+Supersedes the withdrawn quantity claim above. Alpha's correction was right and following it to the end
+produces a larger finding than the one it replaced. `analysis/delta-gate2-population.py`.
+
+### The quantities agree. The cutoff is what decides.
+
+Per map, worst `frame.max` and worst spike `period` computed over **the same window set** each time:
+
+| population | n | maps failing on `frame.max` | maps failing on `period` |
+|---|---|---|---|
+| all in-raid windows | 81 | **7 of 7** | **7 of 7** |
+| steady state (>= 120 s) | 63 | **1 of 6** | **1 of 6** |
+
+One window in the corpus has `period >= 250` with `frame.max < 250` — Customs, 60 s in, 187.4 against 255.9.
+`frame.max` is blind to out-of-loop stalls in principle; in practice it costs one window.
+
+### What the 120-second discard removes
+
+**Ten windows carrying a >= 250 ms event, covering all seven maps:**
+
+| map | worst discarded event |
+|---|---|
+| Streets | **675.6 ms** |
+| Lighthouse | **569.6 ms** |
+| Shoreline | 460.2 ms |
+| Ground Zero | 382.4 ms |
+| Customs | 350.6 ms |
+| Factory | 320.1 ms |
+| Interchange | 311.0 ms |
+
+In steady state only Streets fails, at 392.2. **Every other map's gate-2 pass is produced by the cutoff, not
+by the absence of hitches.**
+
+**This is Sophia's call, not an analysis question.** Her words were *"no in-raid hitches"*, and minute one is
+in-raid. The discard is right for `p50` — streaming and bundle loads inflate the warm-up and would libel the
+steady-state frame rate — and it is exactly wrong for a hitch gate, because insertion is *when* streaming
+hitches happen. The same cutoff cannot serve both goals.
+
+**Lighthouse has zero steady-state windows in this corpus**, so its 569.6 ms event is discarded and it has no
+steady-state gate-2 verdict at all. Tonight's clean opening leg is what fixes that.
+
+### The pattern, since this is the fourth instance today
+
+Alpha's framing and it deserves the entry rather than four separate ones: **when two careful derivations of
+the same quantity disagree, check the population before the arithmetic — it has been the population every
+time.** The pooled bot slope, Alpha's spike rate, the Customs "drift", and now this. Not one was a technique
+error. Three of the four were mine.
