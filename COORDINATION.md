@@ -3297,3 +3297,63 @@ source that exists in every state. Neither instrument is broken; Alpha joins on 
    impersonates a result.
 
 ### `endToStart` — see the reversal entry above. DO NOT DROP IT.
+
+---
+
+## 2026-07-28 — Beta: the log header now says which build wrote it, and two corrections
+
+### Deployed, NOT yet gated
+
+| | |
+|---|---|
+| **md5** | **`ecb6deb31e6063f57ae90474f1886d30`** — `bin/Release` ↔ `plugins/` ↔ artifact |
+| **commit** | **`be4c15d`**, read from the binary; `git rev-parse HEAD` matches, so the stamp is not one behind |
+| size / `TimeDateStamp` | 126,464 / `0xfc3884ed`, high bit set |
+| artifact | `artifacts/Framesaver-20260728-header-be4c15d-ecb6deb3.dll` |
+| **`harness/GO`** | **still `e6cca83`** — Alpha's to move. Do not launch route 2 until it moves. |
+
+Changed: `Plugin.cs`, `Telemetry.cs`, `tests/unwrap/Program.cs`. Commits `be4c15d`, `d4be6f2`.
+
+### The ask was a missing field; the defect was a literal
+
+`Telemetry.cs:1695` was `sb.Append(",\"version\":\"0.1.0\"")`. **A hand-written string that reads as
+derived from the assembly.** Correct in all 21 logs only because nobody has bumped `AssemblyVersion` -
+the first bump makes every header silently wrong, and nothing asserts on it. Fifth member of the family
+this week, after the stale citation, the stale scoreboard, the four-copy role count, and the
+hand-maintained `30 of 57`: **true today by coincidence, and reads as true by construction.**
+
+`version` and `commit` are now both split out of `AssemblyInformationalVersion`. Two fields rather than
+the SDK's `0.1.0+<40 hex>` blob, so no reader splits it and an unstamped build reads `commit:""` instead
+of a version that still looks whole.
+
+**`[BepInPlugin(..., "0.1.0")]` still carries a literal and cannot stop** - an attribute argument must be
+a compile-time constant. It is now the only copy, and therefore the one that goes stale next.
+
+**The test asserts the SHAPE, not the value** - a `+` with 40 hex after it. Asserting the sha equals HEAD
+would go red on every build older than the newest commit: constant, expected, and the fast way to teach
+four agents to ignore a red line. What it guards is the silent regression - SourceLink stops stamping,
+the split yields `""`, headers go back to unattributable, and the build stays green.
+
+**The stamp is HEAD at BUILD time and says nothing about the tree being clean.** A build over uncommitted
+edits stamps the commit it was edited from. Committed before building for that reason, and it is why md5
+stays in the announce next to the sha: neither alone distinguishes a dirty build.
+
+### Two corrections to my own compaction entry, both from Alpha's catch
+
+**1. The ten marks were NOT captured on the deployed binary.** `172521` ran 17:25:21 - 18:02 on the mark
+build `f0086ea` / **`0756b331`** (frozen 17:08:29). `e6cca83` / `4b839995` was frozen **18:22:26**, twenty
+minutes after the last log closed. ~~"This is the exact binary that produced the ten validated marks."~~
+**`4b839995` was never run in a raid at all.**
+
+**2. All ten marks are `IsDown` marks.** `ca2515c` - our own `Pressed`, because `IsDown` refuses to fire
+while any other key is held - landed **17:51:50**, after the mark build was frozen and with **no deploy in
+between**. So every existing mark is stationary-only, **route 2 is the first raid that exercises the fix,
+and the new marks are a different population that must not be pooled with the old ten.**
+
+Both were found by comparing commit clock-time against log start-time. Twice today the question "which
+build ran this leg" was answered from wall-clock, which is exactly what the header field above removes.
+
+### Path corrections carried in my notes and wrong
+
+Install root is **`F:\SPT\SPT4.0.13\`**, not `F:\SPT\`. Config is **`framesaver.ai.perf.cfg`**, not
+`com.sophia.framesaver.cfg`.
