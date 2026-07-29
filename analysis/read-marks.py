@@ -141,6 +141,57 @@ def main(argv):
                  m.get('frames', len(xs)), m.get('spanMs') or 0, mx,
                  wd if wd is not None else 0, reading))
 
+    # ---- ISOLATED HITCH OR SUSTAINED BAD STRETCH ------------------------
+    #
+    # THE MARKS ARE NO LONGER ONE POPULATION AND POOLING THEM IS UNSAFE.
+    # Four of tonight's five are a single bad frame in an otherwise smooth five
+    # seconds; the Reserve mark is five seconds that were bad throughout. Those
+    # are different stimuli, and a threshold estimated from the mixture answers
+    # neither question - she may have reacted to the worst frame in one case and
+    # to the sustained badness in the other. The upper bound below only means
+    # "she perceived something no larger than this" if the worst frame is what
+    # she perceived.
+    #
+    # THE DISCRIMINATOR IS p99/p50 OF THE LOOKBACK AND IT HAS NO FREE PARAMETER,
+    # which is why it beats counting frames above a chosen line: a count needs a
+    # threshold invented after seeing the data. Tonight it separates completely:
+    #
+    #     Lighthouse 1  p99 20.6      Woods 1  p99 16.8
+    #     Lighthouse 2  p99 24.9      Woods 2  p99 17.6
+    #     Reserve 1     p99 86.7   <- 3.5x the largest of the others
+    #
+    # The count view agrees at every threshold from 40 to 75 ms - four marks
+    # read 1 frame over, Reserve reads 3 - so the split is not an artifact of
+    # the statistic. Reported and not gated: two populations with one member
+    # each is a distinction, not a rate.
+    print()
+    print('--- isolated hitch, or a sustained bad stretch? -------------')
+    print('%-5s %-13s %-8s %-8s %-8s %s'
+          % ('mark', 'map', 'p50', 'p99', 'worst', 'reading'))
+    sustained = []
+    for m in sorted(marks, key=lambda x: (x['_log'], x.get('mark', 0))):
+        xs = sorted(series(m))
+        if not xs:
+            continue
+        p50 = xs[len(xs) // 2]
+        p99 = xs[min(len(xs) - 1, int(0.99 * len(xs)))]
+        # The RATIO, not the level: a p99 near the p50 means the lookback was
+        # smooth apart from its worst frame, whatever the map's frame rate.
+        ratio = p99 / p50 if p50 else float('inf')
+        kind = ('SUSTAINED - the whole lookback was bad' if ratio >= 3.0
+                else 'isolated hitch in a smooth stretch')
+        if ratio >= 3.0:
+            sustained.append(m)
+        print('%-5s %-13s %-8.1f %-8.1f %-8.1f %s'
+              % (m.get('mark'), (m.get('map') or '?')[:13], p50, p99, xs[-1], kind))
+    if sustained and len(sustained) < len(marks):
+        print()
+        print('BOTH KINDS PRESENT. The bounds below pool them, and that is only')
+        print('valid if she reacts to the same thing in both - which is exactly')
+        print('what is not established. Read the bracket as the ISOLATED-HITCH')
+        print('bound, and treat the sustained marks separately until there are')
+        print('enough of them to bound on their own.')
+
     # ---- the two bounds -------------------------------------------------
     print('\n--- bounds -------------------------------------------------')
     lo_bound = None
