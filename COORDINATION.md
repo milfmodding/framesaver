@@ -7872,3 +7872,81 @@ of good work already in, so let's not complicate matters."*
 
 Same distinction as the excluded corpus: **assessed-and-open and decided-and-closed look identical from inside a
 document.** This line is the decision.
+
+---
+
+## Alpha: the QuestingBots test, sequenced — and a correction to my own config table (2026-07-29)
+
+### First, the correction, because the entry I missed is the subject
+
+I presented a config table as complete at **36 entries**. There are **37** `Config.Bind` call sites and 37
+declared `ConfigEntry` fields. My extraction missed exactly one, and it is
+**`Reclaim stand-by from QuestingBots`** — the flag this whole section is about.
+
+It was missed because a `//` comment sits *between* `Config.Bind(` and its section string, and my regex
+required adjacency. **A pattern that needs two things to be next to each other is broken by a comment**, and I
+reported the count as complete rather than reconciling it against the declared fields — which is the check that
+would have caught it in one line and which I did not run until asked about the flag by name.
+
+Three facts follow, and all three matter for release:
+
+1. **`Reclaim stand-by from QuestingBots = true` by default**, and it lives in `0. Compatibility` rather than
+   `1. Bot stand-by` — which is why it read as a stand-by flag and was not where I looked. **So on a default
+   install with QuestingBots present, Framesaver overrides another mod's deliberate setting.** That belongs in
+   release notes whatever else happens; it is the single most bug-report-generating behaviour we ship.
+2. **The name under-describes it.** The code comment says so: it also covers ORBIT, and the key was
+   deliberately left unchanged mid-testing so existing configs kept their value.
+3. **Which makes this a now-or-never window.** A config key rename costs every existing user their setting.
+   **There are no existing users yet.** Renaming is free before release and expensive forever after — and
+   Sophia is dropping ORBIT anyway, so the name will be wrong in a second way.
+
+### The test, and it has a second payoff nobody has counted
+
+Sophia deferred QuestingBots deliberately as an extra variable and now wants it sequenced before shipping.
+Framing it as a compatibility check undersells it:
+
+**The `~0.55 ms/bot` subsystem cost — the softest number in the entire questing-bot budget, which I have
+labelled every time as one significant figure back-derived from the phrase "p50 roughly doubled" — came from
+QuestingBots clearing that flag.** So a run with QuestingBots installed and reclaim OFF is a **deliberate
+reproduction of that accident**, with `awake - paused` now built to measure it properly. The test that answers
+the compatibility question is the same test that turns the weakest figure in the rule-3 design into a
+measurement.
+
+### The bot ledger gives QuestingBots behaviour a DATA channel, which it did not have this morning
+
+*Does slicing break questing* has been a subjective question. It no longer has to be. The ledger carries
+**position on spawn and position on death**, so **spawn-to-death displacement is a questing-effectiveness
+proxy**: QuestingBots drives bots to objectives, so working questing means dying further from where you
+spawned, and broken pathing means dying near it. Compared **across slicing arms within one raid**, which is
+the only design this corpus supports.
+
+Two biases, both handled rather than ignored:
+
+- **Only bots that die have both positions**, so the sample is the ones that met someone. That bias is
+  *constant across arms within a raid*, which is all a comparison needs.
+- **Bots that fight Sophia die near Sophia.** Filter to deaths where `killer.isAI == true` — which is a use
+  for the killer field that nobody anticipated when it was built this morning.
+
+### Sequence
+
+1. **One raid, current build, no install change.** Closes the two release-blocking evidence gaps: stand-by
+   benefit from `awake - paused`, and a real animator-cull count. This is the raid the beta release notes need.
+2. **QuestingBots installed, reclaim ON (the shipped default), slicing arms from the protocol ini.** Tests the
+   configuration users will actually get. Measures displacement per arm, frame time per arm, awake/exempt.
+3. **Same shape, reclaim OFF.** Reproduces the doubling deliberately and prices `UpdateManual`.
+
+**2 and 3 cannot be arms inside one raid, and the reason is worth recording: reclaim is not reversible.**
+`TryReclaimStandBy` sets `CanDoStandBy = true` and nothing sets it back, so the treatment is sticky per bot and
+turning the config off mid-raid does not undo it. It has to be between-raid.
+
+**And that is fine here, which is a distinction we have not needed until now.** Delta established that
+between-raid designs cannot adjudicate this corpus — but that was for effects around **0.5 ms against a
+0.68-0.74 ms noise floor.** The reclaim effect is *p50 roughly doubling*, on the order of **13 ms**. **A
+between-raid design fails for small effects, not for all effects**, and this one clears the floor by more than
+an order of magnitude.
+
+**Provenance:** installing QuestingBots splits the corpus, and any pooled analysis must condition on it. The
+per-window mod list Beta shipped today records it automatically — the fourth unplanned use that field has
+earned.
+
+— Alpha
