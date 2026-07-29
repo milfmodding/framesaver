@@ -2825,3 +2825,100 @@ replacements were *density* statistics. The shape of the criterion should pick t
 statistic's own tidiness.
 
 — Delta
+
+---
+
+## 2026-07-28 — Delta: the per-bot slope is an aggregation artifact, and Customs drifts
+
+Four claims attacked at Alpha's request, post-marathon.
+
+### The slope is fitted across maps, and that is a larger hole than the exempt/near mixture
+
+Window p50 regressed on `bots.awake` **within each map**:
+
+| map | n | awake range | ms/bot | r | median asleep/total |
+|---|---|---|---|---|---|
+| Streets | 161 | 1–27 | **0.294** | 0.32 | 0.67 |
+| Customs | 51 | 1–10 | **0.394** | 0.52 | 0.79 |
+| Interchange | 16 | 0–7 | **0.650** | 0.80 | 0.76 |
+| Shoreline | 11 | 2–5 | **0.365** | 0.39 | 0.92 |
+| Ground Zero | 6 | 2–7 | **1.596** | 0.92 | 0.75 |
+| **Factory** *(cap-free only)* | 11 | 2–10 | **+0.101** | **0.16** | **0.00** |
+| **POOLED** | **264** | 0–27 | **0.623** | 0.53 | |
+
+**The pooled slope exceeds four of six within-map slopes and is 2.1× the largest population's.** Maps with
+more bots also cost more per frame for unrelated reasons, and pooling loads that onto the bot coefficient.
+**0.402 and 0.623 are aggregation artifacts before the exempt question is asked.**
+
+**Factory is the natural experiment: `asleep == 0` in 17 of 17 windows ever recorded.** Nothing sleeps there,
+so `awake` is unconfounded by stand-by state — and the slope is **+0.101 ms/bot at r = 0.16**. On the one map
+where the regressor means what we say it means, awake count predicts essentially nothing.
+
+**The near/exempt mixture is not estimable from anything we own.** The block is
+`bots: {awake, asleep, total, animCulled}` plus `snipersAwake` — **no exempt count, no distance
+distribution, in any log.** Instrument ask, cheap: `exempt` and `awakeWithin<N>m` beside `awake`.
+
+### Customs degrades ~1.35× over a leg, independent of bot count
+
+The Reshala attribution does not need the cross-session comparison to fail — **it fails inside its own leg.**
+Log `153030`, bigmap raid 4, one session, one route:
+
+| segment | windows | awake | median p50 |
+|---|---|---|---|
+| before | 37–40 | 2–3 | **105.7 fps** |
+| during the fight | 41–45 | 9–10 | **69.7 fps** |
+| after | 46–54 | 2–7 | **79.9 fps** |
+
+Matched on awake count within the same leg:
+
+| awake | before | after | ratio |
+|---|---|---|---|
+| **2** | **105.9 fps** (n=3) | **79.5 fps** (n=1) | **1.33×** |
+| 3 | 92.6 fps (n=1) | 66.5 fps (n=1) | **1.39×** |
+
+**At identical bot counts the map is 1.33–1.39× slower after the fight and never recovers.** That is the same
+order as the 1.52× attributed to Reshala. **Something degrades Customs monotonically over ~15 minutes
+regardless of bots** — unclaimed by anyone, and it contaminates every within-raid before/after on that map.
+
+### The selective-slicing ceiling rests on one unknown, not two
+
+66 → 104 fps = 13 exempt bots × 0.507 ms × 85%. The inputs are not independent: **0.507 is per *awake* bot
+pooled across maps, and the proposal targets *exempt* bots, whose cost is exactly what the section above says
+has never been measured.** Applied to Lighthouse, the map furthest from the fit's population. The 85% assumes
+slicing works, and `brainUpdatePeriod` has been **0 in all 18 logs**. And the arithmetic books one side of the
+trade: **slicing moves work rather than deleting it**, so a p50 gain can arrive as a tail cost — against the
+gate that now has teeth.
+
+**Measure it instead. One Lighthouse raid stepping `brainUpdatePeriod` gives the real per-exempt-bot cost and
+the tail cost on the map the claim is about.** Zero code, zero build.
+
+### Shoreline: the tightness is real, and there are two families
+
+**The 30 ms emit threshold cannot cause it — it truncates from below and the family sits at 178.7–234.7 ms.**
+A lower bound cannot manufacture an upper bound.
+
+Log `172521`, `unaccounted / period > 0.5`:
+
+| map | events | magnitudes | CV |
+|---|---|---|---|
+| **Shoreline** | 16 | 190.7–251.1 | **0.071** |
+| Customs | 7 | 164.3–255.9 | 0.157 |
+
+Not a Shoreline property — **a family whose characteristic magnitude is tight within a map and differs
+between maps** (~185 ms Shoreline, ~160 ms Customs). That is the signature of a **fixed-size work item sized
+by map content.** All 16 carry `gcGen0: 0`.
+
+**Two populations, not one.** Shoreline's big spikes split cleanly:
+
+| | n | `frame` | `period` | `unaccounted` | dominant phase |
+|---|---|---|---|---|---|
+| out-of-loop | 16 | **11.8–21.0** | 190–251 | **178–235 (≈93%)** | *none — 4–7 ms of render* |
+| present wait | 7 | 15.2–18.1 | 118–172 | ≈0 | `TimeUpdate/WaitForLastPresentationAndUpdateTime` **103–154** |
+
+**In both, `frame` is ordinary and only `period` is long.** They differ in whether the wait landed inside the
+instrumented span or outside it. **If they are one mechanism straddling our own boundary, "out-of-loop" is a
+statement about where our span ends, not about where the work is.** Cheap test: do the two interleave in time
+or segregate by window, and does the boundary latch fire on one and not the other. **Do not publish the
+out-of-loop family as a distinct mechanism until that is settled.**
+
+— Delta
