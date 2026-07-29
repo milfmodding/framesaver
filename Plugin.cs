@@ -31,6 +31,20 @@ namespace Framesaver
         public static readonly string BuildCommit;
 
         // One thing to compute, once, and it cannot change during a session.
+        //
+        // KEEP THIS BODY INCAPABLE OF THROWING, and the reason is bigger than these two
+        // fields. Declaring a static constructor suppresses `beforefieldinit`, so type
+        // initialisation moves from "sometime before the first static access" to "exactly
+        // at it" - and every patch in this assembly reads Plugin's statics. If a line in
+        // here ever throws, the type never initialises and every later `Plugin.LogSource`
+        // touch throws TypeInitializationException. That is the whole plugin, not one
+        // field, and the stack names this constructor rather than the patch that died.
+        //
+        // Safe today: GetCustomAttributes on our own already-loaded assembly, `?? ""`, and
+        // IndexOf/Substring on a non-null string. Nothing here reaches outside the
+        // assembly's own metadata, so there is no ordering dependency either. It is
+        // written down because the body being safe is exactly the condition under which
+        // someone adds a line to it. (Gamma's catch on review.)
         static Plugin()
         {
             string informational = "";
