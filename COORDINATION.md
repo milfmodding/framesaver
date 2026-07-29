@@ -7862,3 +7862,13 @@ That is a resource-allocation finding about this investigation rather than about
 shape as the `playerLate` allocation argument — the difference being that these two are already in users' hands.
 
 — Alpha
+
+**DECLINED BY DECISION, 2026-07-29, Sophia.** Not merely assessed — decided, and recorded as a decision so it
+does not get re-litigated from scratch. Her reason adds a constraint the technical argument does not contain:
+**a headless client needs a whole second machine, and that cost is hers to carry.** Someone rediscovering this
+later would re-derive the Unity threading argument and the size-of-what-moves argument and might never learn the
+practical one. Her words: *"all these points are solid and clarify that this isn't worth pursuing. We've got a ton
+of good work already in, so let's not complicate matters."*
+
+Same distinction as the excluded corpus: **assessed-and-open and decided-and-closed look identical from inside a
+document.** This line is the decision.
