@@ -140,28 +140,37 @@ namespace Framesaver
             QuestingBots = Has(QuestingBotsGuid);
             LootingBots = Has(LootingBotsGuid);
 
-            // Latch AFTER the probes and BEFORE the logging, and both halves matter.
+            // THIS ORDERING DOES NOT FIX THE EARLY-CALLER HAZARD, and an earlier
+            // version of this comment claimed it did. A caller running before
+            // Chainloader.PluginInfos is populated probes an incomplete list, gets
+            // "nothing installed", and that answer is cached for the session under
+            // EITHER order - what makes it permanent is caching at all, not which
+            // side of the probes this assignment sits on. Gamma found it by trying
+            // to construct a caller the two orders disagree about, and failing.
             //
-            // It used to latch first. A caller running before Chainloader.PluginInfos
-            // was populated would then cache "nothing installed" for the whole session
-            // - SuppressSlicing false forever, the compatibility guard silently off,
-            // and no trace but the AI behaving differently. Never fired, because the
-            // first caller today is a bot-brain frame long after load. Gamma nearly
-            // became the first early caller by adding a detected-mod field to the log
-            // header, which runs in Awake: a LOGGING change would have disabled a
+            // So the hazard is live: SuppressSlicing false forever, the guard
+            // silently off, no trace but the AI behaving differently. What holds it
+            // off is that the first caller today is a bot-brain frame long after
+            // load - a fact about callers, not about this method. That is why
+            // CORPUS forbids reading ModCompat from anything running in Awake, and
+            // Gamma nearly became the first early caller by adding a detected-mod
+            // field to the log header: a LOGGING change would have disabled a
             // behavioural guard.
             //
-            // Before moving it, checked that the early latch was not an uncommented
-            // recursion guard - an obvious bug and a load-bearing one look identical
-            // in a diff. It is not: Has touches only Chainloader, ResolveFikaHeadless
-            // only AppDomain, and LogSummary reads the backing fields rather than the
-            // properties, so nothing re-enters here. Had LogSummary used the
-            // properties, moving this would have traded a silent wrong answer for a
-            // stack overflow on load.
+            // Fixing it means not latching until the list is known complete - a
+            // delay, a frame count, or retrying while the probes find nothing.
+            // SAIN waits 5 seconds. Not done here because no caller needs it, and
+            // a timer nobody needs is a moving part.
             //
-            // Before the logging because LogSummary is the only thing here that can
-            // throw uncaught, and a throw after latching costs one log line, while a
-            // throw before it would re-run detection and re-log on every later call.
+            // Moving the latch down did cost one thing: the early one was a
+            // re-entrancy guard, latent because nothing re-enters. Has touches only
+            // Chainloader, ResolveFikaHeadless only AppDomain, and LogSummary reads
+            // the backing fields rather than the properties. If any of those ever
+            // reads a public property here, this recurses until the stack dies.
+            //
+            // Keep it above ResolveFikaHeadless and LogSummary regardless: those
+            // can throw uncaught, and a throw after the latch costs one log line
+            // where a throw before it re-runs detection and re-logs on every call.
             _detected = true;
 
             if (Fika)
