@@ -131,8 +131,6 @@ namespace Framesaver
                 return;
             }
 
-            _detected = true;
-
             AILimit = Has(AILimitGuid);
             Orbit = Has(OrbitGuid);
             BigBrain = Has(BigBrainGuid);
@@ -141,6 +139,30 @@ namespace Framesaver
             Sain = Has(SainGuid);
             QuestingBots = Has(QuestingBotsGuid);
             LootingBots = Has(LootingBotsGuid);
+
+            // Latch AFTER the probes and BEFORE the logging, and both halves matter.
+            //
+            // It used to latch first. A caller running before Chainloader.PluginInfos
+            // was populated would then cache "nothing installed" for the whole session
+            // - SuppressSlicing false forever, the compatibility guard silently off,
+            // and no trace but the AI behaving differently. Never fired, because the
+            // first caller today is a bot-brain frame long after load. Gamma nearly
+            // became the first early caller by adding a detected-mod field to the log
+            // header, which runs in Awake: a LOGGING change would have disabled a
+            // behavioural guard.
+            //
+            // Before moving it, checked that the early latch was not an uncommented
+            // recursion guard - an obvious bug and a load-bearing one look identical
+            // in a diff. It is not: Has touches only Chainloader, ResolveFikaHeadless
+            // only AppDomain, and LogSummary reads the backing fields rather than the
+            // properties, so nothing re-enters here. Had LogSummary used the
+            // properties, moving this would have traded a silent wrong answer for a
+            // stack overflow on load.
+            //
+            // Before the logging because LogSummary is the only thing here that can
+            // throw uncaught, and a throw after latching costs one log line, while a
+            // throw before it would re-run detection and re-log on every later call.
+            _detected = true;
 
             if (Fika)
             {

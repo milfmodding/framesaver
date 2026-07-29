@@ -223,10 +223,29 @@ namespace Framesaver.Patches
         /// </summary>
         internal static bool RoleAllowsStandBy(BotOwner bot)
         {
-            return bot.Settings != null
+            return RoleStandByKnown(bot) && bot.Settings.FileSettings.Mind.CAN_STAND_BY;
+        }
+
+        /// <summary>
+        /// Whether the role's flag can be read at all - the discriminator RoleAllowsStandBy cannot
+        /// give you, because it answers false for both "exempt" and "cannot tell".
+        ///
+        /// Split out rather than left for the caller to re-check, because the alternative is a second
+        /// copy of this null chain that goes stale the first time a link is added to it. Same reason
+        /// ProtocolRunner.CanAdvance exists.
+        ///
+        /// Count unreadable bots and emit the count; do not drop them silently. CountBots three lines
+        /// away already sets the precedent - it drops a null StandBy from both counts and says so, so
+        /// the numbers "silently undercount rather than misclassify", with agents.live alongside as
+        /// the cross-check. A zero here proves the exempt count is clean, and a non-zero is something
+        /// we would want in the log before we knew to look for it.
+        /// </summary>
+        internal static bool RoleStandByKnown(BotOwner bot)
+        {
+            return bot != null
+                   && bot.Settings != null
                    && bot.Settings.FileSettings != null
-                   && bot.Settings.FileSettings.Mind != null
-                   && bot.Settings.FileSettings.Mind.CAN_STAND_BY;
+                   && bot.Settings.FileSettings.Mind != null;
         }
 
         /// <summary>Exposed for LongRangeExemption, which ranks snipers by the same measure.</summary>
