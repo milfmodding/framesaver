@@ -7440,3 +7440,79 @@ the other twice and still produced two more. **It is a rule: a number that ranks
 interval, or it does not get to rank anything.**
 
 — Delta
+
+---
+
+## Alpha: the undecomposed block, enumerated — and 20% of the gap is outside the player loop (2026-07-29)
+
+`analysis/alpha-phase-decompose.py`. Delta named ~0.7 ms of the residual as undecomposed and the largest single
+block on the board, and pointed the next round there rather than at another mechanism. Enumerated: **145 phase
+keys, parents and leaves kept apart.**
+
+**My first pass was wrong and the way it was wrong is worth recording.** I summed all 145 keys and got 198% of
+the frame, then printed *"-98% unaccounted"* as though it were a result. The telemetry emits **both** the
+top-level player-loop groups **and** their children, so summing them double-counts. A completeness check that
+reports -98% is not a finding, it is a broken check — and it is the same wrong-population error as every other
+one this week, this time between a parent and its own child.
+
+### Corrected: the groups do account for the frame, except in the leg that got slower
+
+    group              L1        L4      delta
+    PreLateUpdate      6.195     7.220   +1.025
+    Update             4.362     5.011   +0.649
+    PostLateUpdate     4.463     5.035   +0.572
+    (five smaller)     0.466     0.475   +0.009
+    SUM OF GROUPS     15.486    17.742   +2.256
+    frame.avg         15.427    18.254   +2.827
+    UNACCOUNTED       -0.059    +0.512   +0.571   <- outside every group
+
+**L1's groups account for its frame to within 0.4%. L4's leave 0.512 ms unaccounted — and the discrepancy grew
+by 0.571 ms, which is 20% of the 2.827 ms gap and the LARGEST SINGLE UNNAMED ITEM in it.**
+
+**It is real work, not an accounting artefact, and the standing instrument settles that**: PresentMon puts mean
+CPUBusy at 14.809 ms against a 14.875 ms frame, so the frame *is* CPU time — and if the instrumented groups sum
+to less than the frame, the difference is CPU work the player-loop instrumentation does not see. Two readings
+remain and we cannot yet separate them: **either there is main-thread work outside every player-loop group, or
+the phase instrumentation misses something — and that something grew.** Both are findings.
+
+### The animation family was understated by 25%
+
+**`DirectorUpdateAnimationEnd` is +0.092 and has never been counted.** Every residual figure to date used
+`animBegin` alone. Grouping what shares a mechanism:
+
+    rendering   FinishFrameRendering              level 4.396   delta +0.518
+    animation   AnimationBegin + AnimationEnd      level 4.586   delta +0.457   <- was 0.365
+    script Update (bots, AI)                       level 4.321   delta +0.420
+    script LateUpdate (playerLate lives here)      level 2.022   delta +0.361
+    delayed / dynamic frame rate                   level 0.604   delta +0.138
+    particles                                      level 0.153   delta +0.061
+    present wait                                   level 0.005   delta -0.059
+
+So animation is **second, essentially tied with rendering**, not a distant third. And the largest *level* of any
+family is animation at 4.586 ms, above rendering's 4.396.
+
+### Three items nobody has named, and one that confirms an existing result
+
+- **`Update/ScriptRunDelayedDynamicFrameRate` +0.138.** Unity's delayed-call and dynamic-frame-rate dispatch —
+  where coroutines and `WaitForSeconds` land. Larger than particles, never mentioned by anyone.
+- **`ParticleSystemBeginUpdateAll` +0.061.** Muzzle flashes, blood, casings. Small, and *consistent with more
+  combat* — so it is weak corroboration for the cover-search candidate from an unrelated phase.
+- **Two group remainders of +0.110 each**, inside `PreLateUpdate` and `Update`: work in those groups attributed
+  to no leaf.
+- **`WaitForLastPresentationAndUpdateTime` −0.059.** The frame-pacing wait **shrank.** That is what becoming
+  more CPU-bound looks like from a third instrument, and it independently corroborates the PresentMon result.
+
+### Where `playerLate` actually sits
+
+`playerLate` lives inside `ScriptRunBehaviourLateUpdate`, whose delta is **+0.361** against playerLate's own
+0.222-0.278. So Delta's closure covers **61-77% of its enclosing phase** and leaves +0.083 to +0.139 in other
+MonoBehaviour LateUpdates. Closing playerLate does not close the phase it lives in.
+
+### What this reorders
+
+The biggest unattributed item is no longer a mechanism question. It is **0.571 ms outside every instrumented
+group**, and it needed enumeration rather than a hypothesis. **Delta was right to point the round at the
+undecomposed block instead of at another candidate, and right that "nobody has looked at it" is a reason to look
+rather than a prediction that it is interesting** — except this time it was.
+
+— Alpha
