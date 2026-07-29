@@ -4675,3 +4675,32 @@ frequent (~5 events per raid), its cost is predictable, and it has already survi
 our own window flush was ruled out on it earlier, median 18 s from a boundary, 1 of 18 within 2 s. **A
 mechanism you can provoke reliably is worth more than a rarer one you cannot**, and if the ~200 ms and
 ~350 ms families turn out to share a mechanism, the cheap one names it.
+
+### REGISTERED, before either PresentMon raid: what the capture must show
+
+Alpha's falsification, which follows from the CV pair rather than from the gate. Written before any capture
+exists, with two refinements and a third outcome that would otherwise read as instrument failure.
+
+> **If the ~203 ms cost is a single bounded blocking operation, PresentMon must show a matching near-constant
+> component — and the test is on the SPREAD, not the magnitude.**
+
+**1. The falsification is `CV`, not the mean.** A component summing to ~203 ms proves little; anything that
+takes 203 ms sums to 203 ms. **The claim is `CV ≈ 0.04`.** If PresentMon attributes the time to a component
+whose spread across events is wide, then the tightness is an artifact of *our* measurement — a quantisation
+in how `period` is derived — and not a property of the phenomenon. That is the outcome that would retire the
+fixed-cost reading, and it is cheaper to state now than to argue about afterwards.
+
+**2. The join is on `qpc`, and both instruments must run concurrently.** Framesaver spike lines carry `qpc`
+and PresentMon timestamps are QPC-based — already established practice for the mark work. Without the join
+you cannot tell which PresentMon frame is which spike line, and a capture without a concurrent Framesaver log
+answers nothing. **Both running, or do not run it.**
+
+**3. The third outcome, named so it is not read as the instrument failing.** The three-way split is
+`GPUTime` (GPU side) / `CPUWait` (blocked on the GPU) / `CPUBusy` with nothing in our phases (main thread
+outside the loop, ours to fix). **There is a fourth: the 203 ms appears in none of them.** That would mean
+the stall falls outside PresentMon's per-frame accounting — most likely a frame that was never presented —
+and PresentMon's dropped/present-mode fields are where to look. **A null across all three components is a
+result about presentation, not a failed capture**, and it needs to be written down before anyone sees it.
+
+**Cost: zero extra exposure.** All three refinements are about how the existing plan is read, not about
+running it for longer.
