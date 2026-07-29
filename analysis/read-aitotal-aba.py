@@ -466,6 +466,7 @@ def main(argv):
     # Lighthouse's one large event it was 10%. If the ratio here is low, this
     # section is counting MonoBehaviour frames and the AI reading does not
     # follow - which is a fact about the metric, not about slicing.
+    frac = {}
     for label, evs in ((CONTROL, ce), (TREAT, te)):
         if not evs:
             continue
@@ -475,8 +476,22 @@ def main(argv):
                 and w.get('_log') == big.get('_log')]
         amax = (host[0].get('aiTotal') or {}).get('max') if host else None
         if amax and span:
+            frac[label] = 100.0 * amax / span
             print('   proxy check %s: largest phase %.1f ms, window aiTotal.max '
-                  '%.1f ms (%.0f%% AI)' % (label, span, amax, 100.0 * amax / span))
+                  '%.1f ms (%.0f%% AI)' % (label, span, amax, frac[label]))
+    # THE INSTRUCTION, NOT JUST THE DIAGNOSTIC. An unlabelled number gets read as
+    # informational and skipped; this one decides whether section 6 may be read
+    # at all. No threshold is encoded on purpose - one invented tonight would be
+    # chosen after seeing what it excludes, which is what was refused for
+    # treatment drift. The rule is stated and the judgement is the reader's.
+    if len(frac) == 2:
+        lo, hi = min(frac.values()), max(frac.values())
+        print('   -> composition %.0f%% vs %.0f%%. IF THESE DIFFER MATERIALLY THE '
+              'COUNT CONTRAST IS' % (lo, hi))
+        print('      UNINTERPRETABLE - the arms are counting different kinds of '
+              'frame, which looks')
+        print('      exactly like a lever effect. Report section 5 (avg) only, '
+              'and say why.')
     # THE FOURTH LINE, which the three-branch table invites you to forget: at
     # k~20 a null excludes changes above ~4x and nothing smaller. Slicing cuts
     # ticks 5.8x, so a pile-up mechanism should clear that - but a true 2x
