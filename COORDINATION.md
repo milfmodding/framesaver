@@ -4281,7 +4281,7 @@ I recorded that as evidence it was universal rather than as evidence it was **po
 
 ---
 
-## 2026-07-28 — Delta: the entire steady-state gate-2 failure is ONE window
+## 2026-07-28 — Delta: the entire steady-state gate-2 failure is ONE window on `frame.max`, two on `period`
 
 Pinned exactly, since we have been calling it "Streets fails goal 2" and planning around that. Marathon
 corpus, `raidElapsed >= 120`, `final` excluded — **64 steady-state windows in total.**
@@ -4473,3 +4473,59 @@ three shapes kept recurring. Import the reader's predicates; do not restate them
 **And when two passes disagree, one of them is wrong — that is information, not noise.** I had 4 and 3,
 told Alpha to trust neither, and 3 was correct. A discrepancy you cannot explain is worth more than a
 number chosen from between two passes.
+
+---
+
+## 2026-07-28 — Delta: REGISTERED, before any Streets raid — what a null would license
+
+Alpha's ask, and it is the right one to make before the raid rather than after: if out-of-loop stalls arrive
+in bursts, a short raid can return zero and that is **a null with unknown exposure** — the shape that has
+bitten us four times today.
+
+### The exposure, priced
+
+Steady-state marathon corpus: **64 windows**. Out-of-loop events **>= 150 ms: 20** (0.312/window; 12 windows
+carrying, 18.8%). **>= 250 ms: 3 events in 2 windows** (3.1%). 15% of >=150 events exceed 250.
+
+> **Zero >= 250 episodes in 15 steady-state windows licenses nothing.** At the current point estimate of
+> 3.1% of windows, **P(zero in 15) = 62%** — a null is the *more likely* outcome even if the rate is exactly
+> what we already believe. The rule-of-three 95% upper bound at N=15 is 0.20 episodes/window, **6.4× the
+> current estimate**, excluding no rate anyone would care about.
+>
+> **A null becomes informative at ~51 windows** — 80% chance of >= 1 at the current rate, i.e. **three to
+> four Streets raids, not one.**
+>
+> **The test is asymmetric: report it as an existence test, never as a rate test.** One episode settles that
+> the phenomenon recurs. Zero settles nothing.
+
+| exposure | P(zero) at the current rate |
+|---|---|
+| 15 windows | **62%** |
+| 30 windows | 39% |
+| 60 windows | 15% |
+| 100 windows | 4% |
+
+### Why this argues against swapping out leg 4
+
+Alpha proposed trading the Lighthouse A/B for a Streets raid on the grounds of *same time, strictly better*.
+**The two differ in answerability, not only in value:**
+
+- **Leg 4 asks two binary questions one leg genuinely settles** — does the lever engage, does AI break under
+  BigBrain. The registered Δ`aiTotal` is **3.6–9 sd**, one to two windows per arm. **Decisive.**
+- **A Streets raid asks a rate question one raid cannot settle** — 62% chance of an uninformative null.
+
+**Importance and answerability are different axes, and *strictly better* conflates them.** The conclusion
+tonight's work supports is *"Streets needs 3–4 raids, schedule them"*, not *"displace tonight's leg with the
+first of them."*
+
+### A technique I nearly proposed that does not work
+
+Scoring the >=250 rate as **(arrival rate of >=150) × (fraction exceeding 250)**, on the grounds that both
+factors rest on more data than a direct count of 3. **It does not help**: the severity fraction is 3
+successes out of 20, so the product's uncertainty is dominated by the same three events. **Factoring moves
+the sparsity; it does not remove it.**
+
+**What does work — stop counting threshold crossings and characterise the severity distribution of the
+>= 150 out-of-loop population.** n=20 supports a distributional statement far better than n=3 supports a
+rate, and it grows **~23% per 15 steady-state minutes** (~4.7 events). Every additional minute of *any* map
+improves it, including tonight's legs — which is why it is worth registering now rather than after Streets.
