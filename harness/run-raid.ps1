@@ -591,9 +591,22 @@ function Stop-PresentMon {
     }
     # A header-only CSV is the shape a failed capture takes, and it is the one
     # that reads as success: the file exists and parses.
-    $rows = @(Get-Content -LiteralPath $PmWorking -TotalCount 3).Count
-    if ($rows -lt 2) { Warn 'capture has a header and no frames - it recorded nothing' }
-    else { Ok ("capture has frames ({0:n0} bytes)" -f (Get-Item -LiteralPath $PmWorking).Length) }
+    #
+    # Wrapped, and this is not defensive habit. PresentMon opens the CSV with NO
+    # sharing at all - not even FileShare.ReadWrite gets in - so if it is still
+    # holding the handle, Get-Content THROWS. With $ErrorActionPreference = 'Stop'
+    # that throw happens inside the finally block, ABOVE Stop-SptServer, and would
+    # leave a headless server running: precisely the failure this whole script
+    # exists to prevent, introduced by a diagnostic. Found by trying to read the
+    # file mid-run, which is the only state where it bites.
+    try {
+        $rows = @(Get-Content -LiteralPath $PmWorking -TotalCount 3 -ErrorAction Stop).Count
+        if ($rows -lt 2) { Warn 'capture has a header and no frames - it recorded nothing' }
+        else { Ok ("capture has frames ({0:n0} bytes)" -f (Get-Item -LiteralPath $PmWorking).Length) }
+    } catch {
+        Warn "could not read the capture to check it: $($_.Exception.Message)"
+        Warn 'the file is probably still locked - check it by hand before trusting it'
+    }
 }
 
 # ----------------------------------------------------------------- server ----
