@@ -291,6 +291,21 @@ than as a caveat. Requested from Gamma as a `bots.exempt` count.
 > because it is specific, and it survived because nothing in the pipeline had to look at it. Same family as the
 > stale scoreboard and the stale line citation: **a confident sentence nobody re-derives.**
 
+**A mark's `frameMs` and the sample line's `frame` come from different clocks, and neither is broken.** The
+mark lookback is built from `Time.unscaledDeltaTime` — the only frame source that exists in *every* state,
+which is what lets a mark work at the menu and during loading. `frame` and `framePct` come from BSG's
+`GameFrameMeasurer`. *Wrong conclusion:* that a mark reporting 122.5 ms where the window's `frame.max` reads
+something else means one instrument is faulty. **Recovery: do not compare them by value.** The mark answers
+*what did the last five seconds feel like*; the measurer answers an adjacent question about the same interval.
+**Join marks to spike lines on `qpc`**, which does not depend on the two agreeing — see the section on
+`read-marks.py`.
+
+Two consequences worth having in advance. **`unscaledDeltaTime` is not clamped by `Max delta time`**, which is
+0.1 s: the largest value ever recorded in a lookback is **19,928 ms**, so the mark sees a 20-second map load
+whole while anything derived from `Time.deltaTime` is capped at 100 ms. And a mark taken early in a window
+carries fewer frames than the 5 s lookback wants, which is why `frames` and `spanMs` are both emitted — **a
+truncated dump must not be able to look like a quiet one.**
+
 ### Recoverable, but only from outside the ndjson
 
 **`cfg.brainPeriod` is the value *requested*, not the value in force.** It reads `BrainUpdatePeriod.Value`, so
