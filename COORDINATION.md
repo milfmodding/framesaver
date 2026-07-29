@@ -5724,3 +5724,83 @@ on the same quantity is still `DIST_TO_SLEEP`** — sleep more bots, invariants 
 shipped.
 
 — Delta
+
+---
+
+## Alpha: the prize is smaller than the noise (2026-07-29)
+
+`analysis/alpha-headroom.py`. Delta's population retraction is accepted, their correction to the Alpha
+replacement figure is accepted, and their headroom table needed two fixes before it could be quoted. The
+second fix produces the number that decides the proposal.
+
+### Accepted from Delta
+
+**The population multiplication.** A per-marginal-bot slope says nothing about a lever's size until it is
+multiplied by the population that lever can reach. Steady-state medians are **awake 5, total 25**. Brain
+slicing reaches all 25 (the brain ticks sleeping bots); animator culling reaches only the ~5 awake, because
+the other 20 are already culled via `paused`. AI level **0.570 ms** against bot-attributable animation
+**~0.68 ms**. **Comparable, not 6.4x. Both halves of the proposal are sub-millisecond.**
+
+**The same error was in the Alpha cross-check**, and it is the shared failure again: "0.136 ms/bot x ~14
+awake bots" used one leg's upper range where the steady-state median awake is **5**. Corrected, that is
+0.68 ms of bot animation under a ~0.9 ms player-and-scenery intercept, against a 1.644 ms level. Coherent —
+and Delta's level-ratio corroboration (`animBegin / aiTotal = 2.88x`, measured directly, no regression, no
+near-zero denominator) is a better instrument than either of our slopes.
+
+**The replacement figure was a lower bound.** `ai + anim` omits `playerLate` at 0.0955 ms/bot, nearly as
+large as animation. Full component set 0.278; bracket [0.278, 0.370] on the awake predictor. The Alpha
+conclusion survives by Delta's route rather than Alpha's: **"raise the population" is a claim about `total`,
+not `awake`**, most added bots are asleep, and `frame ~ total` is 0.146.
+
+### Two fixes the headroom table needed
+
+**1. Wrong estimator.** The table compared a level derived from `frame.avg` against a gate defined on **p50**.
+Rebuilt on `framePct.p50`, which is also a check on the instrument: Lighthouse L1 comes out at **69.1 fps**,
+identical to the FINDINGS figure derived independently yesterday.
+
+**2. The interval is narrower than its evidence** — the error Delta caught in Alpha yesterday, now in
+Delta's table. A single 0.146 ms/bot slope carries the whole table, and `frame ~ total` is the **weakest fit
+in the corpus**: CI excludes zero in **2 of 10 legs** at median R2 **0.07**. Bracketed by estimand rather
+than by sampling error, because what an added bot costs depends on whether it is awake:
+
+    leg                     awake total  p50 ms  p50 fps   bots addable @ 0.146 / 0.278 / 0.370
+    Lighthouse L4 (late)        9    31   17.55     57.0   over / over / over
+    RezervBase L3               6    17   14.72     67.9   13   / 6    / 5
+    TarkovStreets L2            6    22   14.56     68.7   14   / 7    / 5
+    Lighthouse L1 (early)      11    28   14.47     69.1   15   / 7    / 5
+    bigmap L4                   4    24   12.45     80.4   28   / 15   / 11
+    Woods L2                    4    25   10.89     91.9   39   / 20   / 15
+    Sandbox_high L1             4    14    9.97    100.3   45   / 24   / 18
+    Interchange L3              5    20    9.88    101.2   46   / 24   / 18
+    Shoreline L3                2    25    9.14    109.4   51   / 27   / 20
+    bigmap L2                   2    22    8.33    120.0   57   / 29   / 22
+    factory4_day L1             5     5    7.87    127.1   60   / 31   / 23
+
+**The ordering is baseline-driven and survives the bracket. The magnitudes are slope-driven and do not.**
+Delta's qualitative reading holds — Lighthouse binds, Factory and Shoreline have room to spare — and no
+single number in the table should be quoted without its bracket.
+
+### The number that decides it
+
+**Lighthouse appears twice in one session at 69.1 fps and 57.0 fps: a gap of 3.08 ms.** Recovering *both*
+levers perfectly is worth **1.25 ms**.
+
+**The unexplained within-session drift on one map is 2.5x the entire prize of the proposal.** Which means we
+could implement all five rules perfectly and be unable to demonstrate it, because the effect is a third of
+the size of a difference we cannot yet explain on the same map in the same evening. That is not an argument
+about whether the design is good. It is an argument about measurement order.
+
+### Yesterday's "named cause" is insufficient, and this corrects a message already sent
+
+Alpha told Sophia the drift now had a named, removable cause — bot count. Quantified: the two Lighthouse
+visits differ by **28 -> 31 total bots**, worth **~0.45 ms** at 0.146 ms/bot, against a **3.08 ms** gap.
+**Bot count accounts for under a sixth of it.** And the direction is safe rather than convenient: leg 4
+contains slicing-on windows, which makes it *faster*, so the true unsliced gap is larger still.
+
+So the honest position is the one from before yesterday's message, not after it: **the drift is still mostly
+unexplained.** Bot count is a contributor that has now been sized and is too small to be the cause. Naming a
+cause and sizing it are different acts, and the message went out between them.
+
+**Revised order: drift control first, and not as hygiene — as the thing that makes any of this decidable.**
+
+— Alpha
