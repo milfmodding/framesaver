@@ -252,6 +252,17 @@ class P {
             Check("sptAssembly is non-empty", got.Length > 0, true);
         }
 
+        // The three provenance blocks an outside tester cannot certify. Existence only:
+        // every value inside them is a Unity ECall that throws outside the runtime, so
+        // what is checkable here is that the emitters exist and are wired in - which is
+        // exactly the failure a rename or a dropped call would cause.
+        foreach (var m in new[] { "AppendDisplay", "AppendSystem" })
+            Check($"Telemetry.{m} exists",
+                  tel.GetMethod(m, BindingFlags.NonPublic | BindingFlags.Static) != null, true);
+        Check("ModCompat.AppendDetected exists (mod list, per-window not header)",
+              asm.GetType("Framesaver.ModCompat")
+                 .GetMethod("AppendDetected", BindingFlags.NonPublic | BindingFlags.Static) != null, true);
+
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
         return bad == 0 ? 0 : 1;
     }

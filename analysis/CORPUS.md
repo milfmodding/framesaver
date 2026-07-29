@@ -641,6 +641,26 @@ that triggers no detection, and **`suppressSlicing` in the per-window `agents` b
 patch has caused detection naturally. Recorded here rather than only in a queue because the gap is visible in
 every existing log and the tempting repair is the harmful one.
 
+### This hazard is a constraint now, not a caveat — it has redirected two designs
+
+**2026-07-29.** Two independent features routed around this same rock on the same day:
+
+- **The mod list.** Wanted in the header; it cannot go there. It ships in the per-window
+  `agents` block instead — which is safe *specifically* because that block already emits
+  `suppressSlicing`, so it already calls `EnsureDetected`. Detection is forced from that exact
+  site regardless, so the names cost nothing. **No other call site could make that argument.**
+- **`platform.sptAssembly`.** The obvious source for an SPT version is
+  `Chainloader.PluginInfos["com.SPT.core"]`. It is read from spt-reflection's loaded assembly
+  instead, precisely to avoid touching the plugin list from `WriteHeader()`.
+
+**A hazard that has changed two designs is part of the shape of the code, and the next person
+will meet it as one.** The general form is worth more than either instance: **a change's blast
+radius is not bounded by its category.** `Chainloader.PluginInfos` looks like a query;
+`EnsureDetected()` makes the first query a write. Anything that latches on first use has this
+property, and *what kind of change you are making tells you nothing about it* — here, a
+logging change would have switched off the mod's central AI lever with no trace but different
+bot behaviour.
+
 ## Re-deriving the numbers
 
 `analysis/delta-rederive.py` is a dependency-free second implementation of the derivations behind the headline

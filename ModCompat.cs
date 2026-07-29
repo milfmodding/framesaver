@@ -278,6 +278,35 @@ namespace Framesaver
             }
         }
 
+        /// <summary>
+        /// The detected list as a JSON array, for the per-window `agents` block.
+        ///
+        /// **Never call this from Awake.** EnsureDetected latches, so an early caller
+        /// probes an incomplete Chainloader and freezes "nothing installed" for the
+        /// session - which would turn SuppressSlicing off and leave no trace but
+        /// different AI behaviour.
+        ///
+        /// It is safe from `agents` specifically, and not by luck: that block already
+        /// emits `suppressSlicing`, which calls SuppressSlicing, which calls
+        /// EnsureDetected. **Detection is already forced from exactly this call site**,
+        /// so naming the mods there adds no risk that the block did not already carry.
+        /// A different call site would need its own argument.
+        /// </summary>
+        internal static void AppendDetected(System.Text.StringBuilder sb)
+        {
+            EnsureDetected();
+
+            string[] names = DetectedNames();
+            sb.Append('[');
+            for (int i = 0; i < names.Length; i++)
+            {
+                if (i > 0) sb.Append(',');
+                sb.Append('"').Append(names[i]).Append('"');
+            }
+
+            sb.Append(']');
+        }
+
         private static string[] DetectedNames()
         {
             var names = new System.Collections.Generic.List<string>(8);
