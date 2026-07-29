@@ -5023,3 +5023,137 @@ from one she never approached. Branch (3) closes tonight instead of staying open
 *because it was registered as an operator note before the leg rather than hoped for afterwards.*
 **Any question shaped like a negative about something that never spawned needs a human observation
 designed in, not requested later.**
+
+---
+
+## 2026-07-29 â€” Delta handover at the fourth compaction
+
+Mechanism and statistical-design layer. Everything below was in message history; numbers verified against
+disk. Read with the [third handover](#2026-07-28--delta-handover-at-the-third-compaction).
+
+### 1. The ceiling table â€” the model held, my registered interval did not
+
+`aiTotal` times `BotsController.method_0`, which calls `AICoreController.Update()` alongside four siblings
+(`BotsController.cs:305`), so every ceiling is an **over-estimate** â€” the safe direction. **The whole AI tick
+is 1.6â€“4.9% of the frame.** That number killed the six-block ABAB and rescoped the leg.
+
+**Then the marathon moved its input.** Lighthouse `aiTotal` was **0.788 on three windows**; the closing leg's
+control blocks give **1.614 on five**.
+
+| | registered | rescaled with the true baseline | observed |
+|---|---|---|---|
+| point | 0.38 ms | **0.775 ms** | **0.761 ms** |
+| bound | <= 0.65 ms | <= 1.336 ms | inside |
+
+**The functional form was confirmed to within 2%.** **And as registered, the prediction failed** â€” 0.761
+exceeds the 0.65 ceiling I wrote, and is only rescued by updating an input afterwards. Both are true; the
+second must survive.
+
+**The lesson, and it is the sharpest thing I have to hand over.** I put a 95% interval on the brain share
+(38â€“78%, Factory's slope) and treated the Lighthouse baseline as a **constant**. It rested on **three
+windows** and moved by 2Ã—. **I quantified the uncertainty I had a method for, and the dominant one was the
+input I had not thought to doubt.**
+
+**Population note on the 1.614:** closing-leg control blocks only. Pooling all Lighthouse control windows
+across both legs gives n=29, mean 1.043, drop 0.275 â€” **the wrong population.** The A/B must be within-leg;
+the opening leg is a different raid, session age and route, which is the confound ABAB existed to remove.
+
+### 2. `dt` is in the numerator, so the treatment converges to the control on the worst frames
+
+`perFrame = ceil(live Ã— dt / period)`, clamped up to the floor. On a 200 ms frame at Woods counts,
+`ceil(12 Ã— 0.2 / 0.1)` = 24 > `live` â€” **the sliced arm ticks every brain, exactly like control.**
+
+**A null on hitch counts is uninformative by construction, not underpowered.** Score slicing on `p50` or
+`aiTotal`. The floor binds below `4 Ã— period Ã· dt` agents â€” 25 at 16 ms, 40 at 10 ms â€” so register any arm as
+**floor-and-period combined**, never as a period test.
+
+### 3. The Shoreline signature â€” arrival cv 0.78, cost cv 0.043
+
+| | | |
+|---|---|---|
+| **cost** | 203.4 Â± 8.7 ms, range 192.9â€“218.7 | **cv 0.043** â€” near-constant |
+| **arrival** | mean 37.8 s, range 2.1â€“123.5 | **cv 0.777** â€” ~Poisson |
+
+**Arrival is 18Ã— more variable than cost** â€” an event-driven blocking operation with a bounded duration.
+**Both readings a reasonable person tries first die on that pair:** not a timer (arrivals aren't periodic),
+not size-proportional (cost is the *tightest* quantity in the family).
+
+Leading hypothesis, **explicitly a hypothesis**: a synchronous wait hitting a fixed timeout. A fixed-cost
+lock and a driver op with bounded retry give the same signature. n=14, one episode, one map.
+
+**The falsification is `cv â‰ˆ 0.04`, NOT the magnitude** â€” anything taking 203 ms sums to 203 ms. And the
+**fourth PresentMon outcome** must stay written: if the cost appears in *none* of `GPUTime` / `CPUWait` /
+`CPUBusy`, that is a result about presentation (a frame never presented), **not a failed capture.** Naming
+the outcome that looks like instrument failure is the highest-value line in a pre-registration.
+
+### 4. Events are not draws â€” the four-episode structure
+
+20 steady-state out-of-loop events are **4 episodes**, and **14 of 20 are one contiguous Shoreline regime**
+across 8 windows. Counting events instead of episodes double-counts a regime.
+
+**Consequence that cuts against my own exposure figure:** if arrivals are regimes, windows inside a raid are
+**correlated**, so one raid is closer to **one trial than fifteen**. Section 5 is therefore optimistic.
+
+### 5. Streets exposure â€” existence test, never a rate test
+
+At 2 episodes in 64 windows: **P(zero in 15 windows) = 62%**, ~**51 windows** for 80% power, rule-of-three
+bound at N=15 is **6.4Ã— the point estimate**. **A short null licenses nothing.**
+
+**Importance and answerability are different axes.** Collapsing them is how a decisive test nearly got traded
+for a 38%-chance-of-informative one. Most reusable thing from the session.
+
+### 6. Negative result worth keeping
+
+Factoring the >=250 rate as **(arrival rate of >=150) Ã— (fraction exceeding 250)** looks like it decomposes
+sparse evidence into two better-estimated parts. **It does not** â€” the severity fraction is 3 of 20, the same
+three events. **Factoring moves sparsity; it does not remove it.** Someone will propose this again.
+
+### 7. Steady state is THREE mechanisms, and "none is AI" is withdrawn
+
+Verified in `framesaver-20260728-225956-marathon.ndjson`:
+
+| map | win | period | frame | unaccounted | attribution |
+|---|---|---|---|---|---|
+| Reserve | w58 | 321.6 | 319.5 | **0.4 (0%)** | `Update/ScriptRunDelayedTasks` **227.6** |
+| Lighthouse | w72 | 296.2 | 293.1 | **0.4 (0%)** | `Update/ScriptRunBehaviourUpdate` **260.5** |
+| Lighthouse | w77 | 273.6 | 26.0 | 248.0 (91%) | out-of-loop, unattributed |
+
+**So "every attributed >=250 stall is coroutines and none is AI" is withdrawn.** Two new in-loop mechanisms,
+both fully tiled, both in control-arm windows.
+
+**One caveat that must travel with w72.** `ScriptRunBehaviourUpdate` is **every** `MonoBehaviour.Update` in
+the game. It *contains* the bot AI tick â€” `method_0` runs under it â€” but is not equal to it. **260.5 of 293.1
+is 89% of the frame in that phase, not 89% bot AI.** Discriminating check: `aiTotal.max` on that window
+against 260.5. **This is the same container error that produced "13 ms of AI inside a 17 ms frame"** â€” do not
+let it recur in the write-up.
+
+### 8. The rule that would have caught errors before they were made
+
+**When a count tracks a structural feature of the data, the unit is wrong.** Nine events across nine legs.
+Fourteen across eight contiguous windows. Alpha's 207 over 44. Every time the number was in our own output
+and read as strength.
+
+**Four of my nine findings on 2026-07-28 were corrections to my own work, every one a population or a unit
+rather than a technique** â€” `state` versus `raidElapsed`, legs versus windows, events versus episodes, a
+`final` fragment, a `median()` returning the upper of two values. The corpus ones are caught by asking *what
+is the denominator*; these only by asking **what is one row supposed to represent.**
+
+**And the structural point:** Alpha and I made the same class of error all evening and caught almost all of
+them in each other's work rather than our own. **The reviewer's edge does not transfer inward.**
+
+### Open, in the order I would take them
+
+1. **Shoreline with PresentMon, before Streets.** ~5 events per raid at a predictable cost, a testable
+   signature, flush deflation already survived. **A mechanism you can provoke reliably beats a rarer one you
+   cannot.** Precondition: concurrent Framesaver log joined on `qpc`, or the capture answers nothing. Streets
+   settles the *rate* and needs 3â€“4 raids; Shoreline settles the *mechanism* in one.
+2. **`aiTotal.max` against the 260.5 ms frame** â€” cheapest way to learn whether Lighthouse w72 is AI or
+   merely contains it.
+3. **`endToStart[Nâˆ’1]` â‰ˆ `unaccounted[N]` is still the only handle on the out-of-loop family**, the one
+   unnamed mechanism. Do not drop the field.
+4. **Coroutine ownership** â€” insertion-only, so it cannot touch gate 2. Worth doing as the disclosable cost.
+   Wants phase attribution by owning assembly, not a mod-removal A/B, which changes bot behaviour as well as
+   the mod set.
+
+â€” Delta
+
