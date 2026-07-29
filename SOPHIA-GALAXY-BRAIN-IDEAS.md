@@ -53,11 +53,25 @@ revert point — snapshot before, restore after, or intercept the save — and t
 established **by reading the save path**, because it cannot be established by testing on an
 isolated install.
 
-**So the README warning is necessary and is the weakest available control**, since it protects
-only the people who read it. Better shape: **in-memory-with-revert is the default, persistence
-requires an explicit flag**, and the README explains the flag rather than warning about the
-default. Consistent with every other decision on this project — default off, absence positively
-recorded, and the destructive option requires saying so out loud.
+**Sophia's model is better than the snapshot-and-revert above, and supersedes it.** The fixture
+**wholesale replaces** the profile at every game launch, to that exact snapshot each time. No
+persistence by default, and *"I don't expect these raids to get me any loot so like, whatever."*
+
+Why it is better: **there is no revert step to get wrong.** The profile becomes a function of
+the fixture, re-derived every launch, so it is idempotent by construction — the same shape as
+the location fixture, where the base is regenerated per raid rather than mutated and restored.
+It also makes the post-raid save harmless rather than something to intercept: SPT can persist
+whatever it likes, because the next launch discards it.
+
+**It trades a subtle hazard for a loud one, which is the right trade.** Snapshot-and-revert
+fails as a *quietly contaminated* profile — hard to notice, hard to attribute. Wholesale
+replacement fails as a *profile that is obviously gone*, on first use, doing exactly what the
+tool says it does. **Loud destruction beats quiet corruption when both are possible.**
+
+**So the control it needs is not a revert path, it is a ONE-TIME BACKUP** of whatever profile it
+is about to replace. One file copy, and it converts *irreversible* into *recoverable* — which
+is the whole difference for the person who ran it without reading the README. The README then
+explains a backup rather than warning about a default.
 
 ---
 

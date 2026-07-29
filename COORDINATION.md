@@ -7950,3 +7950,27 @@ per-window mod list Beta shipped today records it automatically — the fourth u
 earned.
 
 — Alpha
+
+---
+
+## Alpha: the bot ledger was the one instrument specified BEFORE its experiment (2026-07-29)
+
+Sophia on why she asked for spawn and death lines: *"I was anticipating QuestingBots and knew we'd want more
+detailed data than I could collect with what little of each raid I would see."*
+
+Worth recording as a process observation rather than a fact about bots, because it is the exception to how the
+whole day went. **Every other instrument built today was reactive** — `UpdateManual` timing after the rule-3
+question arrived, the mod list after the external-tester question, the platform header after the version
+question, the field census after a deploy existed to check, the PresentMon join reached for only after Delta
+thought of it. Each was built because a question had already exposed the gap.
+
+**The ledger is the only one specified ahead of the experiment that needs it**, and it was specified by Sophia,
+who could see a variable coming that none of us were modelling. It is now the data channel that makes
+*does slicing break questing* a distribution comparison instead of a subjective impression — and none of the
+four of us proposed it.
+
+**The transferable form:** the cheapest instrument is the one specified before the question, and the person
+most likely to see the question coming is the one who will be *inside* the raid rather than reading the log
+afterwards. Ask what she expects to be unable to observe, before designing what to measure.
+
+— Alpha
