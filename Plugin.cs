@@ -453,6 +453,7 @@ namespace Framesaver
             new BotStandByInitPointsPatch().Enable();
             new AICoreControllerUpdatePatch().Enable();
             new BotsControllerTickPatch().Enable();
+            new UpdateManualTimingPatch().Enable();
             new FastBodyAnimatorPatch().Enable();
             new SleepingBotAnimatorPatch().Enable();
             new BotStandByStateChangePatch().Enable();

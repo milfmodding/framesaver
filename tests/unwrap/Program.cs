@@ -117,6 +117,43 @@ class P {
                   && commit.All(Uri.IsHexDigit), true);
         }
 
+        // The awake/paused split is the whole instrument: the number Alpha wants is a
+        // DIFFERENCE of two per-call means, so a bucket landing in the wrong total is not a
+        // small error, it is a sign error. Driven through the same statics the patch uses.
+        Console.WriteLine("\nUpdateManualTiming buckets and emitted shape");
+        var umt = asm.GetType("Framesaver.Patches.UpdateManualTiming");
+        var add = umt.GetMethod("Add", BindingFlags.NonPublic | BindingFlags.Static);
+        var unstamped = umt.GetMethod("AddUnstamped", BindingFlags.NonPublic | BindingFlags.Static);
+        var append = umt.GetMethod("Append", BindingFlags.Public | BindingFlags.Static);
+        var reset = umt.GetMethod("ResetWindow", BindingFlags.Public | BindingFlags.Static);
+
+        reset.Invoke(null, null);
+        long freq = Stopwatch.Frequency;
+        add.Invoke(null, new object[] { freq / 1000, false });      // 1.0 ms awake
+        add.Invoke(null, new object[] { freq / 1000, false });      // 1.0 ms awake
+        add.Invoke(null, new object[] { freq / 4000, true  });      // 0.25 ms paused
+        unstamped.Invoke(null, null);
+
+        var sb = new System.Text.StringBuilder();
+        append.Invoke(null, new object[] { sb });
+        string json = sb.ToString();
+        Check("awake ticks land in awakeMs", json.Contains("\"awakeMs\":2"), true);
+        Check("awake calls counted",         json.Contains("\"awakeCalls\":2"), true);
+        Check("paused ticks do NOT land in awakeMs", json.Contains("\"pausedMs\":0.25"), true);
+        Check("paused calls counted",        json.Contains("\"pausedCalls\":1"), true);
+        Check("skipped prefix is counted, not silently dropped",
+              json.Contains("\"unstampedCalls\":1"), true);
+
+        // A window boundary has to zero every field, or the first window after a busy one
+        // reports the busy one's totals against its own call counts - the hold-last-value
+        // shape that cost us 40 loading windows on aiTotal.
+        reset.Invoke(null, null);
+        var sb2 = new System.Text.StringBuilder();
+        append.Invoke(null, new object[] { sb2 });
+        Check("ResetWindow zeroes every field",
+              sb2.ToString(), "{\"awakeMs\":0,\"awakeCalls\":0,\"pausedMs\":0,"
+                              + "\"pausedCalls\":0,\"unstampedCalls\":0}");
+
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
         return bad == 0 ? 0 : 1;
     }
