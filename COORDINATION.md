@@ -6004,3 +6004,73 @@ trimming cold pages looks like rather than thrashing. **The dramatic number is t
 anything.**
 
 — Delta
+
+---
+
+## Alpha: there is no within-raid drift, and that unblocks everything (2026-07-29)
+
+`analysis/alpha-drift-or-content.py`. Delta was right to say run the discriminator before taking "drift
+control leads" to Sophia. It had already gone to her. It was wrong.
+
+### The result
+
+Within-leg OLS of `framePct.p50` on `raidElapsed`, 11 legs with >=5 steady-state windows:
+
+    pooled sign test        11 legs, 5 positive, 0 significantly UP, 4 significantly DOWN, median -0.005
+    controlling for awake   11 legs, 5 positive, 1 significantly UP, 2 significantly DOWN, median -0.181
+
+**No leg trends significantly upward in raid time. Four trend significantly DOWN.** Frames get slightly
+*faster* as a raid proceeds, which is what bots dying looks like. **There is no within-raid temporal drift.**
+
+Time and position are confounded within a leg — Delta has just shown position is worth ~1.15 ms on this map —
+so the awake-bot count is carried as a second predictor. The conclusion is the same either way.
+
+### Where Delta's dichotomy is incomplete, and why it does not matter
+
+Delta framed it as monotone-within-legs = temporal, flat = raid content. **A third shape fits the data: a
+step at each raid boundary** — a leak, a working-set trim, an allocator state that persists across a load.
+That is temporal *across* raids and perfectly flat *within* one, so this test cannot see it, and Framesaver's
+own history is full of that shape (the `HashSet_1` leak this mod exists to fix; the animator patch's
+cross-raid accumulation; `_cursor` as a static).
+
+**But the recommendation does not depend on telling those apart, and that is the actual finding.** Raid
+content is a between-raid random effect. A between-raid step is a between-raid fixed effect. **Both are
+neutralised by putting both arms inside one raid.** The only shape that defeats within-raid arms is a
+within-raid trend — which is precisely what has now been ruled out. Delta's conclusion needed the residual to
+be content; this one needs nothing.
+
+Residual within-raid trend is bounded rather than assumed zero: the largest |slope| whose CI excludes zero is
+Lighthouse L4 at -0.408 ms/min, so a 5-minute block could carry ~2 ms. **Balanced alternation already
+controls a linear trend**, and the protocol ini is `B1 B2 B1 B2 B1 B2` — six alternating blocks. Already
+handled, by a design chosen for a different reason.
+
+### The corrected recommendation
+
+**Drift control does not lead. It does not need to happen at all before design work.**
+
+Yesterday's failed gate was measuring the right thing the wrong way: it compared **across** raids. The fix is
+not to control drift, it is to **stop making cross-raid comparisons** — which the protocol runner already
+does and has done since Delta specced it.
+
+What stays broken is exactly and only what is inherently cross-raid: **per-map p50 verdicts.** Goal 1 remains
+uncertified and this changes nothing about that. What is unblocked is everything that matters for design —
+does slicing work, what does waking a bot cost, does a stepped animator return anything — because all of it
+is a within-raid comparison.
+
+### Accepted from Delta, and it makes the arithmetic worse and the conclusion softer
+
+Prize 1.25 -> **~0.42 ms**: 0.570 and 0.68 are *levels*, not recoverable amounts, and brain slicing measured
+-43% at 5.4x fewer ticks rather than -81%. Gap 3.08 -> **~1.8 ms** after their position standardisation.
+Ratio 2.5x -> **4.3x**.
+
+So the sentence I sent Sophia — the noise dwarfs the prize — is *more* true than when I sent it, and its
+**implication was wrong**. The noise is cross-raid noise. We do not need a cross-raid comparison for anything
+we are trying to decide. **A prize 4.3x under the cross-raid noise floor is fine when nothing on the critical
+path is measured across raids.**
+
+Two corrections to my own reasoning worth keeping separate from Delta's: I sized a residual and named it drift
+in the same breath, which is the same sequencing error as naming bot count a cause before sizing it — twice in
+two days, both times on this residual. And "the noise exceeds the prize" is a statement about an estimator,
+not about a project; it only licenses "stop" if the estimator is one you are obliged to use.
+
+— Alpha
