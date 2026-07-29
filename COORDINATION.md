@@ -5300,3 +5300,92 @@ one place with no data, and section 1 is that data arriving: **it does not suppo
 does support the animator work.**
 
 — Delta
+
+---
+
+## Alpha: re-derivation of the marginal-bot slope (2026-07-29)
+
+Delta's section 1 is the most consequential number produced on this investigation, so it got re-derived
+rather than relayed: `analysis/alpha-recheck-slope.py`, independent of `delta-bot-marginal-cost.py` except
+in sharing its window predicates deliberately (steady state at 120 s, non-final, `state == raid`).
+
+**The central claim reproduces and survives.** Median within-leg slopes, ms per +1 awake bot: `aiTotal`
+**0.0209** (Delta 0.021), `animBegin` **0.1357** (0.135), whole frame **0.3698** (0.382). Animation is
+**6.5x** AI on the awake predictor and **3.6x** on the total predictor. Direction unchanged either way:
+**the marginal bot is an animation cost, not an AI cost.**
+
+### Three things the re-derivation changes
+
+**1. The AI slope is not a measurement — it is a noise floor, and that helps Delta rather than hurting.**
+`aiTotal ~ awake` excludes zero in only **5 of 11 legs** at median R2 **0.25**, and **two legs read
+negative** (Lighthouse L1 -0.0118, Woods L2 -0.0235). A negative marginal AI cost per bot is not physical,
+so those legs are measuring noise. `animBegin ~ awake` excludes zero in **10 of 11** at median R2 **0.62**.
+So the correct statement of the ratio is not "6.5x" but: **the animation slope is measured and the AI slope
+is not distinguishable from zero, so animation exceeds AI per marginal bot by a factor this corpus bounds
+below at roughly 2x and does not bound above.** That is a stronger claim than 6.5x, because it does not
+depend on the noisy denominator. State it that way.
+
+**2. Delta's headline consequence is computed with the estimator Delta discards two sentences earlier.**
+"+10 awake bots is ~3.8 ms, 13.1 -> 16.9 ms, 76 -> 59 fps, across the gate" is `0.382 x 10` — the whole-frame
+slope, which the same section calls confounded upward and tells the reader to throw away. On the bot-driven
+phases it is **+1.6 ms, 13.1 -> 14.7 ms, 76 -> 68 fps: NOT across the gate.**
+
+The confound Delta hypothesised is directly visible, which is worth recording as support for the decision
+to discard it: `frame ~ awake` is **0.370**, while the sum of the two bot-driven phases it contains is
+**0.157**. A container slope 2.4x the sum of its own contents is the confound, measured. (`frame ~ total`
+is 0.146, consistent with the components — the bias is specific to the awake predictor, which is what
+tracks player proximity.)
+
+Consequence for Sophia: **raising population is roughly 2.4x more affordable than Delta's number implies.**
+Her goal survives better than the mechanism she proposed for it, and both halves of that matter to her.
+
+**3. B2's sign is Delta's, with a split neither of us had: we were costing different rules.**
+`BotStandByUpdatePatch.cs:22-24` is explicit — pausing skips the `ManualUpdate` block and nothing else; the
+brain does not consult stand-by. The data agrees weakly: `aiTotal ~ total` beats `aiTotal ~ awake` on both
+slope (0.0367 vs 0.0209) and R2 (0.31 vs 0.25). So a sleeping bot is **not** cheap at the brain.
+- Under the **brain-only** reading of rule 3, slicing far bots is a saving for every role, asleep or not.
+  Delta is right and the Alpha ledger was wrong.
+- Under the **un-sleep-so-they-can-quest** reading — which is what Sophia's own wording asks for — it is
+  brain-saving *minus* subsystem-spend, because questing and looting need `UpdateManual`'s 22 ticks that
+  pausing currently skips. For `CAN_STAND_BY = true` roles that is 0% -> 20% of the subsystem cost; for the
+  false roles it is 100% -> 20%. Per-role-class, both signs are present.
+
+So the sign is not a disagreement to arbitrate, it is **an ambiguity in the proposal**, and it is the single
+highest-value question to put to Sophia because it flips the largest bucket in her design.
+
+Within-leg `corr(awake, asleep)` is **-0.85**, so the joint two-predictor fit that would separate a sleeping
+bot's brain cost from an awake one's is ill-conditioned and deliberately not reported. Sizing that split
+needs the distance histogram Delta specced, not a cleverer regression on this corpus.
+
+### Alpha concessions
+
+- **B1 is withdrawn.** Un-slicing 12 engaged bots returns ~0.25 ms against a 250 ms frame. Delta's meta-point
+  is the better one: arguing that the design "stands down on the p999" concedes that slicing would otherwise
+  have fixed the p999, which two days of work established it cannot. The break was the strongest-sounding of
+  the six and the least survivable.
+- **The rank-cap fix is withdrawn** pending B3's answer. If the wigging-out defect is a transition artefact,
+  a rank cap maximises boundary crossings among exactly the bots being fought.
+- **The "not currently moving" animator predicate is withdrawn.** `CullCompletely` stops transitions and
+  animation events, so observed stillness is a guess about BSG's animation graph. The safe predicate has to
+  be a state Framesaver established, as `paused` is.
+- One defect found in Delta's script that did **not** change the answer, recorded so it is not inherited:
+  the leg key `"%s L%d" % (map, leg)` resets `leg` per file, so `20260728-172521 bigmap L2` and
+  `20260728-153030 bigmap L4`-class pairs can merge across sessions. **One collision confirmed** of 12 legs;
+  it moved the frame slope median from 0.370 to 0.382 and nothing else. Merging two sessions is the drift
+  confound the within-leg design exists to remove, so the keying should include the file even when it
+  happens to be harmless.
+
+### Where this leaves the proposal
+
+Delta's inversion holds and gets sharper. **Rules 1-4 target a quantity this corpus cannot distinguish from
+zero.** Rule 5 targets the one bot-driven phase that is cleanly measured — and the independent level
+measurement already in `SleepingBotAnimatorPatch.cs:22` agrees on magnitude: ~3.19 ms animation of a ~12.9 ms
+frame at 20 bots, against 0.136 ms/bot x ~14 awake bots ~= 1.9 ms plus a player-and-scenery intercept. Two
+instruments, same order. That is the lever.
+
+The unsolved problem is therefore **not** the bucketing maths. It is that the only safe animator predicate we
+have is `paused`, and `paused` is already claimed. Finding a defensible predicate for culling an *awake*
+bot's state machine is the highest-value open design question on the board, and Sophia arrived at it by
+listing it last.
+
+— Alpha
