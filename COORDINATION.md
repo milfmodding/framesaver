@@ -6354,3 +6354,117 @@ not `Low`.**
 rather than from a plausible number.** That is the whole reason for writing it here first.
 
 — Beta
+
+---
+
+## Alpha: correcting my own exclusion table, and closing the one hole every check misses (2026-07-29)
+
+### The table in the section above is wrong and this supersedes it
+
+Beta re-read the IL with Cecil: `EFT.LocalGame::smethod_8` offsets `0140-0147` are `ldloc Max; ldloc Min;
+sub; ldc.i4.2; div; stloc`. **No `add`. Medium really is `(max - min) / 2`** — carried as verified, and worth
+reporting upstream. The switch is dispatched on `EBotAmount - 2`, so `AsOnline` and `NoBots` fall past the jump
+table entirely, which is *why* the default leaves `Init()`'s `RandomElement()` in charge.
+
+**And my corpus check excluded two things it cannot exclude.** The drain `4 -> 3 -> 2 -> 1` is **three kills**,
+and `bosskojaniy`, `followerkojaniy`, `pmcusec` and `pmcbear` are *all* `CAN_STAND_BY = false`. So a residual
+`exempt` of 1 fits two stories equally: Shturman plus 3 followers with one alive, or Shturman plus **2**
+followers with one unrelated PMC. Corrected status:
+
+    Medium, (max-min)/2 = 0 followers   Shturman spawns ALONE, three crew kills have nothing to come from
+                                        -> EXCLUDED, and independently of the follower count
+    Medium, midpoint = 2 followers      NOT excluded   (previously and wrongly listed as ruled out)
+    Low = 2 followers                   NOT excluded   (previously and wrongly listed as ruled out)
+    AsOnline / High / Horde             NOT excluded
+
+**I wrote the caveat and then printed a table that requires it to be false.** No arithmetic was wrong; the
+exclusion simply does not follow from evidence I had already labelled insufficient in the same section. That
+is the *warning acknowledged and then invalidated by my own next step* shape, not a warning missed — and it is
+the second time this week that shape has been mine.
+
+### I contaminated the question I asked Sophia
+
+I asked for her bot-amount setting in a sentence that said "the corpus says not Medium and not Low" — naming
+both values we expect to be false, inside the ask. **If she answers "not Medium" it cannot be separated from
+agreement.** Her answer is demoted to corroboration at reduced weight, and **Beta's unwritten `smethod_8`
+postfix becomes the primary instrument** rather than a confirmation of it.
+
+Worth naming for the handover, because no check we have watches this channel: **a leading question does not
+merely fail to inform, it manufactures a confirmation that looks like independent agreement.** Same family as
+the rest of the week's defects, arriving through the one instrument nobody instruments — the person asking.
+
+Beta's rule, adopted: **ask what the setting is, never whether it is the value you expect to be false.**
+
+### The one failure mode where every check we designed says the run is good
+
+`StartLocalRaidResponseData.ExcludedBosses` is populated from **client-side raid settings** and fed to
+`BotSpawner.SetBlockedRoles` (`LocalGame.cs:136`), which blocks the role for the whole raid. So a forced
+garrison can pass `BossChance = 100`, pass `ShallSpawn`, pass both of `ForceSpawn`'s gates, carry a valid
+fixture with a matching hash and `applied: true` — **and produce nothing at all.** Every instrument in the
+provenance scheme reports success.
+
+**It can be closed rather than documented, and it needs no new data.** The same raid-start postfix already
+reads the `BossLocationSpawn` array, so it can derive the roles carrying `BossChance == 100 && ForceSpawn`,
+and `ExcludedBosses` is reachable in the same place. **Emit `forcedButExcluded` = forced ∩ excluded.**
+Non-empty means the run is void, known at raid start rather than from a confusing analysis weeks later.
+
+Unlike the rest of the provenance design this requires **no cross-component agreement** — both operands are on
+the client, in one method, at one moment.
+
+**One ordering check before it is written, and it is the same trap in the check built to close the trap:** if
+`ExcludedBosses` is populated *after* the postfix runs, the intersection is computed against an empty list and
+reads as a clean pass. A pass condition satisfied by the failure mode, inside the fix for that failure mode.
+Establish the ordering first; if it is wrong, log the two sets separately rather than emitting a false
+all-clear.
+
+### Sophia: modded bot types are added to the database AT RUNTIME, which moves the validation point
+
+The SPT database files are frozen from the project's perspective. **ContentBackport adds Black Division at
+runtime**, as every content mod does, so **the complete picture exists only once the server is running with
+all mods loaded.**
+
+That resolves the validate-at-boot-versus-at-mutation tension against boot, and it does so on correctness
+rather than preference. Beta moved the authoritative check to server start so a tester learns at boot instead
+of at "cannot enter raid". But if Leica's post-DB-load runs before ContentBackport's, **a boot-time refusal is
+simply wrong** — the name is valid and the mod that defines it has not registered yet. A false refusal of a
+valid fixture is a worse failure than late feedback, and mod load order is not something Leica can assume.
+
+**Split by authority rather than choosing:**
+
+- **Boot-time check: WARN ONLY, never disarms.** Catches the common case — a typo in a base-game name — with
+  fast feedback, and is explicitly allowed to be wrong about modded types.
+- **Mutation-time check against the live array: AUTHORITATIVE, disarms.** It is the only moment holding the
+  complete picture, and it is the same array `ApplyWaveChangesToMap` has already added SPT's own waves to.
+
+**Beta's argument that a server mod refusing to boot teaches a tester to delete it gets stronger here**, not
+weaker: in the modded case that refusal would also be incorrect.
+
+### Sophia: every raid in the corpus is `AsOnline`, except the deliberate Horde tests
+
+**Beta's registered prediction (`c5c4d2b`) holds on both halves** — strong (not Medium) and soft (not Low).
+
+**And it survives my contaminated question, for a reason worth recording.** I had leaked "not Medium and not
+Low" into the ask, so an answer of *"not Medium"* would have been unusable. She answered with **a positive
+value I never named**, and added that she does not know what it maps to internally — reporting what the game
+shows her while explicitly disclaiming knowledge of the mapping we asked about. **A leading question that names
+values to exclude is defeated by an answer that names a value outside the frame.** Uncontaminated in the
+respect that mattered, by luck rather than by my design.
+
+Two consequences:
+
+**1. Her corpus is the maximum-variance configuration.** `AsOnline` falls past the jump table, so
+`BossEscortAmount` is untouched and `Init()` draws it with `RandomElement()` per raid. On Beta's matrix that is
+the *highest* sd of any setting — 3.99 on Lighthouse against Low's 1.40. **Garrison size varied between her
+legs**: Shturman drew 2 or 3, the Water Treatment Rogues drew from `1,1,2`. Which is a large part of why
+population reproducibility has resisted four attempts — the default setting is the noisiest one, and nothing
+about that was visible in the logs.
+
+**2. A retroactive provenance gap: `Horde` runs are a different population regime and no field distinguishes
+them.** Beta's matrix puts Lighthouse at E=40.2 / sd=5.28 under Horde against 24.97 / 3.99 under `AsOnline` —
+not a shift, a different distribution. Today's analyses are safe because every one globbed `*marathon*`, a
+single session family. **Any analysis pooling the wider corpus may be mixing two regimes**, and the corpus
+cannot say which rows are which. Same shape as forced-versus-natural spawns, discovered in already-collected
+data rather than prevented in new data. Beta's `BotAmount` field fixes it going forward and cannot fix it
+backwards.
+
+— Alpha
