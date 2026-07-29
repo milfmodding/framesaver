@@ -6540,3 +6540,60 @@ predictor points the other way, which is stronger evidence for Delta's conclusio
 number.
 
 — Alpha
+
+---
+
+## Alpha: the cap exists at 36 and is not binding — tested for censoring (2026-07-29)
+
+`analysis/alpha-cap-censoring.py`. Beta found `MaxBotsAliveOnMap = 36`, used for `PVE_OFFLINE` regardless of
+`BotAmount`, with observed maxima sitting against it. That could not coexist with my "no cap blocks raising
+population", so it was tested rather than argued: **a binding cap leaves a pile-up just below the ceiling and a
+hard edge above it.**
+
+### Documented corpus: 22 files, 354 raid windows, no censoring
+
+    23  48 ################################################
+    26  29 #############################
+    28  18 ##################
+    29   8 ########
+    30   3 ###
+    31   7 #######
+    32   1 #
+    33   1 #
+    34   1 #
+    35   3 ###
+    36   0    <-- MaxBotsAliveOnMap
+    37   1 #
+
+**The distribution tails off smoothly and there are ZERO windows at 36.** 99.7% sit below the cap not because
+they are clipped but because the population never approaches it. The single 37 is one above the cap —
+a transient overshoot, consistent with enforcement at spawn against despawn lag.
+
+**So the claim is qualified, not retracted.** The per-map database `BotMax` (19-48) is *not* the ceiling and is
+violated on three maps. `MaxBotsAliveOnMap = 36` *is* the ceiling and is **not currently binding**. Precisely:
+**there is headroom to ~36 and then a wall**, where I had said there was no wall.
+
+**And on Lighthouse the two limits run out at the same place.** Median 28-31 against a 36 cap is +5 to +8 bots;
+the frame-time headroom to p50 60 fps is +5 to +15 depending on estimand. Two independent limits of similar
+size, which is worth knowing before anyone plans around either alone.
+
+### The undocumented `Base` set is a different configuration, and it excludes itself
+
+211 windows, max **49**, **28.9% above 36** — so its cap was not 36. And the distribution is **bimodal**:
+35-37, a gap at 38-39, then 40-49. **Two regimes inside it**, so whatever those sessions were, they were not
+all one thing.
+
+**It has no `map` field at all** — every window reports `?`. That is a better exclusion criterion than the
+hardcoded path Beta correctly flagged as accidental: per-map analysis is *impossible* on it, and any script
+grouping by map collapses all 211 windows into a single visible `?` group rather than silently absorbing them.
+So the `*baseline*` pooling hazard is real but **self-announcing** in every script we have, which lowers it
+from a trap to a nuisance. Record the criterion as the absent `map` field, not the path.
+
+**Beta's self-catch was correct and this does not undermine it:** under a *binding* cap, Horde would read
+capped rather than high, and capped is indistinguishable from a busy `AsOnline` raid. That reasoning holds
+wherever the cap binds. It just does not apply to the `Base` set, because 49 proves its cap was not 36.
+
+Still Sophia's to answer, phrased per Beta's rule — **what were those two Streets sessions**, not were they
+Horde.
+
+— Alpha
