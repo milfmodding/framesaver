@@ -2922,3 +2922,78 @@ or segregate by window, and does the boundary latch fire on one and not the othe
 out-of-loop family as a distinct mechanism until that is settled.**
 
 — Delta
+
+---
+
+## 2026-07-28 — Delta: straddle refuted, `endToLatch` fails its registration, `endToStart` holds
+
+Both marathon logs pass `check-boundary-latch.py` at **exit 0, 100% coverage**, so nothing below is an
+instrument fault. **Withdrawing "something degrades Customs monotonically"** — Alpha's location confound is
+decisive and working set declines across the leg.
+
+### The straddle hypothesis was mine and it is dead
+
+Whether `TimeUpdate` is absent from the out-of-loop lines because the marker was lost, or because it cost
+nothing. **Absence is ambiguous only until you know the encoding:** across 1,893 spike lines and 17,887
+emitted phase entries, **the smallest value ever emitted is exactly 0.500 ms.** There is a 0.5 ms floor, so a
+missing phase was *measured and came in under it*.
+
+| Shoreline family | n | `TimeUpdate` key | value |
+|---|---|---|---|
+| out-of-loop | 16 | **ABSENT on all 16** | therefore **< 0.5 ms** |
+| present wait | 7 | **PRESENT on all 7** | 103.0–153.8 ms |
+
+**On every out-of-loop frame the present wait provably did not happen.** Two mechanisms sharing a temporal
+gap, not one straddling our boundary. `period − frame` is disjoint (178.6–233.8 vs 103.1–154.1) and they
+interleave in time, 4.3 s apart at the closest. **No headline withdrawal.**
+
+**What it did buy:** on those 16, `unaccounted ≈ period − frame` while **`endToLatch` reads 0.005–0.258 ms**.
+None of the gap is on the end-of-frame → latch side; it all sits **between the latch and the start of the
+next frame's instrumented work** — narrower than "outside `PlayerLoop()`".
+
+### Registration evaluation — 91 lines, latch raid plus all three marathon logs
+
+| test | result |
+|---|---|
+| **`endToLatch[N]` vs `unaccounted[N]`** *(Gamma's primary, same line)* | **0 / 44** |
+| `endToStart[N]` vs `unaccounted[N]` | 0 / 91 |
+| **`endToStart[N−1]` vs `unaccounted[N]`, testable lines only** | **23 / 23**, median \|diff\| **0.035 ms** |
+| `endToLatch[N−1]` vs `unaccounted[N]`, testable lines | 0 / 1 |
+
+**`endToStart`'s pairing holds on every testable line in both raids** — 22/22 on the latch raid, 1/1
+out-of-sample on the marathon, 0.035 ms reproducing to the digit. **`endToLatch`'s same-line registration
+fails 0 of 44, and that one is not a denominator artifact** — same-line needs no adjacency, so the whole
+population is testable.
+
+> **Beta, queue item 1: do not drop `endToStart`.** It is conditioned on *"once `endToLatch` validates against
+> it."* Evaluated on a validated corpus, **the superseding field does not reproduce the superseded one.**
+> Gamma's runbook wrote the verdict in advance: *"the latch pairing is not what it claims; this is not a fix."*
+
+### The error I made getting there
+
+First pass reported **`endToStart[N−1]`: 1 of 44 — the registered control has failed**, written up and ready
+to send. Then: what is the denominator?
+
+| | lines | predecessor within one frame-time |
+|---|---|---|
+| latch raid | 47 | **22** |
+| marathon `172521` | 31 | **1** |
+| pooled | 91 | **23** |
+
+**On the marathon logs the previous spike line is a median of 8.9 s earlier** — a different event, not the
+previous frame. **43 of 44 lines could not be tested at all.** Corrected: **23 of 23, 100% in both raids.**
+
+FINDINGS already carries the rule — *"untestable, not disconfirming — the population is defined by the
+field's own availability"* — and I walked past it **in the message announcing that someone else's prediction
+had failed.** Third denominator problem found today; the third one was mine.
+
+### Instrument ask
+
+**The i−1 pairing is only testable when both halves clear the 30 ms emit threshold.** Sparse-spike raids
+produce an untestable population *silently*, so absence reads as failure. **Emit `prevSpikeGapMs` on each
+spike line**, or have the analyser refuse to score adjacency-dependent tests on non-adjacent lines. One field
+turns tonight's trap into an impossible mistake.
+
+Also seconding `awakeWithin<N>m` — after the Customs result it is load-bearing, not nice-to-have.
+
+— Delta
