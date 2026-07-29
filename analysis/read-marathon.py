@@ -169,16 +169,48 @@ def control_windows(leg):
     return [w for w in eligible(leg) if not sliced(w)]
 
 
-def leg_is_clean(leg):
-    """No protocol installed and slicing off on every window of the leg.
+def armed(w):
+    """Has a protocol STEP been entered on this window?
 
-    Scored PER LEG rather than per run. The run-level version failed the whole
-    marathon when any one leg carried an ini, which would have made three clean
-    legs' goal-1 verdicts unquotable because of a fourth. The gate was not wrong
-    - it answers "was this a clean sweep" - it was being asked of a run that is
-    deliberately not one.
+    NOT `protocol is None`. `ProtocolRunner.ResetForRaid()` calls `Load()`, so
+    `Loaded` is true on every raid from the moment the ini is on disk, and
+    Telemetry emits the `protocol` object whenever `Loaded`. Every window of
+    every leg therefore carries `protocol: {step: 0, steps: 7, arm: null}` -
+    including legs that never pressed the key. Testing for the object's presence
+    marks the entire run as protocol legs and scores nothing.
+
+    `arm` is null until the first press applies a step, so it is the field that
+    actually distinguishes "an arm was applied here" from "the file was on
+    disk". Delta found the chain; the substitution is theirs.
+
+    Same family as the BoxedValue leak rotated ninety degrees: that one leaks
+    forward through a value into later legs, this one leaks sideways through a
+    load flag into legs that never used the file. Both are "installing a thing
+    changes runs that do not use the thing."
     """
-    return all(w.get('protocol') is None and not sliced(w) for w in leg['w'])
+    return (w.get('protocol') or {}).get('arm') is not None
+
+
+def clean_windows(leg):
+    """Steady-state windows with no arm applied and slicing off.
+
+    PER WINDOW, NOT PER LEG, and the difference is the whole Lighthouse verdict.
+    Route 2 presses three times in the last ten minutes of a forty-minute leg,
+    so a leg-level test throws away thirty clean minutes of the map we reordered
+    the route to measure. The contaminated part of a leg is the part after the
+    first press; the rest is an ordinary clean leg and scores like one.
+
+    Granularity has now been wrong in both directions in one evening - per run
+    when it wanted per leg, then per leg when it wanted per window. The question
+    to ask of any exclusion is what the smallest unit carrying the defect is,
+    and it is almost never the unit that is convenient to loop over.
+    """
+    return [w for w in eligible(leg) if not armed(w) and not sliced(w)]
+
+
+def leg_is_clean(leg):
+    """True when no window of the leg had an arm applied or slicing on."""
+    return all(not armed(w) and not sliced(w) for w in leg['w'])
 
 
 def fps(ws):
@@ -224,7 +256,14 @@ def main(argv):
     #
     # Split by whether the window can explain itself: slicing with a protocol is
     # an arm, slicing without one is contamination.
-    unexplained = [w for w in rows if sliced(w) and w.get('protocol') is None]
+    # `not armed(w)`, NOT `protocol is None` - and this is the site where the
+    # difference disables a check rather than merely mislabelling one. Once the
+    # ini is on disk `protocol` is never None, so the `is None` form makes this
+    # branch unreachable and the inherited-slicing detector goes silent at
+    # exactly the moment a protocol run makes inheritance possible. The hazard
+    # it exists for - a 0.1 left over from a previous run - is unreachable
+    # precisely when it is most likely.
+    unexplained = [w for w in rows if sliced(w) and not armed(w)]
     if unexplained:
         fails.append('%d window(s) have slicing on with no protocol to explain it '
                      '- probably inherited from a previous run, and every map '
@@ -238,14 +277,18 @@ def main(argv):
     print('3. protocol            %s'
           % ('null throughout' if protos == {None}
              else sorted((str(p) for p in protos), key=str)))
-    dirty = [i + 1 for i, l in enumerate(ls) if not leg_is_clean(l)]
+    dirty = [(i + 1, sum(1 for w in l['w'] if armed(w) or sliced(w)), len(l['w']))
+             for i, l in enumerate(ls) if not leg_is_clean(l)]
     if dirty:
-        print('                       legs %s carry a protocol or slicing and are '
-              'EXCLUDED from' % ', '.join(str(d) for d in dirty))
-        print('                       goal-1 scoring and from coverage. Their '
-              'control-arm windows are still')
-        print('                       usable for the session-age comparison, and '
-              'nothing else on them is.')
+        print('                       %s'
+              % '; '.join('leg %d: %d of %d windows armed or sliced' % d
+                          for d in dirty))
+        print('                       Those WINDOWS are dropped from goal-1 '
+              'scoring, not the whole leg -')
+        print('                       the clean part of a leg scores normally. '
+              'Slicing-off windows,')
+        print('                       armed or not, still serve the session-age '
+              'comparison.')
 
     # ---- 2. the session-age control --------------------------------------
     seen = {}
@@ -334,9 +377,9 @@ def main(argv):
 
     # ---- 3. the scoreboard ----------------------------------------------
     print('\n5. per leg, steady state only (>= %.0f s into the leg)\n' % STEADY_S)
-    print('%-4s %-19s %-5s %-9s %-8s %-11s %-9s %s'
+    print('%-4s %-19s %-5s %-9s %-8s %-11s %-9s %-14s %s'
           % ('leg', 'map', 'n', 'p50 fps', 'target', 'verdict', 'worst ms',
-             'awake min/med'))
+             'awake min/med', 'dropped'))
     # Which maps the scoreboard actually CALLED, so section 7 cannot report a map
     # as covered that section 5 refused a verdict. Lighthouse did exactly that on
     # 2026-07-28: 121 s of raid, one steady-state window, "n<3, no call" in the
@@ -349,17 +392,17 @@ def main(argv):
         if not e:
             print('%-4d %-19s %-5d %s' % (i + 1, name, 0, 'no steady-state windows'))
             continue
-        if not leg_is_clean(l):
-            # Not scored at all, rather than scored and flagged, AND THE NUMBER IS
-            # NOT PRINTED. A p50 pooled across both arms of an A/B is not this
-            # map's frame rate under any config, so printing one beside a caveat
-            # would publish a figure whose only defence is that someone reads the
-            # footnote - and the Lighthouse 65.8 taught us that a number on the
-            # page outlives the qualifier next to it. The control-arm count is
-            # shown because that is what the drift comparison above actually used.
-            print('%-4d %-19s %-5d %-9s %-8s %-11s'
-                  % (i + 1, name, len(e), '--', '--',
-                     'protocol leg, %d control-arm win' % len(control_windows(l))))
+        # SCORE THE CLEAN WINDOWS ONLY. The armed and sliced ones are dropped
+        # rather than pooled: a p50 mixing both arms of an A/B is this map's
+        # frame rate under no config, and "printed with a caveat" is how the
+        # Lighthouse 65.8 reached three documents. If nothing clean survives,
+        # the leg gets no number at all rather than a qualified one.
+        e = clean_windows(l)
+        dropped = len(eligible(l)) - len(e)
+        if not e:
+            print('%-4d %-19s %-5d %-9s %-8s %s'
+                  % (i + 1, name, 0, '--', '--',
+                     'no clean windows (%d armed or sliced)' % dropped))
             continue
         f = fps(e)
         med = st.median(f)
@@ -374,10 +417,15 @@ def main(argv):
         mark = ''
         if exposed_from is not None and (i + 1) >= exposed_from:
             mark = '  *session-age untested'
-        print('%-4d %-19s %-5d %-9.1f %-8.0f %-11s %-9.1f %d / %.0f%s'
+        # The dropped count is printed on every row, not only on rows where it is
+        # non-zero. A column that appears when there is something to hide teaches
+        # the reader to skim it; a zero in every clean row is what makes the one
+        # non-zero legible.
+        print('%-4d %-19s %-5d %-9.1f %-8.0f %-11s %-9.1f %-14s %-8s%s'
               % (i + 1, name, len(e), med, target, verdict,
                  st.median(mx) if mx else float('nan'),
-                 min(awake), st.median(awake), mark))
+                 '%d / %.0f' % (min(awake), st.median(awake)),
+                 '%d armed' % dropped if dropped else '-', mark))
 
     # ---- 4. the exemption floor, read RELATIVELY --------------------------
     #

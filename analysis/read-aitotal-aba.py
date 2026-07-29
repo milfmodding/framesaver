@@ -113,11 +113,23 @@ def main(argv):
         print(__doc__)
         return 2
 
-    rows = [w for w in load(argv[1:]) if w.get('protocol') is not None]
+    # SELECT ON `arm`, NOT ON THE PRESENCE OF THE `protocol` OBJECT.
+    # ProtocolRunner.ResetForRaid() calls Load(), so `Loaded` is true on every
+    # raid once the ini is on disk, and Telemetry emits `protocol` whenever
+    # `Loaded`. Every window of every leg carries {step: 0, steps: 7, arm: null}
+    # including the three legs that never pressed the key - so selecting on the
+    # object would pull the whole marathon into an ABA that only happened on one
+    # leg, and the "no ABA here" branch below could never fire. `arm` is null
+    # until a press applies a step. Delta found the chain.
+    rows = [w for w in load(argv[1:]) if arm_of(w) is not None]
     if not rows:
-        print('no window carries a protocol - there is no ABA in these files.')
-        print('That is not a null result; it is an absent one. If she pressed the')
-        print('key, check that framesaver.protocol.ini was installed at launch.')
+        print('no window carries a protocol ARM - there is no ABA in these files.')
+        print('That is not a null result; it is an absent one. Check in this order:')
+        print('  1. was framesaver.protocol.ini on disk at launch (protocol object')
+        print('     present at all, with arm null)? If absent entirely, the ini was')
+        print('     not installed and no press could have done anything.')
+        print('  2. did a press register? Advance() logs on every press, so the')
+        print('     BepInEx log beside this ndjson answers it directly.')
         return 1
 
     keep = [w for w in rows if eligible(w)]
