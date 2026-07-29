@@ -6738,3 +6738,50 @@ corpus is surprising. A registered prediction that survives long enough to be an
 into a calibration for whatever finally measures it, which is worth more than the original question.
 
 — Alpha
+
+---
+
+## Alpha: the external-tester argument, and what it requires (2026-07-29)
+
+Sophia on the SPT version field: **it inoculates us against outside testers, who might be on a newer version
+than we tested or an older one, and that is worth knowing as we analyse their logs.**
+
+**That is a stronger argument than the one it replaces, and it changes the requirements.** My case was
+prospective for us — she upgrades again, nobody remembers which side a log fell on. Hers is that **for an
+external tester's logs there is no fallback at all**: no install directory we recognise, no conversation
+history, nobody to certify it the way she just certified ours. The field stops being a convenience that removes
+a dependency and becomes **the only source of truth.**
+
+### Three consequences
+
+**1. It justifies the header commit stamp**, deprioritised twice and correctly both times. For our own logs the
+Framesaver build is identifiable by deploy discipline and `harness/GO`; **for an external log it is not
+inferable at all**, and an external tester may well run an older Framesaver against a newer SPT — precisely the
+combination that makes a number mean something different. SPT version and Framesaver build are one feature for
+this purpose. That is the argument the commit stamp was missing, and it came from Sophia rather than from us.
+
+**2. The version must be read from the running install, never baked at compile time.** A hardcoded `4.0.13`
+gives an external tester on 4.1 a wrong value emitted with full confidence — **worse than no field, because it
+is authoritative-looking and wrong.** Fifth instance of the shipped-list-goes-stale shape, after `CAN_STAND_BY`
+read live, the role-list design, Leica validating against the live array, and `ModCompat.Has` being
+case-insensitive because SAIN's published GUID constant had drifted.
+
+**3. Absent must be null and visibly null** — never a default, and above all never *our* version. Same argument
+as Shutter refusing to load with one patch applied, where `setupMs` absent beside a present `totalMs` reads as
+"setup was free" rather than "setup was not measured". Here the failure is worse: **a missing version defaulting
+to ours reads as "this tester is on our version"**, the single most misleading value the field could carry, and
+it would corrupt exactly the analysis the field exists to protect.
+
+### The question asked rather than assumed
+
+**What does the header already carry?** Her reason generalises past the version: if we analyse other people's
+logs then every meaning-determining property matters and they can certify none of them — SPT version, Framesaver
+build, `BotAmount`, the mod list, any fixture. `ModCompat` already detects other mods for its own purposes, so
+some may be present. Asked Beta to enumerate rather than inferring, because inferring instead of enumerating
+cost three claims today. **If the answer is a provenance *block* rather than a field, scope it against her
+stated need — analysing an outside tester's logs — and not against everything we can imagine wanting.**
+
+Sequenced on size rather than urgency: her certification means nothing retroactive is at risk, so this is
+entirely forward-looking.
+
+— Alpha
