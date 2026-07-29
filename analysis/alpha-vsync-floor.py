@@ -13,8 +13,15 @@ Using framePct.p50 (the gate's estimator) and frame.min (the strongest floor tes
 a single fast frame below a budget excludes that cap, where a median need not).
 """
 import json, glob
+
+# 240 Hz was here and is deliberately gone. Beta flagged that excluding it rested on a
+# single frame.min window, which is thin in the way that matters - one measurement, in
+# the field most exposed to a line-pairing slip. The better answer than a second frame
+# is that it needs no exclusion at all: our p50s run 5-18 ms, so only 60 through 165
+# can pin anything in that range, and a 240 Hz cap at 4.17 ms cannot explain a single
+# observation we hold. Removing a candidate is cheaper than defending it.
 CAND = [(60, 1000/60), (75, 1000/75), (90, 1000/90), (120, 1000/120),
-        (144, 1000/144), (165, 1000/165), (240, 1000/240)]
+        (144, 1000/144), (165, 1000/165)]
 p50s, mins = [], []
 for path in sorted(glob.glob(r"F:/SPT/SPT4.0.13/BepInEx/plugins/Framesaver-logs/framesaver-*.ndjson")):
     for ln in open(path, encoding="utf-8-sig", errors="replace"):
