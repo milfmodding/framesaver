@@ -160,9 +160,34 @@ def legs(rows):
 
 
 def eligible(leg):
+    """Steady-state, populated, whole, and NOT the end-of-raid fragment.
+
+    `not d.get('final')` is new and it is a no-op on every log we own - all 27
+    final windows already fail `bots.total > 0`, because the raid has ended and
+    the controller is gone. It is stated anyway, because relying on that is
+    relying on an accident: the filter that was actually excluding fragments was
+    never the one anybody thought was doing it.
+
+    FIVE WRONG NUMBERS CAME OUT OF FRAGMENT WINDOWS ON 2026-07-28. `w38` gave
+    Lighthouse a 54.6 fps gate straddle three separate ways - a median that
+    returned the upper of two values, a loose filter that admitted it, and a
+    census that read zero - and `w23` put a 392 ms frame into the steady-state
+    goal-2 count twice, mine and Alpha's, until Delta caught it.
+
+    They are dangerous for a specific reason rather than by bad luck: a fragment
+    is SHORT, so its per-window statistics are drawn from few frames, but its
+    worst frame is a real worst frame. That biases it toward looking interesting
+    rather than toward looking broken - 54.6 fps and 392 ms are both plausible
+    numbers, and a wrong answer that looked absurd would have been caught by any
+    of the four filters that missed these.
+
+    Delta's rule from the same episode: redundancy without an owner is not
+    defence in depth, it is four unverified assumptions with one output.
+    """
     return [d for d in leg['w']
             if (d.get('raidElapsed') or 0) >= STEADY_S
             and (d.get('bots') or {}).get('total', 0) > 0
+            and not d.get('final')
             and (d.get('framePct') or {}).get('p50')]
 
 
