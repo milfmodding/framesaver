@@ -6215,3 +6215,79 @@ when `!isPVEOffline`. Not what Sophia wants — she wants selective — but the 
 all-or-nothing version of this switch, and it should be named rather than reinvented.
 
 — Alpha
+
+---
+
+## Alpha: my PMC claim was wrong, and the check I asked for is what killed it (2026-07-29)
+
+`analysis/alpha-total-variance.py`.
+
+**Retracted: the six `pmcUSEC`/`pmcBEAR` entries in Lighthouse's database are not a variance term, because
+they never reach a raid.** `pmc.json` carries `removeExistingPmcWaves = true` — verified in Sophia's own
+config — and `PostDbLoadService` strips every `BossLocationSpawn` named `pmcUSEC` or `pmcBEAR` from every
+location at server start, before `GenerateLocationAndLoot` ever clones. **The array existing was not evidence
+it was read**, which is the caveat I attached to the claim myself and the reason Beta was asked to check it
+before either of us leaned on it. The check fired on the person who wrote it.
+
+### The conclusion survives and the real term is larger
+
+SPT deletes those and injects its own from `PmcConfig.CustomPmcWaves`, via `PmcWaveGenerator.ApplyWaveChangesToMap`
+— **called inside `GenerateLocationAndLoot`, before the return.** Verified counts: **Lighthouse 14 waves,
+Streets 12**, chances spanning 50 to 100, escort lists as wide as `0,0,0,1,1,1,1,1,2,2,2,2,3`. Beta models
+~24.97 PMCs per Lighthouse raid, sd ~3.99.
+
+**Beta flagged their own unit mismatch and were right to:** that sd is PMCs *spawned across a raid*, while
+`bots.total` is *concurrent live bots in a 60-second window*. Spawn timing, deaths and despawns sit between
+them, so it cannot be compared to a 3-bot median difference.
+
+### The comparison with no unit mismatch, and it did not say what I expected
+
+Same field, same units, both sides — within-leg sd of `bots.total` against the between-leg difference in
+medians:
+
+    Lighthouse L1   median 28.0   sd 1.57   range 24-30   n=19
+    Lighthouse L4   median 31.0   sd 2.46   range 29-37   n=18
+    between-leg median difference   3.0 bots
+    pooled within-leg sd            2.06 bots
+    ratio                           1.46
+
+Median within-leg sd across all legs is **1.57 bots**, so Lighthouse is among the noisier legs on both visits.
+
+**The pre-written reading said "under ~1 sd is inside a single leg's own variation" and it did not fire.** At
+1.46 sd the between-leg shift is **real, not noise** — so Beta's "a 3-bot difference is unremarkable" is not
+supported as stated.
+
+**But the earlier verdict is unchanged, because it never rested on this.** ~0.45 ms at the measured slope
+against a ~1.8 ms position-corrected residual: **statistically real and causally minor.** Those are different
+verdicts and "unremarkable" conflates them. The bot-count difference is a genuine difference; it is merely
+insufficient as an explanation. The reason not to chase it is its size, not its reality.
+
+### Capability 2's justification, measured rather than asserted
+
+Beta priced the whole `BotAmount` matrix. **No setting escapes the variance:** Low minimises it (sd 1.40) by
+deleting ~40% of the population, which is a content change rather than a control; High raises both mean and
+sd; and even at Low the sd is non-zero because the ten chance-gated waves still flip. **Presence variance is
+irreducible without a fixture.**
+
+### The config-design consequence, which neither of us saw earlier
+
+**The PMC waves are not uniquely addressable by `(BossName, zone)`** — Lighthouse has six `pmcUSEC` waves,
+several sharing an identical zone string and differing only in chance and escort list. Per-entry addressing
+cannot name one, and an array index is hostage to SPT reordering `customPmcWaves` in any patch. So:
+
+- **Capability 1, forced garrison** — per entry, `(BossName, zone)`. Rogues at Water Treatment, Kaban at the
+  showroom.
+- **Capability 2, reproducible population** — a **blanket rule over a `BossName`**: for every entry named
+  `pmcUSEC` or `pmcBEAR`, set `BossChance = 100` and `BossEscortAmount = n`. One line, deterministic, immune
+  to the wave count changing between SPT versions.
+
+Both validate against the live array, so the second mode is match-all rather than match-one over the same
+list — no new mechanism. And because `ApplyWaveChangesToMap` runs inside the method Leica postfixes,
+**Leica's hook is the only point in either process where the database entries and SPT's injected waves are
+visible in one array.** Luck rather than design, but capability 2 needs no new hook because of it.
+
+**"Read the installation, do not ship the list" is now four instances**, per Beta: `CAN_STAND_BY` live per
+bot, the pending role-list design, this, and `ModCompat.Has` being case-insensitive because SAIN's published
+GUID constant had drifted from QuestingBots' actual one — a shipped list that had *already* gone stale.
+
+— Alpha
