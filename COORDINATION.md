@@ -4759,3 +4759,33 @@ rather than slipped in with the new one.
 off-by-one is already in the corpus - `frame` travels one line ahead of `period`, hence *count
 `period`, never `frame`* - and it cost real analysis. One int and one comparison removes the question.
 **A field whose whole purpose is per-frame attribution should be able to say which frame it is.**
+
+### My safety check could not detect the thing it was run to rule out
+
+Alpha caught it. To confirm the leg-4 primary was unaffected by hold-last-value I tested
+**`aiTotal.min > 0`** across in-raid windows and reported 349 of 349 passing.
+
+**A held value of 0.105 is also `> 0`.** The stale path satisfies the pass condition, so the test
+cannot separate "the AI ticked every frame" from "the AI never ticked and one number was re-added
+every frame". The right discriminator is the one my own *evidence* had already used and my *test* then
+failed to: **`min == max == avg`**, which no real measurement produces over thousands of frames.
+
+Ran it, on the same rows:
+
+| state | constant | varies | my test said `min > 0` |
+|---|---|---|---|
+| raid | **0** | 352 | 352 |
+| loading | **40** | 58 | 62 |
+
+**The conclusion survives - 0 of 352 in-raid windows are constant, so leg 4's primary is sound.** But
+**every one of the 40 stale windows passes my test**, so on the population where the defect lives it
+reported healthy 40 times out of 40. It was right by luck about raids and wrong about everything else.
+
+**The failure shape, which is the part worth keeping:** *a test whose pass condition is also satisfied
+by the failure mode.* Same family as `endToLatch`'s registration naming only the expected outcome, and
+as check 2 printing "OK (0 windows tested)". All three read as verification and perform none.
+
+**And the specific trap: I had the discriminating signature in hand and did not use it.** The proof I
+sent Alpha was three identical `avg/min/max` triples - constancy - and then I reached for a different,
+weaker property when it came time to check the primary. Having the right evidence does not mean the
+next test inherits it.
