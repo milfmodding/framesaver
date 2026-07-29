@@ -2867,7 +2867,21 @@ where the regressor means what we say it means, awake count predicts essentially
 `bots: {awake, asleep, total, animCulled}` plus `snipersAwake` — **no exempt count, no distance
 distribution, in any log.** Instrument ask, cheap: `exempt` and `awakeWithin<N>m` beside `awake`.
 
-### Customs degrades ~1.35× over a leg, independent of bot count
+### ~~Customs degrades ~1.35× over a leg, independent of bot count~~ WITHDRAWN
+
+**Struck 2026-07-28 by Alpha's location check, and the refutation is the useful part.** The leg is a
+**traversal** — window centroids run x = −104 → +571, roughly 675 m west to east across the whole map. The
+two windows the table matches at awake 2 and 3 sit **~230 m apart in different terrain**. So bot count,
+elapsed time and map position all rise together and no two are separable. Working set is flat and actually
+**declines** across the leg (13,494 → 13,117 MB, r = −0.11), ruling out the mechanism directly.
+
+**The matched-awake control is still the right instrument; it just had nothing to hold constant here.** And
+the generalisation is worth more than either claim: **every leg of the marathon is a traversal, so every
+per-map p50 is a route average** — the scoreboard can answer the gate (*what does this map run at while being
+played*) and supports **no mechanistic claim at all.**
+
+The table below is kept as the record of what a location confound looks like when it reads as a clean
+time-series result.
 
 The Reshala attribution does not need the cross-session comparison to fail — **it fails inside its own leg.**
 Log `153030`, bigmap raid 4, one session, one route:
@@ -2885,9 +2899,11 @@ Matched on awake count within the same leg:
 | **2** | **105.9 fps** (n=3) | **79.5 fps** (n=1) | **1.33×** |
 | 3 | 92.6 fps (n=1) | 66.5 fps (n=1) | **1.39×** |
 
-**At identical bot counts the map is 1.33–1.39× slower after the fight and never recovers.** That is the same
+~~**At identical bot counts the map is 1.33–1.39× slower after the fight and never recovers.** That is the same
 order as the 1.52× attributed to Reshala. **Something degrades Customs monotonically over ~15 minutes
-regardless of bots** — unclaimed by anyone, and it contaminates every within-raid before/after on that map.
+regardless of bots** — unclaimed by anyone, and it contaminates every within-raid before/after on that map.~~
+**Withdrawn — see the heading above.** What survives: the 1.52× attributed to the boss is equally unsupported,
+so *neither* of us can attribute anything on this leg.
 
 ### The selective-slicing ceiling rests on one unknown, not two
 
@@ -3067,3 +3083,60 @@ be to read a null identity as a null result.
   prediction was decoration. Mine named a deletion; Gamma's named a verdict for each branch.
 - **Ask what the denominator is before reporting a rate** — third instance today, and the first where the
   untestable population was the *majority*.
+
+---
+
+## 2026-07-28 — Delta handover at the third compaction
+
+Read this and the [second handover](#2026-07-28--delta-handover-at-the-second-compaction). Everything below
+was in message history and nowhere else.
+
+### The goals changed today, and that is the frame for all of it
+
+**p50 ≥ 60 fps on every map** (100 is aspiration, not gate) · **no frame above ~250 ms** · **p99/p50 ≤ 2.0**.
+
+Under the new gate **goal 1 has no failures across seven maps.** Woods, Reserve and Labs never launched.
+
+### Verified clean — do not re-derive
+
+| claim | status |
+|---|---|
+| `framePct` p50/p95/p99/p999 | on **210 of 210** in-raid windows, every era; a *sibling* of `frame`, not a child |
+| TESTING's scoreboard column | already `framePct.p50` — 16.51 ms reproduces on the same 99 windows; `frame.avg` gives 17.00 |
+| `frame.max` reaches the screen | **107 of 114** CPU frames ≥250 ms held the display ≥80% of their duration, three PresentMon captures; largest run 99–105% |
+| why | `CPUWait` p50 **0.053 ms** — nothing is buffered ahead to absorb a stall |
+| per-bot slope | **aggregation artifact**: pooled 0.623 against Streets 0.294, Customs 0.394, **Factory +0.101 at r=0.16** where `asleep == 0` in 17 of 17 windows |
+| Shoreline's two families | **two mechanisms, not one** — a **0.5 ms emit floor** on spike phases means an absent `TimeUpdate` was *measured under 0.5 ms*, so the present wait provably did not occur on the 16 out-of-loop frames |
+| `endToStart[N−1]` ≈ `unaccounted[N]` | **23 / 23** on every testable line across both raids, median 0.035 ms |
+| `endToLatch[N]` ≈ `unaccounted[N]` | **0 / 44**, and same-line needs no adjacency, so there is no denominator excuse |
+| events in the 146–300 ms band | **27 per hour of raid**; a 40-min raid yields ~18 |
+
+### Open, in the order I would take them
+
+1. **`brainUpdatePeriod` has been 0 in all 18+ logs** — nine of ten config knobs have never moved, so
+   **Framesaver's own patches have never been A/B'd against `framePct.p50` on any map.** Carried to the
+   Lighthouse leg; confirm it actually gets stepped.
+2. **`awakeWithin<N>m`** — `bots.exempt` shipped in `e6cca83`, the distance distribution did not. Without it
+   *near* and *far* cannot be separated, which is the axis that invalidated two findings today.
+3. **`prevSpikeGapMs`** on spike lines, so an adjacency-dependent test cannot silently score an untestable
+   population as a failure. This is the field that would have saved me from the error below.
+4. **The perceptual threshold.** Bracket is ~146 ms not perceived / 300–700 perceived, three positives at
+   122.5 / 123.7 / 193.3. **A raid with zero reports is not a wasted raid** — if she is watching, every
+   unreported event is a labelled negative. Ask what she was *doing*, not only when: attention modulates
+   perception and fights raise the event rate at the same time.
+
+### Two things a fresh Delta should know
+
+**Everything I overturned today was a population, again.** The scoreboard column was never wrong — 51 new
+windows were. The per-bot slope was fitted across maps. Customs' "drift" was a 675 m traversal. p99/p50 fails
+a window whose worst frame is 36 ms. Not one of these was a technique problem.
+
+**And I made the same error twice today, the second time inside the correction.** I published a "44% of the
+frame is unattributed" figure built on logs that never emitted the children, and withdrew it within the hour.
+Then I wrote up *"the registered control has failed, 1 of 44"* — and 43 of those lines had a predecessor a
+median of **8.9 seconds** away, where the test does not exist. Corrected to 23/23. **I was one send away from
+telling a colleague their prediction had failed, using the exact error I had spent the day finding in theirs.**
+Both were caught by asking what the denominator was. Ask it of your own work first; it is the cheapest thing
+you do and the only one that has ever saved you.
+
+— Delta
