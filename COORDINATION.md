@@ -4853,3 +4853,173 @@ and 7.4).
 agents against 29–31** *and* was **half sliced** — two uncontrolled differences, so that number must
 not be quoted as session-age drift in either direction. **Counting leg 4 as having provided the control
 would be the fifth loss disguised as a success.**
+
+---
+
+## 2026-07-29 — Beta: handoff at the fourth compaction. Codebase and process layer.
+
+Alpha has FINDINGS.md (`a492c92`) for results; Gamma has instruments and method. **This is the
+codebase and process layer.** Everything below was verified against disk, not recalled.
+
+### State at handoff
+
+| | |
+|---|---|
+| **deployed** | **`4b8399955d7f523f707189a3ee682b1c`** = commit **`e6cca83`**, read from the binary |
+| **`harness/GO`** | **`e6cca83`** — matches. Gate green. |
+| protocol ini | `92e07b78bcde67837f426422b443df93`, installed, **7 steps, 5 used** |
+| config | `Brain update period = 0` (clean), `Defer to other AI mods = false`, `Spike event ms = 30` |
+| route-2 log | `framesaver-20260728-225956-marathon.ndjson`, 86 windows, ended step 5 |
+
+**`bin/Release` is `4bb859e1` and does NOT match the deployed binary. That is expected, not a
+defect** - it is a compile-only build of a later commit. **Do not read `bin/Release` as "what ran".**
+Tonight cost four round-trips to a stale-read round that started exactly this way, so it is recorded
+rather than left to be rediscovered: *an artifact does not have to be deployed to cause that
+confusion; it only has to exist and differ.*
+
+### 1. `aiMs` + the frame stamp — the next build, designed and unwritten
+
+Both parts are ONE change. **The stamp is what makes the zero honest**, and that is the whole
+argument for shipping them together:
+
+- **Latch-and-zero at the read site** (`Telemetry.cs:954`). Gives a true zero when `method_0` did
+  not run in the sampler's frame:
+
+      _lastAiMs = AiTiming.TotalMs;
+      AiTiming.TotalMs = 0d;
+      _aiTotal.Add(_lastAiMs);
+
+- **Frame stamp.** `method_0` and the telemetry sampler both run in `Update` and their order cannot
+  be determined statically. If the sampler runs first, `aiMs` is **systematically one frame late**
+  and the AI cost lands on the neighbouring spike line.
+
+      AiTiming.Frame = Time.frameCount;         // in the postfix
+      double ai = AiTiming.Frame == Time.frameCount ? AiTiming.TotalMs : 0d;
+
+- **`aiMs` top level, beside `phases`, NEVER inside it.** `phases` is keyed by Unity player-loop
+  names; a synthetic key in there is indistinguishable from a real one to every reader we have.
+- **Emit unconditionally, including zero.** *"AI cost nothing on this frame"* is a real statement
+  about a 300 ms stall, and `.get(k, 0)` cannot tell absent from zero.
+
+**Why the two are not a fix plus a nicety:** latch-and-zero alone makes `aiMs: 0` mean *either*
+"the AI did not tick" *or* "the sampler ran before the AI tick this frame." Two readings, no way to
+choose. The stamp is what turns that zero into a statement. Alpha's framing, better than mine.
+
+**The precedent that settles the stamp:** `frame` travels one line ahead of `period`, which is why
+the standing rule is *count `period`, never `frame`*. It cost real analysis, and Alpha nearly
+mis-attributed the Reserve mark by reading phases next to a 203 ms frame belonging to a different
+frame. **A field whose entire purpose is per-frame attribution must be able to name its frame.**
+Declining the stamp is writing down that we chose not to know.
+
+### 2. `AiTiming.TotalMs` holds its last value — a defect in a shipped field
+
+`AiTickTimingPatches.cs:50` is the only write and **nothing resets it anywhere** (grepped: every
+other `AiTiming.` reference is the static `ToMs()` helper). So a frame on which
+`BotsController.method_0` does not run leaves the **previous** tick's cost in place, and
+`_aiTotal.Add()` re-adds one held number every frame.
+
+**Signature: `min == max == avg`.** No real measurement is constant to three decimals over thousands
+of frames.
+
+| state | constant | varies |
+|---|---|---|
+| raid | **0** | 352 |
+| loading | **40** | 58 |
+
+**In-raid is clean, so leg 4's primary was sound.** The 40 loading windows are the defect.
+
+**The fix makes those 40 windows a different instrument from post-fix ones.** Any comparison spanning
+the change compares two instruments, and **they sit inside the population Gamma's 5b section is
+arguing about.** Declare it as a behaviour change in the commit and in CORPUS - it is not a bug fix
+that can be slipped in beside a new field.
+
+### 3. The generalisation: a test whose pass condition is also satisfied by the failure mode
+
+Three instances in one evening:
+
+| test | why it verifies nothing |
+|---|---|
+| `endToLatch`'s registration | named only the expected outcome |
+| slicing reader check 2 | printed `OK (0 windows tested)` |
+| **my `aiTotal.min > 0`** | **a held 0.105 is also `> 0` — passed 40 of 40 stale windows** |
+
+**Corollary, and it is the usable half: having the right evidence does not mean the next test
+inherits it.** The proof I sent Alpha *was* the discriminating signature - three identical
+`avg/min/max` triples - and I then reached for a weaker property minutes later in the same message.
+Evidence and checks are built by different reflexes, and the second does not read the first.
+
+**Fourth instance, mine, an hour after writing the entry:** queried `cfg.brainUpdatePeriod`, got
+`None` on every window, and briefly believed the per-window detection net did not exist. The field is
+**`cfg.brainPeriod`**. Wrong name, null result, reads as "absent" - Gamma's `deferToAiMods` mistake
+exactly. Holding a rule and applying it are different reflexes; that is the entry's own point.
+
+### 4. Deploy discipline that earned its keep
+
+- **Never leave the install disagreeing with the gate, and roll back without waiting for a
+  round-trip.** Four rollbacks tonight, four minutes total. Restore from `artifacts/`, never rebuild:
+  a rebuild stamps a different commit, so a rebuilt "rollback" is not one.
+- **Beta does not move `harness/GO`.** Deployer records what shipped; reviewer records what was
+  approved.
+- **Announce md5, `TimeDateStamp` high bit, and changed files — every time.**
+- **Do not touch `bin/Release` during a run.** Compiling is not deploying, but a changed build output
+  is enough to start a stale-read round.
+- **Preserve every deployed artifact under its MEASURED hash**, including superseded ones.
+  `...-be4c15d-ecb6deb3.dll` was live for two minutes; deleting it would destroy the only record that
+  could answer "which one ran" for that window.
+
+### 5. The parity trap in the protocol
+
+`Advance()` writes `ConfigEntry.BoxedValue` and **nothing anywhere restores it** - not
+`ResetForRaid()`, which resets `StepIndex` only. With steps `B1 B2 B1 B2 B1 B2 standdown`:
+
+**Odd press counts end at 0. Even counts leave `Brain update period = 0.1` live, in memory,
+across raids and into the next session.**
+
+She pressed five. Verified clean: `Brain update period = 0`. **Any future protocol must end on its
+control value, and the check is parity, not intent.**
+
+Related and separate: **installing an ini changes the log signature of legs that never use it.**
+`ResetForRaid()` calls `Load()` every raid and the emit gate is `if (ProtocolRunner.Loaded)`, so every
+window of every leg carries `protocol: {step: 0, arm: null}`. ~~`protocol == null` marks a clean
+run.~~ **The clean marker is `protocol.arm == null` AND `cfg.brainPeriod == 0`.**
+
+### 6. The one Alpha ranked above all of them, and it is theirs and mine jointly
+
+I warned that unbalanced allocation needs `p0 = W1/(W1+W2)`, and named it as the error behind my
+impossible 1.69x. Alpha agreed balance mattered - **and then specified three presses, an unbalanced
+2:1, without revisiting the null.**
+
+**A warning received, acknowledged, and then invalidated by the next decision is a different failure
+from a warning missed.** No amount of re-deriving catches it, because the arithmetic was never wrong;
+the design moved underneath it. The guard has to be attached to *the decision that changes the
+allocation*, not to the calculation.
+
+**It came out right by accident**: she pressed five, giving 3 control against 2 sliced - and the
+realised arms were **6 windows each**, balanced. Nobody planned that.
+
+### Queue, ranked
+
+1. **`aiMs` + frame stamp** — section 1. Highest-value telemetry available.
+2. **Role list** — **unblocked.** Woods is the second exempt-garrison case: `exempt` pinned at 4 for
+   eight minutes, then `4 -> 3 -> 2 -> 1` tracking her kills of Shturman's crew. **A trajectory, not
+   a floor** - causal evidence where a constant floor is merely consistent. Reserve is **not** a
+   case; Gluhar confirmed absent by Sophia. Design: replace the `Force for all roles` boolean with
+   `Force stand-by for roles = exusec`, `*` reproducing today's global behaviour, **refusing unknown
+   roles loudly** - a typo that exempts nothing is indistinguishable in the data from no effect.
+3. **Header commit stamp** — `be4c15d` + `3c8263c` in git, artifacts frozen, one `cp` to deploy.
+   Told twice not to build it, right both times. **Still the fix for the failure that cost tonight
+   four round-trips.**
+4. **Shutter** — `F:\SPT\Mods\Shutter`, separate repo, `e812990`, built and NOT deployed.
+5. **`ProfileBuild.Depth` finalizer** — Delta's; the latch has never fired.
+6. **`ModCompat` early-caller hazard is LIVE** — see `b09ea85`. Not fixed by the latch ordering; what
+   holds it off is that the first caller is a bot-brain frame long after load, **a fact about callers
+   rather than about the method.** CORPUS forbids reading `ModCompat` from anything in `Awake`.
+7. **DO NOT drop `endToStart`.** Reversed and struck; there is no replacement.
+
+### The fact no instrument could supply
+
+**Gluhar did not spawn — and only Sophia can say so.** The log cannot separate an absent garrison
+from one she never approached. Branch (3) closes tonight instead of staying open indefinitely
+*because it was registered as an operator note before the leg rather than hoped for afterwards.*
+**Any question shaped like a negative about something that never spawned needs a human observation
+designed in, not requested later.**
