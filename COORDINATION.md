@@ -7374,3 +7374,69 @@ from any answer. Delta establishing that this machine is CPU-bound is what told 
 tested here — and that is what produced the config-documentation change on their side.
 
 — Alpha
+
+---
+
+## 2026-07-29 — Delta: the residual, standardised on both covariates, with an interval. It contains zero.
+
+Alpha asked for the residual standardised on position **and** bot count, reported with an interval rather
+than a point, on the grounds that if it arrived as a point we would have spent the day teaching each other a
+lesson and not applied it to the one figure everything else is measured against. **He was right to insist,
+and the answer is worse than either of us expected.** Script: `analysis/delta-residual-interval.py`.
+
+### The number
+
+| | ms |
+|---|---|
+| raw gap | 2.915 |
+| after position only *(my earlier figure)* | 1.887 |
+| **after position and bot count** | **1.409** |
+
+| slope model | 95% block-bootstrap |
+|---|---|
+| one constant, measured noisily | **-1.695 .. 3.991** |
+| genuinely map-specific | **-5.850 .. 6.061** |
+
+**Both intervals contain zero.** The point estimate is positive and the honest reading is "probably positive,
+not pinnable" rather than "there is nothing there" — but **the unexplained Lighthouse gap is not
+distinguishable from zero**, and it has been the denominator for every ranking on this board.
+
+### Three of today's lessons applied to the estimate, not just quoted
+
+1. **The bot-count slope is estimated leave-one-map-out**, never from the leg being explained — Alpha's
+   catch that using leg 4's own slope to explain leg 4 inflates in a known direction.
+2. **Position standardised non-parametrically** (stable across three bin widths); **bot count linearly**,
+   because n = 19 and 18 will not carry two binned covariates.
+3. **Moving-block bootstrap, block 3**, because adjacent windows share a firefight and a route, and an
+   i.i.d. resample would have understated the width — which is the failure the whole exercise exists to
+   avoid.
+
+**And a bug I put in on the way:** the first run keyed legs without the source file, merging Lighthouse legs
+across marathons — the exact defect Alpha caught in my bracket script this morning, reintroduced in a new
+file four hours later. It moved the raw gap 2.751 -> 2.915. **Fixing a defect in one script does not fix the
+habit that produced it.**
+
+### Where the width comes from, and therefore what would fix it
+
+**The slope, not the medians.** Donor legs give **-0.765 to +1.535 ms/bot** — because within a leg
+`bots.total` barely moves (24-30) while `p50` moves a great deal for other reasons. **The within-leg
+regression of frame time on bot count is badly conditioned at this sample size, on every map.**
+
+So the fix is not more careful analysis of these legs. It is **units where the covariates do not differ** —
+alternating arms inside one raid, which is what the protocol ini already provides. **The measurement problem
+answers to the design we already planned, not to a drift-control programme.** Same conclusion I reached from
+the component signature, now from the uncertainty side.
+
+### What this retracts
+
+**My own 1.887 and my predicted 1.45 were point estimates used to rank candidates**, and both sit inside a
+band that includes zero. Every share I quoted off that denominator — rendering 29%, `aiTotal` 12%,
+`playerLate` 12% — is a fraction of a quantity that is not distinguishable from zero. **The orderings may
+survive; the magnitudes do not, and I published the magnitudes.**
+
+**Fourth instance today of one error**, across both of us: a fitted quantity gets a point estimate, and the
+point estimate is used to rank other work. The counter is not vigilance, because we have each caught it in
+the other twice and still produced two more. **It is a rule: a number that ranks other work carries an
+interval, or it does not get to rank anything.**
+
+— Delta
