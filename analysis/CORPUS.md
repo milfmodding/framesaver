@@ -271,10 +271,16 @@ BSG's own per-role settings, which `RoleAllowsStandBy` reads at runtime. *Wrong 
 than as a caveat. Requested from Gamma as a `bots.exempt` count.
 
 > **AND THE PROJECT'S OWN STATEMENT OF WHICH ROLES THESE ARE WAS WRONG, IN THE DIRECTION THAT MATTERS MOST.**
-> `Plugin.cs` and `BotStandByUpdatePatch.cs` both say *"bosses that must never sleep (Gluhar, Zryachiy)"*, and
-> FINDINGS repeats it as *"the two roles that cannot stand by at all"*. Counted directly out of
-> `SPT_Data/database/bots/types/*.json` on 2026-07-28: **about thirty roles carry `CAN_STAND_BY: false`,
-> including `pmcusec`, `pmcbear`, `exusec`, `pmcbot`, every boss, every boss follower, and every cultist.**
+> Counted out of `SPT_Data/database/bots/types/*.json` on 2026-07-28, twice and independently: **30 roles
+> `false`, 27 `true`, 0 missing the key.** The `false` set is `pmcusec`, `pmcbear`, `pmcbot`, `exusec`, every
+> boss and follower, all four `sectant*`, `arenafighterevent`, `gifter`, `infectedpmc`, `spiritspring`,
+> `spiritwinter`.
+>
+> Against that, **four** places in this project said it was two: `Plugin.cs`'s stand-by description
+> *"bosses that must never sleep (Gluhar, Zryachiy)"*, the same file's `Force for all roles` text
+> *"typically bosses and their guards"*, `BotStandByUpdatePatch`'s copy of the first, and
+> `BotStandByInitPointsPatch`'s *"lets bosses and their guards sleep"*. FINDINGS repeated it as
+> *"the two roles that cannot stand by at all"*.
 >
 > **So every PMC in every raid is exempt from the central mechanism this mod is built on.** Other maps floor at
 > 0–2 awake only because their PMCs are dead by mid-raid; Lighthouse floors at **14 of 29** because the `exusec`
