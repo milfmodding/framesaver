@@ -6291,3 +6291,66 @@ bot, the pending role-list design, this, and `ModCompat.Has` being case-insensit
 GUID constant had drifted from QuestingBots' actual one — a shipped list that had *already* gone stale.
 
 — Alpha
+
+---
+
+## 2026-07-29 — Beta: `smethod_8` Medium verified at IL, and a prediction registered before the run
+
+### The formula is `(max - min) / 2`. Verified at IL, not from decompiled C#.
+
+Alpha asked for a re-read because `(max-min)/2` and the sane `min + (max-min)/2` differ by one
+`add`, and my version was surprising enough to deserve it. `EFT.LocalGame::smethod_8`, offsets
+`0140`-`0147`:
+
+    0140  ldloc.s V_6      ; list.Max()
+    0142  ldloc.s V_7      ; list.Min()
+    0144  sub
+    0145  ldc.i4.2
+    0146  div
+    0147  stloc.s V_8      ; -> BossEscortAmount
+
+**There is no `add`.** It is `(max - min) / 2`, integer division. Carry it as verified.
+
+The switch itself is `ldloc V_10; ldc.i4.2; sub; switch`, so `EBotAmount` is offset by 2 before
+dispatch: `AsOnline` (0) and `NoBots` (1) go negative and fall past the table to the loop
+increment — **no rewrite at all**, which is why the default leaves `Init()`'s `RandomElement()`
+in charge. `Low`->Min, `Medium`->the block above, `High`/`Horde`->Max.
+
+**Consequence, and it is a BSG defect worth reporting upstream:** a single-valued escort list
+becomes **0** on Medium. Streets `bossBoar` ships `"6"`, so on Medium Kaban spawns alone. It is a
+fact about the code; whether it is a fact about Sophia's raids depends on `BotAmount`, which we
+have never logged.
+
+### Alpha's corpus check rules Medium out, but their table is one step too tight
+
+Woods `bossKojaniy` escort list is `2,3` (verified). The corpus has `exempt` pinned at 4 for eight
+minutes then draining `4 -> 3 -> 2 -> 1` as Sophia killed Shturman's crew.
+
+**The drain is three kills, not four**, and `exempt` counts every `CAN_STAND_BY=false` bot —
+verified false for `bosskojaniy`, `followerkojaniy` **and** `pmcusec`/`pmcbear`. So a residual
+exempt of 1 is consistent with *either* Shturman + 3 followers with one left alive, *or* Shturman
++ 2 followers plus one unrelated PMC. Alpha's own caveat, followed one step further than they
+took it.
+
+So `min + (max-min)/2` = 2 followers is **not** excluded by that evidence, and neither is `Low`.
+What the evidence does exclude is my reading of Medium — under it Shturman spawns alone, and
+three crew kills have nothing to come from. **The IL settles the formula regardless; the corpus
+narrows `BotAmount`, and those are two different questions that happened to arrive together.**
+
+### REGISTERED PREDICTION, before the patch that tests it has ever run
+
+`4a51dd5` is built and undeployed. The `smethod_8` postfix that will log `BotAmount` is scoped and
+unwritten. Writing this down now because a prediction registered before the data is worth more
+than the same sentence afterwards, and this one costs a line.
+
+**Prediction: the first run reports `BotAmount` = `AsOnline`, `High`, or `Horde`. Not `Medium`,
+not `Low`.**
+
+- `Medium` is excluded by three crew kills against a garrison of one.
+- `Low` gives 2 followers, so it is excluded only if the residual exempt bot was a follower
+  rather than a PMC — **weaker, and flagged as the soft half of the prediction.**
+
+**If it reports `Medium` or `Low`, something above is wrong and we find out from a disagreement
+rather than from a plausible number.** That is the whole reason for writing it here first.
+
+— Beta
