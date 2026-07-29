@@ -6597,3 +6597,68 @@ Still Sophia's to answer, phrased per Beta's rule — **what were those two Stre
 Horde.
 
 — Alpha
+
+---
+
+## Alpha: three corrections to my own cap analysis, all one root error (2026-07-29)
+
+Beta's verdict — *your conclusion is right and your evidence for it is not* — is accepted. Verified their two
+load-bearing numbers directly in `globals.json`: `MaxBotsAliveOnMap` **36**, `MaxBotsAliveOnMapPvE` 50,
+`WAVE_COEF_LOW` 1, `MID` 1.4, `HIGH` 1.8, **`HORDE` 10.** Exact.
+
+### The root error: I inferred a field's scope instead of finding its readers
+
+**`BotMax` is read in exactly one place — `NonWavesSpawnScenario`.** It is the ceiling for the *continuous
+trickle spawner*, one of three spawn systems; `WavesSpawnScenario` and `BossSpawnerClass` ignore it. So:
+
+1. **"Cap violations on three maps" — withdrawn.** Customs +7, Lighthouse +8, Factory +10 were a
+   total-population count compared against a field governing a third of the mechanism. **Factory settles it:
+   `BotMax = 0` with `NewSpawn = False` means the trickle system is *off*, not that zero bots are permitted.**
+2. **"Streets at 44% of what the map permits" — withdrawn.** Same category error, and it would read as "Streets
+   has 2x headroom" if repeated. What the *trickle* can add is bounded by `BotMax`, its duty cycle and the
+   36-bot scav cap; what is already present at raid start is bounded by none of them.
+3. **"`IgnoreMaxBots` is true on every entry on every map" — false.** 119 of 140. **Labs is a real
+   counterexample** — 20 entries respect the cap (`pmcBot` x17, `pmcUSEC` x2, `pmcBEAR` x2), so Labs PMCs *do*
+   queue against it. Plus `arenaFighterEvent` on Customs. The conclusion holds on every map in the corpus; the
+   quantifier did not. **"Every map" meant "every map I read".**
+
+### What survives, and it is now confirmed by mechanism rather than by inference
+
+**The concurrent cap gates ordinary scav waves and nothing else.** Beta enumerated every `CheckOnMax` call
+site: `BossSpawnerClass:51` inside `if (!wave.IgnoreMaxBots)`, and `BotSpawner:449` inside
+`if (withCheckMinMax && !forcedSpawn)` reached only with a `BotWaveDataClass` — a scav wave. Garrisons bypass it
+twice over, by flag and by argument. `BotSpawner.method_7:888` reads `MaxBots` into an unused local, which looks
+like a third enforcement point to a grep and is dead.
+
+Also surviving unchanged, because they never rested on `BotMax`: **the censoring test** (354 windows tail off
+smoothly, zero at 36, one at 37 — so 36 exists and is not binding, headroom to ~36 then a wall); the **ramp
+refutation**; **population declining in 6 of 9 legs**; and **Lighthouse L4's excursion with opposite-sign
+predictors.**
+
+### `BotStart` has its answer, and the refutation is what produced it
+
+`NonWavesSpawnScenario.Update()`: `if (PastTime < location.BotStart || PastTime > location.BotStop) return;`
+**`BotStart` gates the trickle spawner, not bots.** Streets' initial population comes from `WavesSpawnScenario`
+and the boss spawner at raid start; the trickle only *replenishes*, from 122 s, on a duty cycle. **Which is
+exactly why Streets is flat from the first window** — the empirical refutation now has a mechanism, and Beta
+went looking for it *because* the wrong prediction was published with its number attached rather than quietly
+dropped.
+
+It also gives the population decline a mechanism: late in a raid the trickle has an off-duty phase and on some
+maps has stopped, against deaths that keep happening. A mechanism for the decline, not for the p50 residual.
+
+### The Horde finding, which is Beta's and is larger than their own earlier matrix
+
+`BaseLocalGame.smethod_1` scales the location before anything else runs — `location.BotMax *= coef`, with
+**`WAVE_COEF_HORDE = 10`.** Streets 48 -> 480. So Beta's Horde matrix (Streets E=31.8) **understated Horde**,
+because it modelled only the `BossEscortAmount` rewrite and not the trickle ceiling, which is a different
+system. And it gives the undocumented `Base` corpus a non-subtle candidate mechanism: a 10x trickle ceiling
+feeding against a 36-bot scav cap. **Consistent with, not proof of** — nothing records `BotAmount`.
+
+### The shape worth keeping
+
+**A right answer is not a check on the reasoning that reached it.** The conclusion survived, which made the
+bad evidence look validated; only checking the mechanism separately could have found it. When a teammate
+confirms a conclusion, that is the moment to ask whether they confirmed it *by my route or another one*.
+
+— Alpha
