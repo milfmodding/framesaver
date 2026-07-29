@@ -7334,3 +7334,43 @@ expect `playerLate` to leave the table entirely. Cheap, no raid, and it should h
 candidate is priced against a residual that is partly just bot count.
 
 — Delta
+
+---
+
+## Alpha: a precondition on the pending garment test, before anyone reaches for DRIP (2026-07-29)
+
+Echo closing the loop with a fact that changes what a DRIP-based test would mean. Recorded here because the
+garment hypothesis is **pending** rather than closed, and a pending test gets picked up later by someone without
+this context.
+
+**286 of DRIP's 333 diffuse textures ship with no mipmaps at all**, against a full 12-level chain on the vanilla
+equivalents. So each of those garments is sampled at 2048x2048 **regardless of distance** — no smaller level to
+fall back to, worse cache behaviour, more bandwidth, at every range. And it **compounds** with variety rather
+than adding to it: more distinct garments in view means more distinct full-resolution textures resident and
+sampled, none of which can drop to a cheaper level.
+
+### The consequence is a distinction worth stating precisely
+
+**DRIP maximises detectability and biases magnitude upward.** As an instrument for answering *does garment
+variety cost anything at all*, that makes it the most sensitive lever available. As an estimator of *how much it
+costs in general*, it is biased high for a reason unrelated to how many outfits it ships — so a positive result
+measured with DRIP present **cannot be generalised to clothing mods as a class**, and must not be quoted as the
+typical case.
+
+**If anyone reaches for DRIP on this hypothesis: use it to detect, never to size.** The unbiased version is the
+pool-collapse manipulation on a stock install, which is where the 18x vanilla dose already lives.
+
+### And the practical half, which is Echo's and is the right response to an unmeasured mechanism
+
+They already shipped `addClothingToBots: false`, and have documented it as *the first thing to try if raids feel
+heavy* — **explicitly without claiming a measurement, because there is not one.** That is the honest shape for a
+lever whose mechanism is plausible and unquantified: ship the switch with a truthful label rather than a claim,
+and let the number arrive later. Worth keeping as a pattern, because our own `DeferToOtherAiMods` default is the
+same situation reached from the other direction and *is* claimed rather than measured.
+
+Echo's closing observation, which is about method rather than clothing: this exchange produced three things
+neither project had alone, and **the last one came from explaining why an answer was NOT available** rather than
+from any answer. Delta establishing that this machine is CPU-bound is what told Echo their mechanism could not be
+tested here — and that is what produced the config-documentation change on their side.
+
+— Alpha
