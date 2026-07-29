@@ -43,7 +43,9 @@ param(
     [switch] $DryRun,
     [switch] $CaptureArgs,
     [string] $ExpectCommit,
-    [switch] $Force
+    [switch] $Force,
+    [switch] $NoPresentMon,
+    [string] $PresentMonExe
 )
 
 Set-StrictMode -Version Latest
@@ -72,7 +74,25 @@ $RegFile     = Join-Path $HarnessDir 'registrations.json'
 $Provenance  = Join-Path $RepoDir 'analysis\build-provenance.py'
 $LatchCheck  = Join-Path $RepoDir 'analysis\check-boundary-latch.py'
 
+# PresentMon measures the one place our own telemetry cannot see: the gap
+# between a frame ending and the next beginning. Every steady-state stall over
+# 250 ms in the corpus lives there, unattributed, and no field we could add
+# inside the process would reach it. So the capture is not a nice-to-have and
+# must not depend on anyone remembering to start it.
+if (-not $PresentMonExe) {
+    $PresentMonExe = Join-Path $env:USERPROFILE 'Downloads\PresentMon-2.5.1-x64.exe'
+}
+# Written under a fixed working name and RENAMED in post-flight to match the
+# ndjson stem. Naming it up front from the harness's own clock would look right
+# and be wrong: the ndjson timestamp comes from the plugin at its startup, not
+# from here, so the two names would disagree by however long the client took to
+# load and every join would start with a guess. The stem is already how
+# Player.log and BepInEx.log are kept beside their run.
+$PmWorking   = Join-Path $LogDir 'presentmon-inflight.csv'
+$PmSession   = 'Framesaver'
+
 $script:Failures = 0
+$script:PmProc   = $null
 
 function Say    { param($m) Write-Host $m }
 function Head   { param($m) Write-Host ''; Write-Host "== $m" -ForegroundColor Cyan }
@@ -444,6 +464,7 @@ function Invoke-PreFlight {
     }
 
     Test-Registrations
+    Test-PresentMon
 
     $backend = Get-BackendUrl
     Ok "backend $backend"
@@ -451,6 +472,128 @@ function Invoke-PreFlight {
     catch { Bad $_.Exception.Message; $token = $null }
 
     [pscustomobject]@{ Backend = $backend; Token = $token }
+}
+
+# ------------------------------------------------------------- presentmon ----
+
+function Test-Elevated {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $pr = New-Object Security.Principal.WindowsPrincipal($id)
+    $pr.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+<#
+Reports whether a capture will happen, and never blocks the run over it. A
+missing capture costs one raid's worth of PresentMon data; a pre-flight that
+refuses the run costs the raid, and a gate that refuses runs it has no business
+refusing teaches everyone to pass -Force.
+
+Deliberately NOT using PresentMon's own --restart_as_admin: it exits the process
+we launched and starts an elevated one we did not, so the handle we hold refers
+to something already gone and the teardown below would silently stop nothing.
+Leaving an ETW session running is the same class of failure as leaving a
+headless server running, which is the thing this script exists to prevent.
+#>
+function Test-PresentMon {
+    # Rescue an orphan FIRST, before any reason to skip today's capture. An
+    # unnamed file from a previous run is a raid somebody played, and whether we
+    # are elevated now has nothing to do with whether it should survive. Putting
+    # this after the early returns meant it was only reachable on runs that
+    # needed it least.
+    if (Test-Path -LiteralPath $PmWorking) {
+        $n = 0
+        do { $n++; $aside = Join-Path $LogDir ("presentmon-orphan-$n.csv") }
+        while (Test-Path -LiteralPath $aside)
+        Move-Item -LiteralPath $PmWorking -Destination $aside
+        Warn ("kept an unnamed capture from a previous run as " +
+              (Split-Path $aside -Leaf))
+    }
+
+    if ($NoPresentMon) { Note 'PresentMon disabled by -NoPresentMon'; return }
+
+    if (-not (Test-Path -LiteralPath $PresentMonExe)) {
+        Warn "no PresentMon at $PresentMonExe - this run will have NO capture"
+        Note 'pass -PresentMonExe <path>, or -NoPresentMon to say so on purpose'
+        $script:NoPresentMon = $true
+        return
+    }
+    if (-not (Test-Elevated)) {
+        Warn 'not an elevated shell - PresentMon cannot open an ETW session, so'
+        Warn 'this run will have NO capture. Re-run from an admin terminal.'
+        $script:NoPresentMon = $true
+        return
+    }
+    Ok ("PresentMon " + (Split-Path $PresentMonExe -Leaf) + ', elevated')
+}
+
+<#
+Started AFTER the client, targeting its pid, which is a change from "start it
+once the server is ready". --terminate_on_proc_exit means "stop when all target
+processes have exited", and with no target alive yet that condition is already
+true - so starting it early risks it stopping immediately, having recorded
+nothing, while reporting success. Targeting the pid rather than the exe name
+also makes it impossible to attach to the wrong Tarkov.
+
+--qpc_time is the load-bearing flag: it emits CPUStartQPC, which is what joins
+this capture to the `qpc` on our own spike lines. Without it the two files
+cannot be aligned and the capture answers nothing.
+
+--exclude_dropped is deliberately NOT passed. A stall that shows up in none of
+GPUTime, CPUWait or CPUBusy most likely means a frame that was never presented,
+and that is a result about presentation rather than a failed capture. Excluding
+dropped frames would delete the evidence for it.
+#>
+function Start-PresentMon {
+    param($ClientPid)
+    if ($NoPresentMon) { return }
+    Head 'presentmon'
+
+    $a = @(
+        '--process_id', $ClientPid,
+        '--output_file', $PmWorking,
+        '--qpc_time',
+        '--v2_metrics',
+        '--no_console_stats',
+        '--session_name', $PmSession,
+        '--stop_existing_session',
+        '--terminate_on_proc_exit'
+    )
+    try {
+        $script:PmProc = Start-Process -FilePath $PresentMonExe -ArgumentList $a `
+                                       -WindowStyle Hidden -PassThru
+        Ok "started pid $($script:PmProc.Id), targeting client $ClientPid"
+        Note "writing $(Split-Path $PmWorking -Leaf) - renamed to match the log at the end"
+    } catch {
+        Warn "could not start PresentMon: $($_.Exception.Message)"
+        Warn 'the run continues without a capture'
+        $script:PmProc = $null
+    }
+}
+
+function Stop-PresentMon {
+    if (-not $script:PmProc) { return }
+    Head 'presentmon'
+
+    # --terminate_on_proc_exit should already have done this. Give it a moment,
+    # because killing PresentMon mid-write is how a CSV ends on half a row.
+    if (-not $script:PmProc.WaitForExit(15000)) {
+        Warn 'PresentMon did not stop itself - stopping it'
+        try { Stop-Process -Id $script:PmProc.Id -Force -ErrorAction Stop }
+        catch { Warn "could not stop PresentMon: $($_.Exception.Message)" }
+        [void] $script:PmProc.WaitForExit(5000)
+    }
+    if ($script:PmProc.HasExited) { Ok "stopped (code $($script:PmProc.ExitCode))" }
+    else { Bad 'PresentMon is still running - its ETW session may block the next run' }
+
+    if (-not (Test-Path -LiteralPath $PmWorking)) {
+        Warn 'PresentMon wrote no file - the capture is missing, not empty'
+        return
+    }
+    # A header-only CSV is the shape a failed capture takes, and it is the one
+    # that reads as success: the file exists and parses.
+    $rows = @(Get-Content -LiteralPath $PmWorking -TotalCount 3).Count
+    if ($rows -lt 2) { Warn 'capture has a header and no frames - it recorded nothing' }
+    else { Ok ("capture has frames ({0:n0} bytes)" -f (Get-Item -LiteralPath $PmWorking).Length) }
 }
 
 # ----------------------------------------------------------------- server ----
@@ -672,6 +815,34 @@ function Invoke-PostFlight {
             default { Bad "latch validator: failed (exit $LASTEXITCODE)" }
         }
     }
+
+    # The capture is named here rather than at spawn time, so its name is the
+    # ndjson's own stem and the pairing needs no timestamp arithmetic.
+    if (Test-Path -LiteralPath $PmWorking) {
+        if ($new.Count -ne 1) {
+            # Two logs and one capture: which run it covers is a guess, and a
+            # guess committed to a filename outlives everyone who knew it was one.
+            Warn ("{0} new logs and one capture - leaving it as {1}, pair it by hand" `
+                  -f $new.Count, (Split-Path $PmWorking -Leaf))
+        } else {
+            $stem = [System.IO.Path]::GetFileNameWithoutExtension($new[0].Name)
+            $dest = Join-Path $LogDir ("{0}.presentmon.csv" -f $stem)
+            if (Test-Path -LiteralPath $dest) {
+                Warn ("{0} already exists - leaving the new capture unnamed" `
+                      -f (Split-Path $dest -Leaf))
+            } else {
+                try {
+                    Move-Item -LiteralPath $PmWorking -Destination $dest -ErrorAction Stop
+                    Ok ("kept {0}" -f (Split-Path $dest -Leaf))
+                    Note 'join it to the ndjson on CPUStartQPC against spike `qpc`'
+                } catch {
+                    Warn "could not name the capture: $($_.Exception.Message)"
+                }
+            }
+        }
+    } elseif (-not $NoPresentMon) {
+        Warn 'no capture to keep - see the presentmon section above'
+    }
 }
 
 # ------------------------------------------------------------------- main ----
@@ -719,6 +890,8 @@ try {
         $client = Start-Client -Backend $info.Backend -Token $info.Token
     }
 
+    Start-PresentMon -ClientPid $client.Id
+
     Head 'running'
     Say  '   waiting for the client to close. Closing the game ends the session.'
     $client.WaitForExit()
@@ -726,7 +899,10 @@ try {
 }
 finally {
     # finally, so a Ctrl-C or a thrown error still stops the server. Leaving a
-    # headless server running is the failure this whole script exists to avoid.
+    # headless server running is the failure this whole script exists to avoid,
+    # and an orphaned ETW session is the same shape - it survives the run and
+    # blocks the next one.
+    Stop-PresentMon
     Stop-SptServer -Proc $server
     Invoke-PostFlight -Before $logsBefore
 
