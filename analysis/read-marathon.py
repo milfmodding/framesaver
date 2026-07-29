@@ -52,7 +52,20 @@ import sys
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-STEADY_S = 120.0        # skip each leg's raid-init window: 704 ms median worst frame
+# IT DISCARDS ONE WINDOW PER LEG - THE FIRST MINUTE, NOT THE FIRST TWO.
+#
+# `raidElapsed` is stamped at the window boundary and windows are 60 s, so it
+# only ever takes values near 61, 121, 181 - nothing lands between 61 and 120.
+# A threshold of 120 therefore excludes exactly the window covering 0-61 s, and
+# the corpus agrees: 9 excluded windows across 9 legs, every one closing at
+# 60.3-60.7 s. THE CONSTANT'S NAME AND ITS EFFECT DIFFER BY A FACTOR OF TWO,
+# and everyone reading it will assume the name - so any sentence about "the
+# discarded warm-up" means one minute of raid.
+#
+# Chosen to skip each leg's raid-init window (704 ms median worst frame). See
+# section 5b for what it costs: on the 2026-07-28 marathon, 100% of the windows
+# it removes carry a frame >= 250 ms against 1.6% of the ones it keeps.
+STEADY_S = 120.0
 MIN_WINDOWS = 3         # below this a leg gets a number but not a verdict
 TARGET_FPS = {'tarkovstreets': 60.0}
 DEFAULT_TARGET = 100.0
@@ -487,7 +500,10 @@ def main(argv):
     # verdicts live.
     print('\n5b. the same legs with NO warm-up discard - UNREGISTERED, NUMBERS ONLY\n')
     print('    Section 5 is the registered result. This is here so nobody has to')
-    print('    guess how much of it rests on discarding the first %.0f s.\n' % STEADY_S)
+    print('    guess how much of it rests on discarding each leg\'s FIRST WINDOW')
+    print('    (0-61 s). The %.0f s threshold removes one window, not two - see the'
+          % STEADY_S)
+    print('    comment at STEADY_S.\n')
     print('%-4s %-19s %-5s %-9s %-9s %-11s %-11s %s'
           % ('leg', 'map', 'n', 'p50 fps', 'worst ms', '>=250 frame', '>=250 period',
              'excluded n / worst'))
