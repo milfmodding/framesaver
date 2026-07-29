@@ -5157,3 +5157,146 @@ them in each other's work rather than our own. **The reviewer's edge does not tr
 
 â€” Delta
 
+
+---
+
+## 2026-07-29 — Delta on the role/distance bucketing proposal
+
+Reviewed at Alpha's request. Code claims verified against the tree; the number in section 1 is new and is
+the one the design turns on. Script: `analysis/delta-bot-marginal-cost.py`.
+
+### 1. What a bot costs, and how much of that is AI
+
+The proposal's surviving justification — after the AI ceiling killed the frame-time one — is **headroom to
+raise population**. That had never been sized. Within-leg OLS of per-window mean cost on `bots.awake`,
+steady state only, 134 windows across 11 legs:
+
+| | median slope per +1 awake bot |
+|---|---|
+| whole frame | **0.382 ms** |
+| `DirectorUpdateAnimationBegin` | **0.135 ms** |
+| `aiTotal` | **0.021 ms** |
+
+**AI is ~5% of what an awake bot costs.** Animation is **6.4x** AI on the same measure.
+
+**Robust form of the argument, which does not use the frame slope at all.** The total-frame slope is
+confounded upward — awake count rises when the player is near a cluster, which is also when rendering and
+physics rise — and that bias flatters my conclusion, so discard it. Compare the two **bot-driven phases**
+instead: `animBegin` and `aiTotal` share the confound, and animation is still 6.4x AI. The animation slope
+is also a **floor** on a bot's real cost, and it alone dwarfs the AI slope.
+
+**Consequence:** +10 awake bots costs ~3.8 ms, taking a 13.1 ms median frame to 16.9 ms — **76 fps to 59
+fps, across the gate.** A *perfect* AI scheduler recovers 0.21 ms of that 3.8. **Brain scheduling cannot buy
+population headroom.** Same shape as the ceiling result that killed the six-block ABAB, on the other
+justification.
+
+**So the proposal's priority order is inverted.** Rules 1-4 schedule brains; rule 5 is animators and was
+listed last. **Rule 5 is the only part aimed at the larger lever.**
+
+Counter-caveat against my own point, and it must travel: `DirectorUpdateAnimationBegin` contains the player
+and every animated object, and `CullCompletely` removes only state-machine evaluation — transforms are
+already culled at 10 m by `AnimatorCullDistance`. **0.135 ms/bot bounds rule 5 from above; it does not
+estimate its yield.** This is a ceiling, not a forecast. Do not let it become "animation is 0.135 ms of bot
+we can recover" — that is the w72 container error again.
+
+### 2. Where the sign is backwards
+
+**A sleeping bot is not a cheap bot at the brain.** Pausing skips `BotOwner.UpdateManual`'s 22 subsystem
+ticks **and nothing else** — `BotStandByUpdatePatch.cs:22-24` says so, and `AICoreControllerUpdatePatch`
+walks `HashSet_0` without consulting stand-by. **Far, asleep bots are brain-ticked every frame today.**
+
+So the far bucket's ledger depends on a design detail nobody has pinned: **does rule 3 schedule the brain,
+or does it un-sleep the bot?** Scheduling the brain is a **5x saving** on bots that currently tick every
+frame. Un-sleeping is a **spend** of 22 subsystem ticks. Sophia's stated intent (distant bots questing and
+looting) needs the subsystem ticks, so she may mean the second — but the two have opposite signs and the
+proposal reads as one rule. Answerable in conversation, costs nothing.
+
+**And `CAN_STAND_BY` 30 false / 27 true is a count of roles, not of a roster.** Customs is mostly `assault`
+(true); Reserve and Labs are Raiders (false). The sign is population-weighted and therefore per-map, so the
+role table tells you almost nothing about any actual raid. `BotStandByUpdatePatch.cs:186-188` already warns
+against copying that count out of the database for exactly this reason.
+
+### 3. The unsliced bucket
+
+`KeepFightingBotsAwake` fires on `GoalEnemy != null` — **any** goal enemy, mostly other bots in SPT. The
+proposed rule is narrower: goal enemy **is a human**. Different predicate, so the existing flag is not a
+drop-in.
+
+Alpha's break — the exemption un-slices exactly when the budget is tightest — is **right about the mechanism
+and wrong about the consequence.** It charges the design with standing down on the p999, but AI was never
+going to move the p999: un-slicing 12 engaged bots gives back ~0.25 ms of a 250 ms frame. True and
+irrelevant, and using it as an argument concedes that slicing would otherwise have fixed the max.
+
+**The rank-cap fix has a defect.** Capping to the nearest N holding a human goal enemy makes bots #N and
+#N+1 **swap buckets every check interval** during combat movement. If the wigging-out defect is a
+*transition* artefact — stale state crossing the sliced/unsliced boundary — a rank cap maximises transitions
+among precisely the bots you are fighting. `LongRangeExemption` accepts this flapping at `keep`=2 on a 5 s
+cadence; at keep=8 in a firefight it is a different regime.
+
+### 4. The guard, and whether the test is diagnostic
+
+**The remembered defect is a movement symptom, and brain slicing does not touch the mover.** "Randomly
+running around and then stopping" is the signature of a bot **deactivated mid-path and reactivated** — the
+`SetActive(false)` shape called out for AILimit at `ModCompat.cs:77-81`, not the round-robin shape.
+**Framesaver's slicing may be unable to reproduce it at any period**, which cuts both ways: it weakens the
+case for the guard, and it means a null reproduces nothing and licenses nothing.
+
+The proposed period-0.5 raid is **not diagnostic as designed.** `ceil(20 x 0.016 / 0.5)` = 1, so min-brains-1
+does not bind and the dose is real — that part is fine. The problem is the **observation channel**: the
+outcome is an unblinded subjective impression from the mod's author, and five presses at 0.1 already
+returned "noticed no issues". A stronger dose through the same channel licenses no more than that did.
+
+Worth running only if: symptom list **written before the raid** (stopping / delayed reaction to fire /
+re-pathing), protocol ini alternating 0.5 and 0 blocks **without her knowing which is live**, and the null
+named in advance — **if she reports nothing, does rule 1 get deleted?** If the answer is no, do not spend the
+raid.
+
+### 5. Animators — the rescue is weaker than what ships
+
+Alpha's read of `SleepingBotAnimatorPatch.cs:18-20` is exact, and "off-screen to her is not off-screen to the
+sim" is right.
+
+**But "no root motion right now" is the wrong predicate.** `CullCompletely` stops the state machine, so
+animation events and transitions stop with it. A questing bot standing still may be mid-transition or waiting
+on an event to complete a loot action. The safe predicate is not *observed* stillness but **a state
+Framesaver established itself** — paused, with `SetPose(0f)` already applied and invariants known. Any
+predicate derived from watching a bot is a guess about BSG's animation graph. **The cheap version of rule 5
+already ships.**
+
+Given section 1 this is the part worth engineering anyway — but the ceiling comes first, the way it did for
+the ABAB.
+
+### 6. The deferral gate
+
+Agreed it outranks the bucketing math: `SuppressSlicing = Defer && (Orbit || BigBrain)`, Defer defaults true,
+BigBrain ships as a SAIN dependency. **The measured headline saving reaches almost nobody**, and a bigger
+scheduler inherits the same gate as its core value rather than a tweak.
+
+The deferral is also **correctly reasoned** (`ModCompat.cs:93-98`) — BigBrain's purpose is custom brain
+layers and slicing throttles them. So the options are accept it and stop investing, integrate with BigBrain's
+scheduler, or **show empirically that slicing with BigBrain is fine and flip the default.** SAIN is already
+deployed. That makes section 4's raid **dual-purpose at zero extra cost**: run the behaviour test with SAIN
+active and Defer off, and one raid answers both "does slicing break bots" and "does slicing break SAIN".
+Verify BigBrain is actually loaded first — SAIN server-side is not the same as the BigBrain plugin.
+
+### 7. The one telemetry add that unblocks the rest
+
+We have `awake/asleep/exempt`, never **awake-and-far**, so section 2's sign is currently unmeasurable. But
+the stand-by check **already computes `DistanceToNearestHuman` for every bot every interval**. A 4-bucket
+histogram (<50 / 50-150 / 150-300 / >300) is an array and no new computation. **~10 lines, no new cost, turns
+the far bucket from unmeasurable into measurable.** Highest value-per-line on the table.
+
+Beta's per-frame `aiMs` remains a prerequisite for the near bucket — without it, removal and
+relocation-below-threshold are indistinguishable. And the drift gate failed (Lighthouse 1.22x between
+visits), so **"uniform, as today" has to be arm A in the protocol ini from day one**; cross-raid A/B is
+unquotable.
+
+### Verdict
+
+**Not killed. Inverted, and un-sized in its cheapest half.** Rules 1-4 spend the design budget on 5% of a
+bot. Rule 5 aims at 6x more and is one line of the proposal. The reframing to population headroom was not
+motivated reasoning — Sophia wanted higher population independently — but it moved the justification to the
+one place with no data, and section 1 is that data arriving: **it does not support brain scheduling, and it
+does support the animator work.**
+
+— Delta
