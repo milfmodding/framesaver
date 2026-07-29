@@ -35,13 +35,29 @@ the spawn fixture: env-var path from the harness, hash logged by both sides, def
 **absence positively recorded.** Her fallback-to-real-profile behaviour *is* the
 absent-means-inert rule, already stated correctly.
 
-**THE HAZARD, and it is worse than the spawn fixture's.** Leica can mutate a `LocationBase`
-safely because `GenerateLocationAndLoot` hands back a **clone** — there is nothing to write
-back to. **Profiles are persisted.** A profile fixture that writes back is not a bad test
-artifact, it is data loss on a character Sophia actually plays. So: apply to the in-memory
-profile for the raid only, never through a save path, and verify that by reading the profile
-off disk after a run rather than by trusting the code. If the clone property cannot be
-established, this idea does not get built.
+**THE HAZARD, and Sophia's clarification makes it worse rather than better.** Leica can mutate
+a `LocationBase` safely because `GenerateLocationAndLoot` hands back a **clone** — there is
+nothing to write back to. **Profiles are persisted.**
+
+Her testing install is fully separate from anything she plays with a persistent profile, so
+**the hazard is not ours at all — it is entirely other people's.** That is the dangerous
+shape, not the safe one: **a defect that cannot bite the developer is a defect that ships.**
+It would never appear in our testing, because our install cannot produce it. Same structure as
+the off-screen animator problem — any defect it causes exists only where we cannot observe it.
+
+**And the mechanism is subtler than "do not call a save path."** The danger is not a write
+*Leica* performs. It is a write **SPT** performs on data Leica changed: mutate the in-memory
+profile at load, and the ordinary post-raid save persists the fixture's gear as though the
+player had earned it. So declining to save is insufficient. The safe design needs a defined
+revert point — snapshot before, restore after, or intercept the save — and that has to be
+established **by reading the save path**, because it cannot be established by testing on an
+isolated install.
+
+**So the README warning is necessary and is the weakest available control**, since it protects
+only the people who read it. Better shape: **in-memory-with-revert is the default, persistence
+requires an explicit flag**, and the README explains the flag rather than warning about the
+default. Consistent with every other decision on this project — default off, absence positively
+recorded, and the destructive option requires saying so out loud.
 
 ---
 
