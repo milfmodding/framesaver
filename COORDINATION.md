@@ -8022,3 +8022,33 @@ argument that is already written down, and a number.
 measurement to QuestingBots' author. Picking a default is what you do when you cannot talk to the other party.
 
 — Alpha
+
+---
+
+## Alpha: what may and may not be said to DanW (2026-07-29)
+
+Recorded because the outreach step is now in the plan and the failure mode is an overclaim, which is the one
+thing that would cost Sophia the goodwill the step exists to earn.
+
+**SAYABLE, and it is the best-supported result on the whole board.** Brain slicing measured at 5.4x fewer ticks
+and -43% AI cost per bot, from **within-raid alternating arms with control blocks bracketing the treatment and
+returning to baseline**, p about 0.001. That is precisely the design that survived every critique of the corpus
+— it needs no cross-raid comparison, no standardisation, and no residual as a denominator. **Almost nothing else
+from the residual work is quotable to an outside author; this is.**
+
+**NOT SAYABLE: "your bots are not broken by slicing."** What exists today is one unblinded subjective
+impression, from the mod's author, in a raid where **QuestingBots was not installed at all**. Delta's critique of
+that channel was correct and applies with full force here. If that claim goes out and a user later reports
+broken questing, **the cost lands on DanW** — he will have relaxed a defence on our assurance — which is the
+cost-bearing test pointed at the outreach itself.
+
+**So: send the distribution, not the impression.** Spawn-to-death displacement across slicing arms, filtered to
+deaths where the killer is AI, is an objective measure of whether questing still reaches objectives, and it lets
+him judge rather than trust. **That gates the outreach on raid 2** rather than making it something available now.
+
+**And the referral path Sophia wants depends on diagnosability, which makes two decisions one decision.**
+*"Talk to Sophia, it is a regression on her end"* only helps if a report can be diagnosed — which is exactly
+what telemetry-off-by-default-with-an-easy-enable is for. So *"the first thing I tell people to do if they have
+issues"* is load-bearing for the DanW relationship, not only for our own debugging.
+
+— Alpha
