@@ -495,13 +495,19 @@ and not as `defer`.
 runs with byte-identical `cfg` blocks can have opposite slicing behaviour with no field distinguishing them.**
 Worse than `cfg.brainPeriod` being a request rather than a state: there is no field to misread.
 
-**Do not close it by reading `ModCompat` from the header.** `EnsureDetected()` sets `_detected = true` *before*
-its `Has(...)` probes, so the first caller latches the result permanently — and `WriteHeader()` runs inside
-`Telemetry.Awake()`, when `Chainloader.PluginInfos` need not yet contain plugins that load after Framesaver.
-BigBrain would read absent, the latch would stick, and **`SuppressSlicing` would return false for the whole
-session: the compatibility guard silently off, from a change that only meant to log something.** Gamma caught
-this before building it; verified here against the `_detected = true` assignment preceding the `Has(...)` probes
-in `EnsureDetected`, and the `WriteHeader()` call inside `Telemetry.Awake()`.
+**Do not close it by reading `ModCompat` from the header.** `EnsureDetected()` probes `Chainloader.PluginInfos`
+once and latches the answer for the session, and `WriteHeader()` runs inside `Telemetry.Awake()`, when that
+dictionary need not yet contain plugins that load after Framesaver. BigBrain would read absent, the latch would
+stick, and **`SuppressSlicing` would return false for the whole session: the compatibility guard silently off,
+from a change that only meant to log something.** Gamma caught this before building it.
+
+> **The latch moved in `c2a12e1` and this hazard did not move with it.** The original wording here cited
+> `_detected = true` sitting *before* the `Has(...)` probes; it now sits after them, so that sentence was stale
+> and is rewritten above. **The conclusion is unchanged, and checking was the only way to know that** — an early
+> caller still probes an incomplete `Chainloader` and still latches the result, because what makes the answer
+> permanent is that it is cached at all, not the order of two statements. A fix that addresses the mechanism a
+> warning *describes* is not the same as a fix that addresses the hazard the warning *is about*, and the
+> difference is invisible if you only re-read the warning.
 
 > **Cite the predicate, not the line.** Gamma shifted the spike gate sixteen lines by adding fields to the same
 > file and invalidated their own citation of it — `Telemetry.cs:966` is now 981, and nothing warned anyone. **A
@@ -510,6 +516,16 @@ in `EnsureDetected`, and the `WriteHeader()` call inside `Telemetry.Awake()`.
 > `period`-not-`frame` rule rests on it — quote the text: `if (periodMs >= Plugin.SpikeEventMs.Value && …)`
 > survives the edits that the number does not. Same reasoning as dating a log by its `cfg` key count rather than
 > its filename: prefer the identifier that travels with the thing.
+
+> **And the same trap runs the other way: a commit subject is not a behavioural claim.** `54896af` reads
+> *"standby: CAN_STAND_BY is false for 30 roles, not two, and every PMC is one"* — which sounds like the
+> stand-by decision changed, and would make every cross-build comparison of `awake` suspect. **The diff is
+> comments, config description strings and a corpus correction.** `RoleAllowsStandBy` returns the same value it
+> always did, plus a `bot != null` guard. Gamma had written the confound into a message to Alpha and diffed it
+> before sending. **We check that behaviour changes are announced; nobody checks that announcements are
+> behavioural**, so this direction has no guard at all — and it costs more than the other one, because it
+> invalidates comparisons that were fine. Read the diff, not the subject, before letting a commit message
+> disqualify data.
 
 The safe shape is split by *when the value is knowable*: **`deferToAiMods` in the header**, a pure config read
 that triggers no detection, and **`suppressSlicing` in the per-window `agents` block**, by which point the

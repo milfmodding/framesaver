@@ -204,9 +204,51 @@ def main(argv):
     drift_measured = False   # a map was played twice, so the term is bounded
     print('\n4. session-age control ', end='')
     if not repeats:
+        print('NONE - no map was played twice')
+    else:
+        # A REPEAT IS NOT A COMPARISON. This used to set drift_measured here, on
+        # the strength of the map appearing twice, while the ratio below needs
+        # `len(got) > 1`. A run whose only repeat has one unusable leg therefore
+        # printed "session-age drift MEASURED via the repeated map" having
+        # measured nothing. Fourth appearance of the vacuous pass in this file,
+        # and the first three are named in the comments above - a shape that
+        # comes back this often wants the rule stated, not another patch: THE
+        # FLAG THAT SAYS A THING WAS MEASURED IS SET WHERE THE MEASUREMENT
+        # SUCCEEDS, NEVER WHERE ITS PRECONDITION IS SPOTTED.
+        for m, idx in repeats.items():
+            vals = []
+            for i in idx:
+                e = eligible(ls[i])
+                vals.append((i + 1, len(e), st.median(fps(e)) if e else None))
+            got = [v for v in vals if v[2] is not None]
+            print('%s played %d times: %s'
+                  % (KNOWN.get(m, m), len(idx),
+                     '  '.join('leg %d n=%d p50 %.1f fps' % v for v in got)))
+            if len(got) < 2:
+                print('   only %d of %d visits produced a steady-state window, '
+                      'so this repeat measures nothing' % (len(got), len(idx)))
+            if len(got) > 1:
+                drift_measured = True
+                lo, hi = min(v[2] for v in got), max(v[2] for v in got)
+                drift = hi / lo
+                print('   spread %.2fx across the session' % drift)
+                if drift > 1.15:
+                    fails.append('%s drifted %.2fx between visits - map and '
+                                 'session age are not separable in this run'
+                                 % (KNOWN.get(m, m), drift))
+            print('                       ', end='')
+        print()
+
+    # EXPOSURE IS MARKED WHENEVER DRIFT WENT UNMEASURED, which is not the same as
+    # "no map repeated" - and treating them as the same is how the repeat-with-one-
+    # usable-leg case escaped both arms: it took the `repeats` branch, so it never
+    # reached the exposure marking, and it failed the ratio test, so it produced no
+    # drift figure either. The run then read as neither measured nor caveated.
+    # Keyed on the OUTCOME rather than on the shape of the route, for the same
+    # reason drift_measured now is.
+    if not drift_measured:
         cut = max(1, len(ls) // 3)
         exposed_from = cut + 1 if cut + 1 <= len(ls) else None
-        print('NONE - no map was played twice')
         if exposed_from is None:
             print('                       only %d leg(s), so there is no late-leg '
                   'exposure to mark - but' % len(ls))
@@ -219,33 +261,18 @@ def main(argv):
                   'term and are marked below.' % (exposed_from, len(ls)))
             print('                       This is a caveat, not a gate failure - '
                   'the exposure is uneven.')
-    else:
-        drift_measured = True
-        for m, idx in repeats.items():
-            vals = []
-            for i in idx:
-                e = eligible(ls[i])
-                vals.append((i + 1, len(e), st.median(fps(e)) if e else None))
-            got = [v for v in vals if v[2] is not None]
-            print('%s played %d times: %s'
-                  % (KNOWN.get(m, m), len(idx),
-                     '  '.join('leg %d n=%d p50 %.1f fps' % v for v in got)))
-            if len(got) > 1:
-                lo, hi = min(v[2] for v in got), max(v[2] for v in got)
-                drift = hi / lo
-                print('   spread %.2fx across the session' % drift)
-                if drift > 1.15:
-                    fails.append('%s drifted %.2fx between visits - map and '
-                                 'session age are not separable in this run'
-                                 % (KNOWN.get(m, m), drift))
-            print('                       ', end='')
-        print()
 
     # ---- 3. the scoreboard ----------------------------------------------
     print('\n5. per leg, steady state only (>= %.0f s into the leg)\n' % STEADY_S)
     print('%-4s %-19s %-5s %-9s %-8s %-11s %-9s %s'
           % ('leg', 'map', 'n', 'p50 fps', 'target', 'verdict', 'worst ms',
              'awake min/med'))
+    # Which maps the scoreboard actually CALLED, so section 7 cannot report a map
+    # as covered that section 5 refused a verdict. Lighthouse did exactly that on
+    # 2026-07-28: 121 s of raid, one steady-state window, "n<3, no call" in the
+    # scoreboard and "newly measured" in coverage. Two sections disagreeing about
+    # what `measured` means is the same vacuous pass wearing different words.
+    verdicted = set()
     for i, l in enumerate(ls):
         e = eligible(l)
         name = KNOWN.get(l['map'], l['map'])
@@ -260,6 +287,8 @@ def main(argv):
         verdict = ('MEETS' if med >= target else 'under') + ' %.0f' % target
         if len(e) < MIN_WINDOWS:
             verdict = 'n<%d, no call' % MIN_WINDOWS
+        else:
+            verdicted.add(FAMILY.get(l['map'], l['map']))
         mark = ''
         if exposed_from is not None and (i + 1) >= exposed_from:
             mark = '  *session-age untested'
@@ -286,9 +315,11 @@ def main(argv):
     print('Read relatively. An absolute floor is not the exemption: '
           '`Keep nearest snipers awake`\nis 2, so ~2 is expected everywhere, and '
           'a player is never far from every bot.\n')
-    print('%-19s %-11s %-13s %s'
-          % ('map', 'min awake', 'snipersAwake', 'excess over snipers'))
+    print('%-19s %-11s %-13s %-21s %-9s %s'
+          % ('map', 'min awake', 'snipersAwake', 'excess over snipers',
+             'last win', 'awake vs exempt'))
     excess = {}
+    direct_seen = False
     for i, l in enumerate(ls):
         e = eligible(l)
         if not e:
@@ -297,9 +328,34 @@ def main(argv):
         sn = st.median([d.get('snipersAwake') or 0 for d in e])
         ex = lo - sn
         excess.setdefault(l['map'] in EXEMPT_MAPS, []).append((l['map'], ex))
-        print('%-19s %-11d %-13.0f %+.0f%s'
+        # THE DIRECT READ, AND IT IS THE LAST FULL WINDOW AND NEVER A POOLED MEAN.
+        # `exempt` counts every role-exempt bot and every PMC is one, so early in a
+        # raid it is large on every map and discriminates nothing. What separates
+        # Lighthouse from Customs is the FLOOR - whether the bots still awake when
+        # the map has settled are awake because their role forbids stand-by. Pooling
+        # mixes the PMCs-alive phase into that floor, the same aggregation error as
+        # the per-bot slope. Registered as `reserve-exempt-floor`.
+        last = (e[-1].get('bots') or {})
+        aw, exm, unk = last.get('awake'), last.get('exempt'), last.get('roleUnknown')
+        if exm is None:
+            direct = 'not emitted'
+        else:
+            direct_seen = True
+            direct = '%d awake / %d exempt' % (aw, exm)
+            if unk:
+                direct += '  (%d roleUnknown)' % unk
+        print('%-19s %-11d %-13.0f %+-21.0f %-9s %s%s'
               % (KNOWN.get(l['map'], l['map']), lo, sn, ex,
+                 'w%s' % e[-1].get('window'), direct,
                  '   <- exempt boss expected' if l['map'] in EXEMPT_MAPS else ''))
+    # KEEP THE PROXY UNTIL THE DIRECT READ IS PROVEN, not until it ships - the rule
+    # endToLatch earned. `exempt` has never emitted a value in any log, so on its
+    # first run it is the unproven instrument and the sniper subtraction is its
+    # control. Retire the proxy on the first log where both columns agree, and if
+    # they disagree that is a finding rather than a reason to trust the newer one.
+    if not direct_seen:
+        print('\n`bots.exempt` is absent from every leg, so only the proxy is '
+              'readable here.\nThat is expected on any log written before e6cca83.')
     if True in excess and False in excess:
         e_ex = st.median([x[1] for x in excess[True]])
         n_ex = st.median([x[1] for x in excess[False]])
@@ -313,12 +369,28 @@ def main(argv):
               'comparison and\nthe floor above says nothing about the exemption.')
 
     # ---- 5. coverage delta ----------------------------------------------
+    #
+    # COVERAGE COUNTS WHAT THE SCOREBOARD CALLED, not what was loaded. `played`
+    # used to be every map with a leg, which reported Lighthouse as newly measured
+    # off a 121 s visit the scoreboard had just refused with "n<3, no call". A map
+    # that was launched and not measured is worse than one never launched, because
+    # it stops looking like a gap.
     played = set(FAMILY.get(l['map'], l['map']) for l in ls)
-    new = sorted(played - set(ALREADY_MEASURED))
+    launched_only = sorted(played - verdicted)
+    new = sorted(verdicted - set(ALREADY_MEASURED))
     still = sorted(set(KNOWN[k] for k in KNOWN
                        if FAMILY.get(k, k) not in played | set(ALREADY_MEASURED)))
+    win_s = float(hdr.get('windowSeconds') or 60)
     print('\n7. coverage            newly measured: %s'
           % (', '.join(KNOWN.get(m, m) for m in new) or 'none'))
+    if launched_only:
+        print('                       LAUNCHED BUT NOT MEASURED (n<%d): %s'
+              % (MIN_WINDOWS,
+                 ', '.join(KNOWN.get(m, m) for m in launched_only)))
+        print('                       A leg needs %.0f s of raid to earn a verdict: '
+              '%.0f s discarded as' % (STEADY_S + MIN_WINDOWS * win_s, STEADY_S))
+        print('                       warm-up, then %d windows of %.0f s. These '
+              'are still gaps.' % (MIN_WINDOWS, win_s))
     print('                       still never launched: %s'
           % (', '.join(still) or 'none - all ten maps measured'))
 
