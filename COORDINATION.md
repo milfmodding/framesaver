@@ -3862,3 +3862,67 @@ nothing and the emptiness read as a result.
 Caught by asking what a 671.7 ms frame *should* have emitted, instead of accepting that it emitted nothing.
 **Third instrument-saw-nothing of mine in two days, and the first where the null was the headline.** The
 field names cost nothing to check and I checked them only after writing the conclusion down.
+
+---
+
+## 2026-07-28 — Delta: REGISTERED PREDICTION for the Lighthouse A/B, written before the leg runs
+
+Alpha's redesign scores the arm on `aiTotal` and notes the brain tick's share of it *"has never been
+measured."* It is partly recoverable from existing data, and the prediction below is committed **before the
+log exists**. `analysis/delta-brain-share.py`. Mirror into FINDINGS/registrations if that is the right home —
+I did not edit another agent's structured file mid-raid.
+
+### The decomposition works on exactly one map, and the failures prove why
+
+Within-map OLS of `aiTotal.avg` on `agents.live`. The brain tick walks `live` agents, so its cost scales with
+`live`; anything that does not scale lands in the intercept.
+
+| map | n | live range | slope | intercept | r | implied brain share |
+|---|---|---|---|---|---|---|
+| Streets | 175 | 14–29 | 0.065 | **−0.748** | 0.61 | **203%** |
+| Customs | 56 | 15–26 | 0.035 | **−0.240** | 0.64 | **145%** |
+| Interchange | 18 | 19–22 | 0.050 | **−0.780** | 0.63 | **408%** |
+| Shoreline | 12 | 25–27 | 0.014 | +0.025 | **0.19** | unusable |
+| **Factory** | **20** | **1–10** | **0.0148** | **+0.052** | **0.82** | **58%** |
+
+**Shares above 100% and negative intercepts are a reductio, not a result.** Within a map `live` barely
+varies — Shoreline spans 25–27, Interchange 19–22 — so the fit extrapolates to `live = 0` from ~7× outside
+its own data and the intercept is meaningless. **Factory is the only map where `live` ranges wide enough
+(1–10) to identify an intercept, and it is the only one that returns a physically possible answer.**
+
+That is also the answer to whether this replaces the experiment: **it does not.** Four of five maps cannot
+support the estimate at all, which strengthens rather than weakens the case for measuring it directly.
+
+### The prediction
+
+Brain share **≈ 58%** (Factory, r = 0.82, positive intercept). Lighthouse `aiTotal.avg` ≈ 0.788 ms, so the
+brain component is ≈ 0.46 ms. Ticks fall 29 → 5, an 82.8% cut.
+
+> **`aiTotal.avg` falls by ≈ 0.38 ms on the sliced blocks — from ~0.79 to ~0.41.**
+>
+> **Bound, independent of the 58%:** brain share is in (0, 1], so the drop must be **> 0 and ≤ 0.65 ms**.
+> **A drop of 0 means the lever did not engage. A drop above 0.65 ms means this model is wrong.**
+
+Against Alpha's within-map `aiTotal` sd of 0.042–0.106 ms, 0.38 ms is **3.6–9 sd** — one window per arm.
+
+**This is an upper bound and every assumption pushes the same way**: `Bots.UpdateByUnity` also scales with
+`live`, so the slope credits the brain tick with cost that is not its own, and Factory's mix at ~5 live
+agents may not be Lighthouse's at 29. Safe to argue *against* the lever, unsafe to argue *for* it.
+
+### Why this matters beyond effect size
+
+**`Δ aiTotal > 0` is a non-tautological engagement check**, which `tickedSum ÷ liveSum` cannot provide in the
+control arm (it is 1.0000 by construction there). It is measured on a top-level field with small within-map
+variance, and it fails loudly if the lever is suppressed.
+
+### Correction: my `read-marathon.py:227` carve-out was backwards
+
+I told Alpha that `:227`'s `unexplained = sliced(w) and protocol is None` was the one site where
+`protocol is None` stays correct, on the grounds that *"slicing under a loaded but unadvanced protocol really
+is unexplained contamination."* **The statement is right and the conclusion inverted** — that test
+**excludes** the unadvanced case, so installing the ini silences the inherited-`0.1` detector exactly when
+Beta's `BoxedValue` persistence makes an inherited `0.1` most likely. `arm is None` is correct at both sites.
+Alpha caught it.
+
+I traced what the line was *for* and asserted it was fine without evaluating what it *returns* in the new
+population — one line below the bug I had just found by doing exactly that.
