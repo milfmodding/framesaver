@@ -181,10 +181,11 @@ namespace Framesaver.Patches
         /// state it defends against cannot arise here. Left alone, its flag costs the entire stand-by
         /// system: measured on Streets as 20-27 bots awake for a full raid and p50 roughly doubled.
         ///
-        /// Only reclaims for roles the bot's own settings already permit, so the 30 roles of 57 whose
-        /// Mind.CAN_STAND_BY is false stay exempt exactly as InitPoints intended. That set is far wider
-        /// than the bosses it is easy to picture - every PMC is in it - so "exempt" is a large fraction
-        /// of a live roster rather than a handful of scripted characters.
+        /// Only reclaims for roles the bot's own settings already permit, so every role the bot database
+        /// marks Mind.CAN_STAND_BY false stays exempt exactly as InitPoints intended. That set is far
+        /// wider than the bosses it is easy to picture - every PMC is in it - so "exempt" is a large
+        /// fraction of a live roster rather than a handful of scripted characters. Read it from the
+        /// database when you need the list; a count written here is a copy that goes stale unwatched.
         ///
         /// Caveat: this cannot tell QuestingBots' flag apart from one cleared by BotsPatrolGeneratorGameEvent
         /// for a scripted patrol, so with this on such an event would be overridden within one check
@@ -207,8 +208,20 @@ namespace Framesaver.Patches
             return true;
         }
 
-        /// <summary>The role's own setting, which is what InitPoints consults before clearing the flag.</summary>
-        private static bool RoleAllowsStandBy(BotOwner bot)
+        /// <summary>
+        /// The role's own setting, which is what InitPoints consults before clearing the flag.
+        ///
+        /// Also read by Telemetry to count role-exempt bots, inside the loop CountBots already
+        /// walks - no counter, no reset path, no second iteration. Same pattern as
+        /// DistanceToNearestHumanPublic below.
+        ///
+        /// **The null case means "cannot tell", not "exempt".** Returning false when Settings,
+        /// FileSettings or Mind is missing is right for the reclaim decision - if we cannot
+        /// read the flag we must not override it - but a counter that treats it as exempt
+        /// inflates the count with unknowns. A caller counting exemptions should skip those
+        /// bots, the way CountBots already skips a null StandBy rather than guessing.
+        /// </summary>
+        internal static bool RoleAllowsStandBy(BotOwner bot)
         {
             return bot.Settings != null
                    && bot.Settings.FileSettings != null

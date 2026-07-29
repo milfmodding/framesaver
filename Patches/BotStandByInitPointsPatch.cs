@@ -36,8 +36,8 @@ namespace Framesaver.Patches
 
             // InitPoints clears CanDoStandBy when the role's Mind.CAN_STAND_BY is
             // false, or when either distance is under 5m. Re-enabling it here is
-            // what lets those roles sleep - 30 of 57, and every PMC among them,
-            // not just the bosses and guards this used to say.
+            // what lets those roles sleep - roughly half of them, and every PMC
+            // among them, not just the bosses and guards this used to say.
             if (Plugin.ForceStandByForAllRoles.Value)
             {
                 __instance.CanDoStandBy = true;
