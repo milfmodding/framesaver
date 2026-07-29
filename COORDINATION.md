@@ -3760,3 +3760,35 @@ the corpus where `Brain update period` is the live variable. Gamma's figures are
 quantities. `perFrame` 5 against control's ~29 is a **~5.8× cut — a large dose**. What is small is the
 period's *margin over the floor*, 5 against 4. Stated as one sentence it invites an analyst to discount a
 real effect as an underdosed arm. **The dose is large; the attribution to `0.1` specifically is weak.**
+
+### Installing the ini changes the log signature of the three CLEAN legs
+
+Delta's catch, verified at source. `ResetForRaid()` calls `Load()` every raid
+(`ProtocolRunner.cs:249-252`), and `Telemetry.cs:1463` emits on `if (ProtocolRunner.Loaded)` - not on
+whether a press happened. So from the moment the file lands, **every window of every leg** carries
+`protocol: {name, step: 0, steps: 7, arm: null}`.
+
+~~"No protocol ini installed is correct for a marathon run - `protocol` reads `null`, which is the
+positive statement that no arm was applied."~~ **That marker is gone.** It was mine, and it is stale
+the moment the file is installed rather than at some later edit.
+
+**The clean marker is now `protocol.arm == null` AND `cfg.brainPeriod == 0`.** The legs are genuinely
+clean - no press, period 0, `agents.slicing` false - only the way you recognise it changed.
+
+**Same family as the `BoxedValue` leak, in the other axis.** That one leaks forward through a *value*
+into later legs; this leaks sideways through a *load flag* into legs that never used it. Both are
+"installing a thing changes runs that do not use the thing".
+
+Delta sent Alpha the one-line `read-marathon.py:181` fix - it keys `leg_is_clean` on `protocol is
+None`, so as written it would score Lighthouse-clean, Woods and Reserve as protocol legs.
+
+### A second stale claim found while confirming the first, in Telemetry.cs (Gamma's)
+
+The comment at `Telemetry.cs:1455-1462` says the flushed window's labels describe the arm ABOUT TO
+START while its numbers describe the arm that ENDED, and that *"the fix is to flush before advancing,
+which needs a precondition ProtocolRunner can expose but does not yet."*
+
+**Both halves landed.** `CanAdvance` exists (`e01cb0f`) and the call site flushes before advancing
+(`ada1824`, `Telemetry.cs:456-474`). The comment describes a **fixed** bug in the present tense, so a
+reader checking whether the protocol lines are trustworthy would conclude they are not. Flagged to
+Gamma; their file, and no build tonight.
