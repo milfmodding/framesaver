@@ -50,6 +50,7 @@ namespace Framesaver
         public static ConfigEntry<bool> TelemetryEnabled;
         public static ConfigEntry<string> RunTag;
         public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> ProtocolKey;
+        public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> MarkKey;
         public static ConfigEntry<float> TelemetryWindow;
         public static ConfigEntry<float> SpikeEventMs;
         public static ConfigEntry<bool> ProfilePlayerLoop;
@@ -187,6 +188,31 @@ namespace Framesaver
                     + "after it. Replaces changing knobs through the F12 overlay, which moves the view, "
                     + "costs a large IMGUI draw, and lands the change mid-window. Does nothing and says so "
                     + "if no protocol is loaded - see framesaver.protocol.ini."));
+
+            // Adjacent to the protocol key, but the failure modes are opposites and
+            // that is what sets the default apart. A missed protocol press voids an
+            // arm; a missed mark loses one observation out of many. So that key is
+            // chosen to be hard to hit by accident, and this one to be reachable
+            // WITHOUT LOOKING DOWN MID-FIGHT - because the marks we most want are
+            // the ones she is least able to stop and aim for. End rather than Home:
+            // further from PageDown, so a fumbled protocol press cannot land here.
+            //
+            // Provisional. Sophia knows what EFT leaves spare and picked the
+            // protocol key. This is a KeyboardShortcut entry, so changing it is a
+            // config edit and never a build.
+            MarkKey = Config.Bind(
+                "3. Telemetry", "Mark key",
+                new BepInEx.Configuration.KeyboardShortcut(
+                    UnityEngine.KeyCode.End,
+                    UnityEngine.KeyCode.LeftControl,
+                    UnityEngine.KeyCode.LeftAlt),
+                new ConfigDescription(
+                    "Writes a 'mark' line saying you noticed choppiness just now, with the frame times "
+                    + "leading up to the press so the reading is a labelled sample rather than a "
+                    + "timestamp. Unlike the protocol key this does NOT close the window - marks are "
+                    + "frequent, and flushing on each one would put every statistic on a different "
+                    + "denominator. Marks are numbered per raid and stamped with the map, so a written "
+                    + "note only needs the ordinal: 'Factory mark 2, mid-fight'."));
 
             TelemetryWindow = Config.Bind(
                 "3. Telemetry", "Window seconds", 60f,

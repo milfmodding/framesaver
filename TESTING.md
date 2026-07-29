@@ -1347,3 +1347,49 @@ cut after seeing the outcome is how a null becomes a finding.
 That also makes the Kaban phase sharper than "best case". It is the **highest-agent** phase of the raid, so
 it is the one place slicing is guaranteed to bind rather than sit on the floor — which makes it the
 cleaner test of the mechanism, not merely the most favourable.
+
+---
+
+## The mark key — recording perception against the clock
+
+**Ctrl+Alt+End** (provisional — it is a config entry, so changing it is never a build). Press it when you
+notice choppiness. It writes a `mark` line and **does not close the window**, unlike the protocol key.
+
+**Why it exists.** Goal 2 is a perceptual claim and we have never once recorded perception against the
+clock — every metric proposed for it, we invented. Alpha's `p99/p50 <= 2.0` is withdrawn for exactly that
+reason: it passes windows containing 1,059 ms stalls and fails one whose worst frame is 36 ms. No
+percentile can work, because a stall is one frame and at ~3,500 frames a window even p999 is the 3rd worst.
+**Your keypress is the ground truth.**
+
+**Marks are numbered per raid and stamped with the map**, so a written note only ever needs the ordinal —
+*"Factory mark 2, mid-fight"*. You never have to remember a time, and reaction latency stops mattering,
+because the analysis reads *backwards* through the frame times dumped with the mark rather than trusting
+the instant of the press.
+
+### Two biases to know before the data exists, not after
+
+> **1. Absence of marks during firefights is not absence of hitches during firefights.** You may simply be
+> unable to press mid-fight — and combat hitches are precisely the ones we suspect. A written log has the
+> same bias. **Any analysis that segments marks by activity has to state this**, because "no marks during
+> fights" reads as *"fights were smooth"* when it may mean *"hands were busy"*.
+
+> **2. A raid where you watch and report nothing is labelled data, not missing data.** Events above 146 ms
+> run about one per 64 seconds, so a 40-minute raid holds roughly **18** of them, and silence converts all
+> 18 into labelled negatives. The natural reading of "no marks" is "nothing to see"; the correct reading is
+> "eighteen negatives". **Say in the run notes whether you were watching**, because that is the only thing
+> separating the two.
+
+### What the line has to carry, and why the frame dump is the point
+
+A mark that says only *"she pressed at t"* is a label, and we would be back to joining it against spike
+lines. Dumping the frame times leading up to the press makes it a **labelled sample** — it answers directly
+whether you reacted to one large frame or to sustained choppiness, which is the distinction goal 2 turns on
+and the one no percentile can make.
+
+**The dump must state its own length.** If a mark lands early in a window there is less history to give,
+and **a short dump must not be readable as a quiet one** — same null-versus-zero discipline as everywhere
+else here.
+
+**The mark must not be attributable as an event.** Building the line and reading input costs time, so a
+mark that manufactures its own spike would be self-confirming. It queues to the existing writer thread, and
+the frame carrying the press is identified so analysis can exclude it.
