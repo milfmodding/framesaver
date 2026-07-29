@@ -5442,3 +5442,71 @@ quotable as a saving before then.
 Both queued behind `aiMs`. `Telemetry.cs:1455` stale comment taken with them.
 
 — Gamma
+
+---
+
+## Alpha: joining Delta's number to Beta's code reads (2026-07-29)
+
+Three findings from three agents that only mean something together.
+
+**Delta:** the marginal bot is an animation cost. `animBegin` 0.136 ms/bot (measured, 10 of 11 legs exclude
+zero); `aiTotal` 0.021 ms/bot (not distinguishable from zero, 5 of 11, two legs physically impossible
+negative). Animation exceeds AI per marginal bot by at least ~2x with no upper bound from this corpus.
+
+**Beta, Q1:** `GClass32` — the type the slice loop holds out of `HashSet_0` — has **no back-reference to a
+bot.** No `BotOwner`, no `Player`, no `GameObject`. **The slicing loop cannot tell which bot it is ticking**,
+and every predicate in the proposal is a property of a bot. The fix is cheap (`BotOwner.Brain.Agent` *is* the
+object in `HashSet_0`, so invert and walk `BotsController.Bots.BotOwners`) and Beta validated it against the
+corpus rather than inferring it: `agents.live == bots.total` in **255 of 260** raid windows, the other five
+short by 1-2 during the spawn gap and never long.
+
+**Beta, Q2:** no cheap safe predicate exists for culling an awake bot's animator. `CullCompletely` stops
+state-machine *evaluation*, so every animator read-back freezes with it — `CurrentAnimatorStateIndex`,
+`IsAnimatorInTransitionState`, `PlayerAnimatorGetIsVaulting`, `PlayerAnimatorIsJumpSetted`. **A bot mid-vault
+off-screen never finishes vaulting, because the code that ends the vault polls the animator for it.**
+
+### The premise correction that reprices rule 5
+
+**Unity already gates `CullCompletely` on visibility.** It takes effect only while no camera sees the
+renderers; the shipped patch adds no is-it-seen test and needs none. So the "universal" version is **not**
+adding off-screen detection, which is what Sophia and Alpha both assumed it was buying. Its entire delta over
+what ships today is **removing the `paused` precondition** — which is precisely the part that breaks.
+
+**Rules 1-4 aim at a quantity this corpus cannot distinguish from zero. Rule 5 aims at the right phase and
+has nothing left in it.** Both halves of the proposal, as written, are closed.
+
+### What survives: slice the animator, do not cull it
+
+Both Alpha and Delta searched for a predicate licensing a *cull*. Wrong search. Sophia's own instinct — slice,
+do not disable — applies to the phase Delta measured:
+
+    animator.enabled = false;  animator.Update(accumulatedDt)  every Nth frame
+
+Standard Unity animation-LOD practice. It converts Beta's correctness failure into a **latency** cost: the
+state machine still advances, so transitions complete, events fire, and the mid-vault bot finishes its vault
+with up to N-1 frames of latency rather than never. Latency is the trade this mod already accepts everywhere.
+
+Unverified and in falsification order: (1) does EFT's animator survive a manual step at all, given
+`MovementContext` pokes it extensively and consumes `PlayerAnimatorDeltaPosition` as displacement — a silent
+displacement drift is the expensive failure; (2) animation events across a large step, and whether the worst
+case is a missed footstep or a missed hit-registration window; (3) the ceiling, applying the discipline that
+killed the ABAB — brain slicing bought 5.4x fewer ticks for **-43%**, not -81%, so per-tick cost is not the
+whole story, and 0.136 ms/bot is itself an upper bound.
+
+### A shipped feature whose effect has never been measured
+
+`bots.animCulled` is `Sleeping.Count` (`SleepingBotAnimatorPatch.cs:112-115`) — bots we **marked**, not bots
+Unity actually culled, because we never learn whether the renderers were visible. **Every saving attributed
+to animator culling on this investigation is an upper bound, and the shipped sleeping-bot cull has never had
+its effect measured at all.** `animCulled == asleep` would have read correct in every window forever: the
+check-that-cannot-fail family, inside a feature we ship rather than inside an analysis. `Player.IsVisibleToCamera`
+and `Player.OnScreen` both exist and are cheap.
+
+### Two config facts to settle before any ini is written
+
+- **`Minimum brains per frame` is a global clamp on `perFrame`.** Per-bucket floors are a different quantity
+  and the single knob cannot express them.
+- **`_cursor` is a static with no `ResetForRaid`.** Harmless today because it clamps; a cursor per bucket
+  makes each one a new cross-raid static, which is the leak shape this mod exists to fix.
+
+— Alpha
