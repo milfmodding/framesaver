@@ -571,3 +571,111 @@ live log cannot make it disagree with itself, and prints a warning naming any lo
 of qualifying lines a log actually contains. It exists because "no build-related trend" was asserted here from
 data that cannot separate a 2× change, and a power figure is the difference between *no effect* and
 *no measurement*.
+
+---
+
+## The instrument layer, 2026-07-29 — what a fresh reader would most regret not having
+
+Alpha has FINDINGS.md for the results. This is the method and instrument half. **Every entry here was
+paid for once tonight.**
+
+### `AI_MS = 10` is a POWER choice. It is not perceptual.
+
+An earlier comment called it *"the smallest threshold that still means a frame you could notice."*
+**False.** Her demonstrated bound is **≤90.6 ms for a whole frame**, so a 10 ms AI component inside a
+14.5 ms frame is an ordinary frame. 10 ms is where `k` stops being unfalsifiable and nothing else:
+
+| threshold | per window (Lighthouse) | k at 3 win/arm | detects |
+|---|---|---|---|
+| ≥5 ms | 6.26 | 38 | 2.75× — no longer "large"; `avg` covers it |
+| **≥10 ms** | **3.26** | **20** | **4.0×** ← registered |
+| ≥15 ms | 2.11 | 13 | 7.35× |
+| ≥30 ms | 1.05 | 6 | **>20× — cannot fail** |
+
+**The gap to the phenomenon her mark caught is 20× and must not be crossed silently.** ≥100 ms AI
+frames run **0.05/window on Lighthouse against 0.35 on Woods** — so a null at ≥10 ms says nothing about
+≥100 ms frames, and Woods is where that question belongs.
+
+### The composition check is ASYMMETRIC, and the symmetric version was circular
+
+The naive rule — *if the arms' AI fractions differ materially the count contrast is uninterpretable* —
+**voids every true positive.** If slicing removes AI-dominated frames, the survivors under treatment
+are necessarily the non-AI ones, so the treatment fraction **must** fall. **The rule fires hardest
+exactly when the lever succeeds.** On leg 4 it flagged a 4.4× count drop as unreadable.
+
+- **Control fraction = the validity check.** Untreated, so it cannot be confounded by the effect. 97%
+  AI on leg 4, so the metric was measuring AI.
+- **Treatment fraction = an outcome.** 28% is a *predicted consequence* of the lever working.
+
+**The count contrast itself was never confounded** — under H1 the AI-driven events vanish and the
+non-AI ones persist, so the count falls by exactly the AI portion, which is the estimand. **Do not
+change the estimand between the design and the read**; the asymmetry fixes it for free.
+
+### Weight the binomial null by REALISED windows, never by the step count
+
+Leg 4: **she pressed five times.** Steps `B1/B2/B1/B2/B1` — three control blocks against two. Realised
+**eligible** windows came out **5 control against 6 treatment**.
+
+| derived from | share | correct? |
+|---|---|---|
+| the original balanced design | 50% | no |
+| the block count (3:2) | 60% | no |
+| **realised eligible windows** | **45%** | **yes** |
+
+**That one line is what made the count test readable.** The design is the intent; the raid is what
+happened, and they differ in both directions.
+
+### `aiTotal` is stale on loading windows, sound in raid
+
+`AiTiming.TotalMs` is written and never reset, so on a frame where `BotsController.method_0` does not
+run the previous tick's cost is re-added. **40 of 98 loading windows carry the signature; 0 of 351
+in-raid windows do.** The discriminating test is **`min == max == avg`** — `min > 0` cannot see it,
+because a held 0.105 is also > 0. **Beta's fix will make those 40 windows a different instrument**, so
+any comparison spanning it compares two things. `read-marathon.py` is unaffected: it drops every
+non-raid line at load.
+
+### A maximum cannot be A/B'd at small n, and a median cannot gate a max
+
+| statistic | cv | at n=3–5 resolves |
+|---|---|---|
+| `aiTotal.avg` | 0.12–0.13 | 15–20% of its mean |
+| `aiTotal.max` | **1.02–1.36** | **180–300% of its mean** |
+
+A max is one draw from a heavy tail. **Registering it as a two-sided test guarantees the expected
+branch** — which is what "max does not fall" was. Its mirror image is the `worst ms` column: a **median
+of maxima** printed beside a max-type gate, understating by up to 3.4× and hiding the corpus's only
+steady-state failure (Streets, 107.0 printed against a true 367.0).
+
+> **An estimator's sensitivity profile has to match the question. Neither *robust* nor *extreme* is a
+> virtue on its own.**
+
+### A synthetic built for convenience shares the assumption you are checking
+
+Every test log built for `read-aitotal-aba.py` was **balanced** — 4/3/4, 3/3/3 — because balance is the
+tidy default when you construct an example. **The defect was exactly non-balance**, so the suite could
+not have found it. A passing suite was **evidence about the suite, not about the code.**
+
+**The fix that worked: cut the test log out of the real thing in the real shape.** Doing that found two
+defects nobody suspected — the unequal-arm null, and a `TypeError` on mixed runs that sat one line below
+a gate that always fired first. **Unreachable code behind an always-firing gate is not tested, it is
+quiet.**
+
+### The exemption fields, exactly
+
+- **`exempt` is ROSTER-scoped.** The branch sits outside the awake/asleep `if` in `CountBots`.
+- **`exempt ⊆ awake` follows from what exemption means** — it clears `CanDoStandBy`, so the bot never
+  reaches `paused`. 64 windows, zero violations. *This is a consequence, not the definition; reading it
+  as the definition breaks the first time a roster changes.*
+- **`awake − exempt` is the proximity-awake count exactly**, and its precondition is
+  **`awake + asleep == total`**. `CountBots` drops a null-`StandBy` bot from awake AND asleep while
+  still counting it in `exempt`, so one of those makes the subtraction meaningless. **Holds 64/64 today
+  by accident of nothing having a null `StandBy`** — asserted in the reader for that reason.
+
+### The one to keep if only one survives
+
+> **An assertion can fail on its number and still confirm the thing it was for.**
+
+I predicted leg 4 would show ~15 clean windows, and warned that 30 was the dangerous read. It came out
+**3 clean and 15 armed**, because she pressed at 252 s into a ~1000 s leg. **The leg scored 3 windows
+instead of being voided whole — which is exactly what the per-window granularity fix existed for.**
+Reading that as a failed assertion would have been the wrong lesson entirely.
