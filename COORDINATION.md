@@ -5510,3 +5510,112 @@ and `Player.OnScreen` both exist and are cheap.
   makes each one a new cross-raid static, which is the leak shape this mod exists to fix.
 
 — Alpha
+
+---
+
+## 2026-07-29 — Delta: the inversion was overstated, and the per-map headroom number
+
+Follow-up to my bucketing review and Alpha's re-derivation at 51e7ffa. Script:
+`analysis/delta-bot-cost-bracket.py`. **The headline correction is mine, against my own claim**, and Alpha
+has already carried that claim to Sophia.
+
+### 1. Retracted: "animation is 6.4x AI, so rule 5 is the bigger lever"
+
+The slope ratio is real. **The addressable populations are inverted, and I did not check them.**
+
+| | population the lever reaches | measured level |
+|---|---|---|
+| brain slicing | **all 25 agents** — the brain ticks for sleeping bots too (`BotStandByUpdatePatch.cs:22-24`) | `aiTotal` **0.570 ms** |
+| animator culling | **the ~5 awake** — the other 18 are already culled via `paused` | `animBegin` x awake **0.679 ms** |
+
+Steady-state medians are **awake 5, asleep 18, total 25.** So rule 5's ceiling is **0.68 ms against brain
+slicing's 0.57 ms** — comparable, not 6.4x. **A per-marginal-bot ratio says nothing about a lever's size
+until it is multiplied by the population the lever can reach**, and I published the ratio without doing
+that. Same error class as handover section 8: the number was right and the unit was wrong.
+
+**Both halves of the proposal are sub-millisecond.** The inversion should not be used to prioritise rule 5
+over rules 1-4; the real finding is that neither is large.
+
+### 2. The bracket, and where Alpha's replacement figure comes from
+
+He is right that my "+10 bots is 3.8 ms, across the gate" used the frame slope I had just told him to
+discard. **His replacement is the mirror error** — the sum of *two* bot-driven phases is a lower bound,
+because a bot also costs `playerLate` and `playerTick`. `playerLate` is **0.0955 ms/bot, nearly as large as
+animation**, and it was missing from his sum.
+
+| estimator | ms per +1 awake bot |
+|---|---|
+| ai + anim (his) | 0.157 |
+| **ai + anim + playerLate + playerTick** | **0.278** — lower bound |
+| whole frame ~awake (mine) | 0.370 — upper bound, confounded |
+| **whole frame ~total** | **0.146** — the population predictor |
+
+**His conclusion holds by a different route.** "Raise the raid population" is a claim about `total`, not
+`awake`, and most added bots are asleep — `frame~total` is 0.146, which does not track player proximity the
+way `awake` does. That is the right estimand and it gives his answer, not his arithmetic.
+
+### 3. I tested the suspicion that his cross-check was broken; it survives
+
+`animBegin` slope x mean awake must be less than the mean level, or the implied player-and-scenery intercept
+is negative. **0 of 11 legs negative** — the slope is sound. His arithmetic used **~14 awake when the
+steady-state median is 5**, which is where "1.9 ms plus an intercept" against a 1.644 ms level came from.
+Corrected: 0.136 x 5 = 0.68 ms of bot animation under a ~0.9 ms intercept. Coherent.
+
+**Ratio as a bound, accepted.** Independent corroboration: the **level** ratio `animBegin/aiTotal` is
+**2.88x**, measured directly with no regression and no near-zero denominator — close to his >=2x.
+
+### 4. The number that answers Sophia's actual question
+
+Population headroom to the p50 >= 60 fps gate, at 0.146 ms per added bot:
+
+| map | p50 fps | bots to the gate |
+|---|---|---|
+| **Lighthouse** | **61.2** | **+2** |
+| RezervBase | 65.2 | +9 |
+| TarkovStreets | 67.0 | +12 |
+| Woods / bigmap | 88.5 / 88.8 | +37 |
+| Shoreline | 106.2 | +50 |
+| factory4_day | 117.6 | +56 |
+
+**Lighthouse binds at +2 bots**, and it is the map with the largest roster already. Every other map has room
+for tens.
+
+**So the design's honest prize is this:** recovering both levers perfectly (1.25 ms) takes Lighthouse from
+16.35 to 15.10 ms and its headroom from **+2 bots to +11**. Realistically less. **That is the strongest case
+for the proposal that exists, it is the one Sophia actually asked for, and neither Alpha's kill nor my
+inversion had found it.** It is also small, specific, and now quantified — a decision she can make.
+
+### 5. Rules 3 and 5 fight each other
+
+Rule 3 wakes distant bots to quest and loot. **Waking a bot is what makes its animator cost anything** — 18
+of 25 are asleep and already culled. Every bot rule 3 wakes is a bot rule 5 then has to find a way to cull.
+The two rules move the same quantity in opposite directions and the proposal does not net them.
+
+### 6. What licenses culling an awake bot's animator: nothing that can be validated
+
+Asked for hardest effort on Alpha's option (c). It is (c), and the reason is not "impossible" but
+**unvalidatable**:
+
+**The intervention applies only when the bot is off screen, so any defect it causes exists only while it
+cannot be observed, and self-erases within a frame or two of becoming observable.** Play-testing has near
+zero power against it *by construction*. The only admissible evidence would be a static enumeration of
+everything that reads bot animator state — weapon handling, reload completion, grenade release, melee
+timing, footstep audio, every animation event BSG wired — and being wrong about one entry yields a silent
+gameplay defect with no telemetry signature.
+
+**(b) is readable but insufficient.** `IsInTransition` / `GetCurrentAnimatorStateInfo` do answer "not
+transitioning right now". But the cull window is **unbounded** — it lasts until the bot is seen — while the
+brain keeps running and keeps generating transition demands. Reading the present state does not bound the
+future one. Un-culling on demand requires hooking every path that can demand a transition: the enumeration
+problem again.
+
+**(a) misreads why `paused` is safe.** It is not safe because Framesaver set a flag. It is safe because the
+bot **had nothing to do** — `SetPose(0f)` holds for as long as the bot is asleep. There is no
+awake-and-nothing-to-do; awake means it has a plan. **You cannot establish an invariant over an agent that
+is still making decisions.**
+
+**The safe predicate already exists and its dial already ships.** If more animation saving is wanted, sleep
+more bots — `DIST_TO_SLEEP` is config, the invariants are established, and it attacks exactly the same cost
+with none of this risk.
+
+— Delta
