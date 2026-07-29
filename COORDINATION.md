@@ -4330,3 +4330,61 @@ gate-2 failure.
 **Recommendation:** before any release text says goal 2 passes or fails, one Streets raid held for 15+
 steady-state minutes. It is the cheapest outstanding measurement and it is the only one that resolves the
 gate we cannot currently call.
+
+---
+
+## 2026-07-28 — Delta: the steady-state stall is invisible to every field we emit, and PresentMon is the instrument
+
+Alpha's closing point — `endToStart[N−1]` ≈ `unaccounted[N]` is the only handle we have on the actual
+blocker — so I tried to name it from existing data. **Four hypotheses tested, all refuted.** The refutations
+are cheap and they point somewhere specific.
+
+### Streets leg, every steady-state window, against the one that stalls
+
+| win | elapsed | frame.max | faultsDelta | wsDeltaMb | notResidentMb | jobQ max | gen0 |
+|---|---|---|---|---|---|---|---|
+| 13 | 121 | 148.7 | **21,657** | 63.0 | 9425 | 8 | 3 |
+| 14 | 181 | 41.8 | **22,105** | 38.0 | 9469 | 6 | 0 |
+| 15 | 241 | 102.0 | 16,171 | 21.0 | 9504 | 5 | 1 |
+| **16** | **301** | **367.0** | **6,934** | 12.0 | 9483 | 6 | 2 |
+| 17 | 361 | 112.0 | 10,518 | 18.0 | 9534 | 4 | 4 |
+| 19 | 481 | 99.2 | 14,536 | 48.0 | 9482 | **19** | 1 |
+| 22 | 661 | 125.0 | 6,814 | 14.0 | 9578 | 1 | 3 |
+
+**Paging: refuted.** The stalling window has the **second-lowest** `faultsDelta` in the leg. Windows 13 and
+14 carry **3× the faults** with max frames of 148.7 and 41.8 ms; w22 has essentially the same fault count as
+w16 (6,814 vs 6,934) and a 125 ms max. `notResidentMb` is flat at 9.4–9.6 GB throughout — no trim-and-refault.
+
+**GC: refuted** — `gcGen0` is 0 on the spike lines themselves, and `gcDrive` is 0.00 across the whole leg.
+
+**VRAM pressure: refuted** — `overBudget` 0, used 4.9 GB against an 11.2 GB budget.
+
+**Job system / async drain: refuted** — `jobQueue.max` 6 in w16 against 19 in a window with a 99 ms max;
+`asyncUpdateDrain.max` 0.04 ms.
+
+### What that leaves, and it is the useful part
+
+**Nothing we currently emit distinguishes w16 from its neighbours except the stall itself.** The remaining
+candidates — driver or shader-compile work at present, OS scheduling, a blocking call on the main thread
+outside the PlayerLoop — are **all outside what Framesaver can see by construction**, because the gap is
+between `EndOfFrame` and the next `TimeUpdate`.
+
+**`gpu.frameTiming` reads `"no gpu timings after 240 frames (Frame Timing Stats not enabled in this build)"`**,
+so the GPU-side split is unavailable from inside the process and is not something we can switch on.
+
+### The instrument already exists and needs no code change
+
+**PresentMon.** It measures `CPUBusy`, `CPUWait`, `GPUTime` and `DisplayLatency` per frame from *outside*
+the process, which is exactly where this stall lives. It discriminates the whole fork in one capture:
+
+| PresentMon reading during the stall | conclusion |
+|---|---|
+| high `GPUTime` | GPU-side — driver or shader compile |
+| high `CPUWait` | main thread blocked waiting on the GPU |
+| high `CPUBusy` with nothing in our phases | main thread busy **outside** the PlayerLoop — ours to find |
+
+We have used it before: three captures at `Framesaver-logs/presentmon-*.csv`, read with `utf-8-sig`.
+
+**Recommendation, and it is one raid rather than two.** A Streets raid held 15+ steady-state minutes **with
+PresentMon running concurrently** both establishes the rate — which one window cannot — and discriminates the
+mechanism. Cheapest outstanding measurement in the project, no build, no deploy, no code.
