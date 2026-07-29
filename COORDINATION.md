@@ -7801,3 +7801,64 @@ counting marks rather than culls: **two shipped features whose benefit has never
 rounds went to mechanisms that do not exist yet.**
 
 — Delta
+
+---
+
+## Alpha + Delta: off-thread AI, and the objection that is true but not the reason (2026-07-29)
+
+Sophia asked whether AI could be moved off the main thread FIKA-style, with `ObservedPlayer` representing those
+bots in the player view. Recorded because it will recur, and because the honest answer is not the obvious one.
+
+**The obvious objection is true and is NOT why this does not pay.** Unity's API is main-thread-only for
+everything EFT AI is built on — `Transform`, `NavMesh.CalculatePath`, `Physics.Raycast`, `Animator` — and
+`GClass381.GetCover` alone does up to 500 point checks and 100 raycasts. So threading the existing AI is a
+rewrite of the AI to stop touching Unity objects, at BSG scale. True, and a distraction from the real answer.
+
+**Her architecture instinct is sound in the one way that matters, and our own data supports it.** GPUBusy is
+6.4 ms of a 15 ms frame and the main thread is the bottleneck, so **a second PROCESS genuinely would use
+otherwise-idle cores.** That is exactly what a FIKA headless client is — a whole second game instance hosting the
+raid, with the player connecting as a networked peer. `ObservedPlayer` is the right layer and it works because of
+a **serialised network boundary**, not a shared-memory handoff, which is also precisely why it cannot exist
+in-process. The architecture is not the flaw.
+
+### The flaw is the size of what moves, and Delta priced it against the decomposition we already have
+
+**I claimed the headless split moves more than AI. It does not, and that framing is withdrawn rather than
+qualified.** Everything in `playerLate` — `AnimatorStatesLateUpdate`, `Physical.LateUpdate`, `VisualPass` — is
+about animating and rendering a body, and **under a headless split you still see the body.**
+
+    per awake bot        cost      under a headless split
+    animator            0.1357     KEPT - you see them
+    playerLate          0.0955     KEPT - drives the animator from replicated state
+    playerTick          0.0255     mostly KEPT
+    aiTotal             0.0209     removed
+    UpdateManual      unmeasured   removed
+
+**Of the 0.257 ms per awake bot we have actually decomposed, essentially all of it stays.** What leaves is
+`aiTotal` — 0.570 ms of a 15 ms frame, under 4% — plus the one quantity nobody has measured.
+
+### The punchline is right about the numerator and was silent about the denominator
+
+`awake - paused` on `UpdateManual` **is** the correct measurement of what a headless split removes: pausing skips
+exactly those 22 subsystem ticks, and an `ObservedPlayer` has no `BotOwner`, so all 22 go. That part holds.
+
+**What it does not price is what the split ADDS.** Twenty-five observed players need deserialisation,
+interpolation and state application every frame, **on the same main thread that is already the bottleneck**, and
+that cost scales with bot count — which is the exact quantity she wants to raise. So a favourable number licenses
+*worth investigating*, never *worth doing*. Delta's warning to carry forward: **say this when the build lands,
+because the number will look good in isolation and there is nothing in the measurement to stop it being read as
+the whole answer.**
+
+Cost side, for completeness: a headless host is a full second game process — the existing one holds a ~21 GB
+working set — realistically a second machine, and AI reactions inherit network latency.
+
+### The line worth more than the answer
+
+**`awake - paused` prices the stand-by system we already ship, whose effect has never been measured.** Pair it
+with `animCulled` counting bots we *marked* rather than bots Unity culled: **two shipped features whose benefit
+has never been measured, while four rounds of design work went to mechanisms that do not exist yet.**
+
+That is a resource-allocation finding about this investigation rather than about the game, and it is the same
+shape as the `playerLate` allocation argument — the difference being that these two are already in users' hands.
+
+— Alpha
