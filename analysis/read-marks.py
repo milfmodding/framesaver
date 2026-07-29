@@ -34,6 +34,14 @@ disappointment: it points at the frame-to-frame delta, which is what stutter
 physically is and which no metric in this project has ever measured. Reported as an
 inversion rather than quietly collapsed into a single number.
 
+JOIN MARKS TO SPIKE LINES ON `qpc`, NEVER ON TIME AND MAGNITUDE. The first attempt
+matched a mark's worst lookback frame against nearby spike lines by `t` and size, and
+it failed on all three real marks -- returning a 30.6 ms line for a 122.5 ms event,
+because `frame` travels one line ahead of `period` so neither field matches what the
+lookback recorded. Both line types carry `qpc`, and `header.qpcFrequency` converts the
+lookback span to ticks, so the join is exact and needs no tolerance. It found all
+three immediately.
+
 `frameMs` is emitted NEWEST FIRST - the writer walks the ring backwards. Reversed on
 read, because a delta series computed in the wrong direction is sign-flipped and
 still looks plausible.
@@ -57,7 +65,7 @@ BAND_HI = 300.0     # smallest family she has spontaneously reported
 
 
 def load(paths):
-    marks, samples = [], []
+    marks, samples, spikes, freq = [], [], [], None
     for path in paths:
         # Stem is YYYYMMDD-HHMMSS-tag; the date is constant within a run
         # and the time+tag is what distinguishes logs in a table.
@@ -71,11 +79,15 @@ def load(paths):
             except ValueError:
                 continue
             d['_log'] = name
+            if d.get('type') == 'header':
+                freq = freq or d.get('qpcFrequency')
             if d.get('type') == 'mark':
                 marks.append(d)
             elif d.get('type') == 'sample' and d.get('state') == 'raid':
                 samples.append(d)
-    return marks, samples
+            elif d.get('type') == 'spike':
+                spikes.append(d)
+    return marks, samples, spikes, freq
 
 
 def series(mark):
@@ -93,7 +105,7 @@ def main(argv):
     if len(argv) < 2:
         print(__doc__)
         return 2
-    marks, samples = load(argv[1:])
+    marks, samples, spikes, freq = load(argv[1:])
     if not marks:
         print('No mark lines in %d log(s).' % (len(argv) - 1))
         print('That is not the same as no hitches - it means either the key was '
@@ -177,10 +189,49 @@ def main(argv):
                       'derivative and not the level. That is a finding, not a '
                       'measurement failure.')
 
+    # ---- in-loop or out-of-loop? ---------------------------------------
+    #
+    # Exact join on qpc. A mark's lookback spans `spanMs`, so the spike lines that
+    # describe the same interval are those whose qpc falls inside it. `unaccounted`
+    # then says whether the stall she reacted to was inside PlayerLoop or in the
+    # native gap between frames - the two families goal 2 has to cover, and there
+    # is no reason to assume perception treats them alike.
+    if freq and spikes:
+        print('\n--- what kind of stall did she react to? --------------------')
+        print('%-6s %-14s %-9s %-9s %-13s %s'
+              % ('mark', 'map', 'period', 'frame', 'unaccounted', 'family'))
+        for m in sorted(marks, key=lambda x: (x['_log'], x.get('mark', 0))):
+            if m.get('state') != 'raid' or not m.get('qpc'):
+                continue
+            span = (m.get('spanMs') or 5000.0) / 1000.0
+            q0, q1 = m['qpc'] - int(span * freq), m['qpc']
+            ins = [d for d in spikes
+                   if d.get('qpc') and q0 <= d['qpc'] <= q1
+                   and d.get('_log') == m['_log']]
+            if not ins:
+                print('%-6s %-14s %s' % (m.get('mark'),
+                                         (m.get('map') or '?')[:14],
+                                         'no spike line inside the lookback'))
+                continue
+            d = max(ins, key=lambda x: x.get('period') or 0)
+            pe = d.get('period') or 0.0
+            un = d.get('unaccounted') or 0.0
+            print('%-6s %-14s %-9.1f %-9.1f %-13.1f %s'
+                  % (m.get('mark'), (m.get('map') or '?')[:14], pe,
+                     d.get('frame') or 0, un,
+                     'OUT-OF-LOOP' if un > 0.5 * pe else 'in-loop'))
+        print('\nIf both families appear, stall TYPE does not explain what she '
+              'notices, and the\ndiscriminator is elsewhere - do not quietly drop '
+              'the one that does not fit.')
+
     # ---- level versus derivative ---------------------------------------
     print('\n--- level or derivative? ------------------------------------')
+    # In-raid marks only. Pooling loading stalls in here put a 19,928 ms map load
+    # beside a 122 ms in-play hitch and produced a median of 848 ms, which is a
+    # number about nothing. Loading is a different regime with a different
+    # threshold - goal 2's secondary target, measured separately or not at all.
     both = [(max(series(m)), worst_delta(series(m))) for m in marks
-            if len(series(m)) >= 2]
+            if m.get('state') == 'raid' and len(series(m)) >= 2]
     if len(both) < 3:
         print('n=%d marks with a usable series - too few to compare the two.'
               % len(both))
