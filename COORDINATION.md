@@ -3140,3 +3140,85 @@ Both were caught by asking what the denominator was. Ask it of your own work fir
 you do and the only one that has ever saved you.
 
 — Delta
+
+---
+
+## 2026-07-28 — Gamma handover at the third compaction
+
+Telemetry. Audited against disk rather than assumed, and the gap was the same one the last two
+compactions found: **`discriminability`, `overdispersion` and the design-versus-post-hoc power
+distinction appeared nowhere in any document.** They do now, below.
+
+### The two scripts that were only in a temp directory
+
+Landed in `analysis/` — Alpha's directory, taken because losing them is irreversible and deleting
+them is not. **Edit or discard freely.**
+
+- **`analysis/read-slicing-raid.py`** — the slicing-raid reader, **written before the raid ran.**
+  That timing is the point: every choice in it was made without knowing the answer. It refuses to
+  print the primary until the parse, the lever-engaged check and the drift gate pass, and **exits 1
+  on a log that cannot support them.**
+- **`analysis/percentile-discriminability.py`** — the instrument that killed `p999`. Recomputes on
+  whatever logs exist, so it does not depend on the snapshot below.
+
+### Numbers recorded nowhere else
+
+**`framePct.p999` cannot gate anything.** Across adjacent in-raid window pairs at identical `cfg`:
+
+| | median &#124;Δ&#124; | discriminability (corpus IQR ÷ neighbour IQR) |
+|---|---|---|
+| p50 | 1.2 ms | 4.0 |
+| p99 | 2.6 ms | 3.0–3.4 |
+| **p999** | **25.8 ms** | **1.2–1.3 — cannot separate** |
+
+At a 100 ms gate, **45 of 181 identical-config adjacent pairs land on opposite sides**. p999 is the
+~3.5th worst frame of a window and √n noise alone is **53%** of it. **p99 is the best-conditioned
+tail metric**, not "too well-behaved" — it simply measures the top of the routine distribution.
+
+**`period >= 30 ms` is not a rare-event count and must never carry a significance test.**
+Overdispersion **447–454×** Poisson, Spearman **ρ = +0.71** against window order, **3.9–6.0×** rise
+from first half of a raid to second **at constant config**. `period >= 100 ms` is near-Poisson
+(**1.2×**) and is the valid one. The raw series says it better than the statistic:
+`19, 22, 13, 7, 1, 0, 6, 7, 4, 18` then `388, 635, 351, 412, 685`. **Regime, not rate.**
+
+**Count `period`, never `frame`.** The emit gate tests `periodMs` alone (`Telemetry.cs`, predicate
+`periodMs >= Plugin.SpikeEventMs.Value` — cite the predicate, the line moves). Since `frame` travels
+one line ahead of `period`, a large frame can sit on a line whose period is under threshold and emit
+nothing: **8 of 16 windows have a percentile-derived lower bound exceeding their observed
+`frame >= 100` count**, one with bound 3 against **0 observed**. The aggregate hid it — 36 implied
+against 40 observed — which is why it was checked per window.
+
+**Two power figures exist and they are both correct.** Design figures average over a random total
+that *shrinks* under H1; post-hoc figures condition on the realized total. At 6 windows/arm that is
+**6.43× design** against **4.7× post-hoc**. Quoting the second as the first understates what the
+design needs. **My simulation was wrong** because it generated the treatment arm inflated
+(`λ × r`) rather than depleted (`λ ÷ r`) — slicing *reduces* stutter, so the total shrinks, and
+holding it at its null value credits the design with events H1 never produces. Alpha's self-check
+catches it with no second implementation: **if `E[control] < k_crit` at the reported ratio, the
+figure is wrong**, because rejecting at the expected outcome is ~50% power, not 80%.
+
+### Open
+
+- **`endToStart` must not be dropped** until the two-row test runs against a log. It is the control
+  for its own replacement; without it a fix and a silent regression are identical output.
+- **`bots.roleUnknown` has never been observed.** If it is always 0 it costs one field and proves
+  `exempt` is clean. If it is ever non-zero, `exempt` was conflating before this build.
+- **`boundaryMissedFrames` corpus rule** still owed, still needs a log with enough loading windows.
+
+### The rule that earned its own section, and where it stops
+
+**When an observation goes missing, ask whether it goes missing more often when it would have been
+interesting.** Five instances today, none of which looked like that from the front:
+
+| | the correlation |
+|---|---|
+| `p999` | rides the frame time it was meant to describe |
+| `LastBrainsTicked` sampled at flush | `perFrame` divides by `deltaTime`, so a slow frame ticks more |
+| mark lookback from `_frameSamples` | cleared at the window boundary, losing the frames she reacted to |
+| `KeyboardShortcut.IsDown()` | refuses while any key is held, so marks survive only when stationary |
+| menu marks | the ring did not fill there, so the hitch was unmeasured as well as unmarked |
+
+**Where it stops:** the `frameMs`-versus-`frame` divergence is a caveat that stays a caveat, because
+both quantities are reachable and the note only says not to subtract one from the other. Beta's test
+is the sharp one — **a caveat that cannot be acted on through the interface it describes is a defect
+in the interface, not a note about it.**

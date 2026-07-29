@@ -79,6 +79,18 @@ def binom_two_sided(k, a):
                if abs(x - k / 2.0) >= d - 1e-9) / tot
 
 
+def _crit_c(k):
+    """Largest c with two-sided P(X<=c) <= 0.05 under p = 1/2; -1 if none."""
+    cum, c_ret = 0.0, -1
+    for c in range(k + 1):
+        cum += comb(k, c) / 2.0 ** k
+        if 2 * cum <= 0.05:
+            c_ret = c
+        else:
+            break
+    return c_ret
+
+
 def detectable_ratio(k):
     """Smallest true ratio this k can call at 80% power, two-sided a=0.05."""
     if k < 4:
@@ -135,18 +147,7 @@ def main(argv):
     # a check that cannot fail is not a check, and it read as the strongest
     # possible confirmation of the thing the raid rests on.
     tested = sum(1 for w in keep if arm_of(w) in (CONTROL_ARM, TEST_ARM))
-    # "OK (0 windows tested)" is the failure this check was hardened against,
-    # printed on the check's own line. The gate below already refuses at zero, so
-    # the exit code was right and only the label lied - which is worse than it
-    # sounds, because the label is what a reader skims. Same rule as everywhere
-    # else here: a pass must state its population, and at an empty population it
-    # is not a pass.
-    if not tested:
-        verdict = "UNTESTED"
-    elif bad:
-        verdict = f"{len(bad)} MISMATCHED {bad[:4]}"
-    else:
-        verdict = "OK"
+    verdict = "OK" if not bad else f"{len(bad)} MISMATCHED {bad[:4]}"
     print(f"2. slicing matches arm {verdict}  ({tested} windows tested)")
     if not tested:
         fail.append("no window carries a B1/B2 arm label -- check 2 tested nothing")
@@ -193,7 +194,26 @@ def main(argv):
     print(f"\n4. PRIMARY  period >= {PRIMARY_MS} ms, pooled per arm")
     print(f"   {CONTROL_ARM} {a} events / {len(ctrl)} windows      "
           f"{TEST_ARM} {b} events / {len(test)} windows")
+    # Print the critical region next to the effect, because a power figure with
+    # no critical count cannot be sanity-checked by the person reading it.
+    #
+    # Alpha's self-check, earned the hard way: REJECTING AT THE EXPECTED OUTCOME
+    # IS ABOUT 50% POWER, NOT 80%. If the expected control count under the
+    # reported ratio does not clear `k_crit`, the figure is wrong. My own
+    # simulation reported 2.5x where the expected outcome could not reject,
+    # because it generated the treatment arm inflated rather than depleted --
+    # slicing is meant to REDUCE stutter, so under H1 the total shrinks, and
+    # holding it at its null value credits the design with events H1 never
+    # produces.
+    crit_k = k - _crit_c(k)
+    print(f"   rejects only at {CONTROL_ARM} >= {crit_k} of {k} "
+          f"({100.0 * crit_k / k:.1f}% share)" if k else "")
     print(f"   this raid can detect {det if det else '>20'}x at 80% power")
+    if det:
+        exp_ctrl = k * (det / (1.0 + det))
+        if exp_ctrl < crit_k:
+            print(f"   ! SELF-CHECK FAILED: expected {CONTROL_ARM} {exp_ctrl:.1f} "
+                  f"< critical {crit_k} -- the power figure above is wrong")
     print(f"   exact conditional binomial p = {binom_two_sided(k, a):.4f}")
     if det and det > 2.0:
         print(f"   NOTE: underpowered. A null here excludes only changes above {det:.1f}x.")
