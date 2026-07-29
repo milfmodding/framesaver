@@ -141,6 +141,46 @@ def eligible(leg):
             and (d.get('framePct') or {}).get('p50')]
 
 
+def sliced(w):
+    """Was slicing applied on this window? `agents.slicing` when it is emitted,
+    falling back to the config value.
+
+    The config alone is not enough: `ModCompat.SuppressSlicing` can hold slicing
+    off while `brainPeriod` reads non-zero, so a config-only test reports an arm
+    that was never applied. Preferring the observed field over the requested one
+    is the same rule as reading the backend URL out of Player.log.
+    """
+    obs = (w.get('agents') or {}).get('slicing')
+    if obs is not None:
+        return bool(obs)
+    return bool((w.get('cfg') or {}).get('brainPeriod'))
+
+
+def control_windows(leg):
+    """Steady-state windows with slicing OFF.
+
+    On a clean leg this is every eligible window and the call is free. On a leg
+    carrying an A/B it is the control arm only, which is the ONLY thing on that
+    leg comparable to a clean leg elsewhere in the session. Pooling both arms
+    into a drift comparison would read a real slicing effect as session-age
+    drift - in whichever direction slicing happens to work, which is the reading
+    that would be believed.
+    """
+    return [w for w in eligible(leg) if not sliced(w)]
+
+
+def leg_is_clean(leg):
+    """No protocol installed and slicing off on every window of the leg.
+
+    Scored PER LEG rather than per run. The run-level version failed the whole
+    marathon when any one leg carried an ini, which would have made three clean
+    legs' goal-1 verdicts unquotable because of a fourth. The gate was not wrong
+    - it answers "was this a clean sweep" - it was being asked of a run that is
+    deliberately not one.
+    """
+    return all(w.get('protocol') is None and not sliced(w) for w in leg['w'])
+
+
 def fps(ws):
     return sorted(1000.0 / d['framePct']['p50'] for d in ws)
 
@@ -172,13 +212,40 @@ def main(argv):
     print('1. legs                %d   maps %s'
           % (len(ls), ', '.join(KNOWN.get(l['map'], l['map']) for l in ls)))
     print('2. brainPeriod         %s' % (sorted(str(p) for p in periods),))
-    if periods - {0, 0.0}:
-        fails.append('brainPeriod was not 0 on every window - slicing was applied, '
-                     'probably inherited from a previous protocol run')
+    # UNEXPLAINED SLICING STILL FAILS THE RUN; EXPLAINED SLICING EXCLUDES A LEG.
+    # The original gate failed on any non-zero brainPeriod, and its own message
+    # says what it was written to catch: slicing "probably inherited from a
+    # previous protocol run" - a leftover nobody asked for, which silently makes
+    # every map figure a slicing figure. That hazard is unchanged and still fails
+    # here. What is new is a leg that carries an ini ON PURPOSE, where the
+    # non-zero period is announced by the protocol beside it. Those are different
+    # facts and the single test conflated them, so a deliberate A/B leg made
+    # three clean legs unquotable.
+    #
+    # Split by whether the window can explain itself: slicing with a protocol is
+    # an arm, slicing without one is contamination.
+    unexplained = [w for w in rows if sliced(w) and w.get('protocol') is None]
+    if unexplained:
+        fails.append('%d window(s) have slicing on with no protocol to explain it '
+                     '- probably inherited from a previous run, and every map '
+                     'figure on those legs is a slicing figure' % len(unexplained))
+    # sorted(key=str): a mixed run holds both None and JSON strings, and sorting
+    # those raw raises TypeError. Unreachable while any protocol failed the whole
+    # run, which is why it survived - the crash was one line below a gate that
+    # always fired first, so widening the gate uncovered a second defect rather
+    # than causing one. Found by feeding the reader a synthesised protocol leg
+    # before the raid, which is the only place that combination existed.
     print('3. protocol            %s'
-          % ('null throughout' if protos == {None} else sorted(protos)))
-    if protos != {None}:
-        fails.append('a protocol was installed - this is not a clean sweep')
+          % ('null throughout' if protos == {None}
+             else sorted((str(p) for p in protos), key=str)))
+    dirty = [i + 1 for i, l in enumerate(ls) if not leg_is_clean(l)]
+    if dirty:
+        print('                       legs %s carry a protocol or slicing and are '
+              'EXCLUDED from' % ', '.join(str(d) for d in dirty))
+        print('                       goal-1 scoring and from coverage. Their '
+              'control-arm windows are still')
+        print('                       usable for the session-age comparison, and '
+              'nothing else on them is.')
 
     # ---- 2. the session-age control --------------------------------------
     seen = {}
@@ -218,7 +285,10 @@ def main(argv):
         for m, idx in repeats.items():
             vals = []
             for i in idx:
-                e = eligible(ls[i])
+                # CONTROL-ARM WINDOWS ONLY, so a repeat leg that carries an A/B is
+                # still comparable to the clean leg it is being read against. On a
+                # clean leg this is every eligible window and nothing changes.
+                e = control_windows(ls[i])
                 vals.append((i + 1, len(e), st.median(fps(e)) if e else None))
             got = [v for v in vals if v[2] is not None]
             print('%s played %d times: %s'
@@ -278,6 +348,18 @@ def main(argv):
         name = KNOWN.get(l['map'], l['map'])
         if not e:
             print('%-4d %-19s %-5d %s' % (i + 1, name, 0, 'no steady-state windows'))
+            continue
+        if not leg_is_clean(l):
+            # Not scored at all, rather than scored and flagged, AND THE NUMBER IS
+            # NOT PRINTED. A p50 pooled across both arms of an A/B is not this
+            # map's frame rate under any config, so printing one beside a caveat
+            # would publish a figure whose only defence is that someone reads the
+            # footnote - and the Lighthouse 65.8 taught us that a number on the
+            # page outlives the qualifier next to it. The control-arm count is
+            # shown because that is what the drift comparison above actually used.
+            print('%-4d %-19s %-5d %-9s %-8s %-11s'
+                  % (i + 1, name, len(e), '--', '--',
+                     'protocol leg, %d control-arm win' % len(control_windows(l))))
             continue
         f = fps(e)
         med = st.median(f)
@@ -376,7 +458,12 @@ def main(argv):
     # that was launched and not measured is worse than one never launched, because
     # it stops looking like a gap.
     played = set(FAMILY.get(l['map'], l['map']) for l in ls)
-    launched_only = sorted(played - verdicted)
+    # A protocol leg is not a short leg and must not be reported as one - the fix
+    # is not "more raid time", it is a clean leg. Named separately so the reader
+    # is told which thing to do about it.
+    proto_only = sorted(set(FAMILY.get(l['map'], l['map']) for l in ls
+                            if not leg_is_clean(l)) - verdicted)
+    launched_only = sorted(played - verdicted - set(proto_only))
     new = sorted(verdicted - set(ALREADY_MEASURED))
     still = sorted(set(KNOWN[k] for k in KNOWN
                        if FAMILY.get(k, k) not in played | set(ALREADY_MEASURED)))
@@ -391,6 +478,14 @@ def main(argv):
               '%.0f s discarded as' % (STEADY_S + MIN_WINDOWS * win_s, STEADY_S))
         print('                       warm-up, then %d windows of %.0f s. These '
               'are still gaps.' % (MIN_WINDOWS, win_s))
+    if proto_only:
+        print('                       MEASURED ONLY UNDER A PROTOCOL: %s'
+              % ', '.join(KNOWN.get(m, m) for m in proto_only))
+        print('                       goal 1 is a claim about the shipped config, '
+              'so an A/B leg does not')
+        print('                       cover it however long it ran. Still a gap, '
+              'and more raid time will')
+        print('                       not close this one - a clean leg will.')
     print('                       still never launched: %s'
           % (', '.join(still) or 'none - all ten maps measured'))
 
