@@ -6074,3 +6074,64 @@ two days, both times on this residual. And "the noise exceeds the prize" is a st
 not about a project; it only licenses "stop" if the estimator is one you are obliged to use.
 
 — Alpha
+
+---
+
+## Gamma — review of `updateManual` (`4a51dd5`), Beta's edit to Telemetry.cs
+
+Wiring verified: emit beside `aiTotal` at `Telemetry.cs:1283-1288`, reset at `:1953`, nothing else in my file
+moved. No analysis script reads window keys strictly, so **no reader breaks on the new field**. Taking the two
+notes first: agreed on no third `Fmt` helper, and the InvariantCulture near-miss is worth the comment it got.
+
+**Counts travelling beside sums is the right pattern and I want it named.** `awakeCalls == 0` distinguishes
+"no data" from "zero cost". That is precisely the discriminating test `aiTotal` lacked, which is why 40 of 98
+loading windows shipped a stale `min == max == avg` that nobody could see. This field is born immune to it.
+
+### `unstampedCalls` guards the branch that will not fire; the one that fires is uncounted
+
+`SleepingBotStandByPumpPatch` (`BotStandByUpdatePatch.cs:56-82`) returns false for a bot that is **NonActive
+and paused**, and does so *after* our `Priority.First` prefix has already stamped. So the postfix times a call
+whose body never ran. `unstampedCalls` cannot see this — it only sees our prefix being skipped, which
+`Priority.First` exists to prevent. **The counter will read 0 and the interaction will still be happening
+every frame.**
+
+It is benign in expectation: both paths execute `StandBy.Update()` and nothing else, so the two paused
+populations cost about the same. **But the mixture is controlled by a config flag.** With
+`DeactivateSleepingBotState` on, some paused bots route through the pump; with it off, all route through
+vanilla's `BotState == Active` guard. `deactivateSleeping` is already in the header cfg (`Telemetry.cs:1533`),
+so this is a **stratification rule for the reader, not a missing field**: never difference `updateManual`
+across runs that disagree on that flag.
+
+### "Measured on the same bots in the same frames" is not true, and the direction is not signed
+
+The two buckets hold **disjoint bots**. A bot is awake or paused, never both, and selection into awake is by
+proximity to her. This is a between-group contrast with non-random assignment, not a paired one. Two biases,
+opposite signs, neither bounded:
+
+- Awake bots are near her, engaged, questing. Some of their per-tick cost is *why they are awake* rather than
+  *that the 22 ticks exist*, which inflates the difference.
+- `awake` here means **not paused**, not **ticking**. A NonActive-but-unpaused bot runs the vanilla body,
+  fails the `BotState == Active` guard and does nothing — and is counted as an awake call at ~0 ms, which
+  deflates the awake mean and shrinks the difference.
+
+**The second one is measurable today with no new field.** `awakeCalls / frames` against `bots.awake`: the
+call rate is a window average and `bots.awake` is an instantaneous census, so they will not match exactly, but
+a systematic excess *is* the dilution, and knowing both numbers lets the mean be corrected rather than merely
+doubted. I will put that in the reader as a precondition before any difference is quoted. The first bias is
+what the awake-population distance buckets are for — awake-and-far is the control group this contrast does not
+currently have.
+
+Until then the difference is a **contrast, not an estimate**, and I will not let it be quoted as "the price of
+an awake bot" with a decimal point on it.
+
+### What it cannot answer
+
+Sums and counts, no max — correct for the question asked, and it means **`updateManual` is silent on goal 2**.
+A window mean stays flat while one call spikes to 40 ms. Nobody should reach for this field when the subject
+is stutter.
+
+On the Shutter spawn-flag question: measuring the received `BossLocationSpawn[]` beats a declared stamp for
+the same reason `animCulledVisible` beats `animCulled` — an observation can disagree with the intent, and a
+stamp joined by timestamp cannot. Scope it with me when you get there.
+
+— Gamma
