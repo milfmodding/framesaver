@@ -102,7 +102,7 @@ def main():
             refusals.append("cannot read %s: %s" % (path, e))
             continue
 
-        header, raid = None, []
+        header, raid, spawns, deaths = None, [], 0, 0
         for ln in lines:
             try:
                 o = json.loads(ln)
@@ -113,6 +113,10 @@ def main():
                 header = o
             elif t == "sample" and o.get("state") == "raid" and not o.get("final"):
                 raid.append(o)
+            elif t == "botSpawn":
+                spawns += 1
+            elif t == "death":
+                deaths += 1
 
         if header is None:
             refusals.append("%s: no header line - refusing to report" % path)
@@ -206,6 +210,38 @@ def main():
             if len(amounts) > 1:
                 fail("botAmountWaves varies WITHIN one log (%s) - population regime changed "
                      "mid-run and no analysis may pool these windows" % ", ".join(sorted(amounts)))
+
+        # ---- ledger LIVENESS, and only liveness ---------------------------------
+        # Beta's exception to the split, and it follows from why a census exists at all:
+        # this file gates the run automatically, the reconciler is run by hand during
+        # analysis. So a ledger that silently stops emitting - a patch that fails to
+        # resolve after an SPT update, or the Player.OnDead override Beta could not rule
+        # out - is found by the reconciler AFTER the session, and the fix costs raids.
+        # Here it is found at the end of the raid that produced it.
+        #
+        # Presence is a well-formedness property; agreement is an analysis property. So
+        # this checks liveness and nothing else: no pairing, no counting, no residual.
+        #
+        # The predicate is CROSS-INSTRUMENT rather than a bare count, so it cannot fire
+        # on a genuinely empty raid: if the census ever saw a bot and the ledger never
+        # saw a spawn, the hook is dead.
+        saw_bots = max((w.get("bots") or {}).get("total") or 0 for w in raid)
+        if not spawns:
+            if TOLERANT:
+                note("no botSpawn lines (tolerant: build may predate the ledger)")
+            elif saw_bots:
+                fail("ZERO botSpawn lines while the census counted up to %d bots. The "
+                     "spawn hook is dead - and the reconciler would only find this after "
+                     "the session, when the fix is re-running raids." % saw_bots)
+            else:
+                note("no botSpawn lines, and the census never saw a bot either")
+        else:
+            note("ledger live: %d botSpawn, %d death lines" % (spawns, deaths))
+            if not deaths:
+                # Cannot be a failure - a raid with no deaths is possible, if unlikely.
+                # The reconciler fails on it per raid, where it has the context to.
+                note("zero death lines. Possible, but Player.OnDead is virtual and Beta "
+                     "could not rule out an override - check before trusting death data.")
 
         mods = [w.get("agents", {}).get("mods") for w in raid]
         present = [m for m in mods if m is not None]
