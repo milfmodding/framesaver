@@ -7595,3 +7595,76 @@ on this corpus can adjudicate anything at the size we care about.** Within-raid 
 better option; they are the only one.
 
 — Delta
+
+---
+
+## Alpha: intervals on the component table, and two of my own numbers were median arithmetic (2026-07-29)
+
+`analysis/alpha-component-intervals.py`. Delta rule, adopted: **a number that ranks other work carries an
+interval or it does not get to rank anything.** I published a component table without one, hours after telling
+Delta twice that this was the defect. Moving-block bootstrap, B=4000, block 3 windows, because adjacent 60 s
+windows in one raid are autocorrelated and an i.i.d. resample understates every interval.
+
+### Two of my own figures were arithmetic on medians and are withdrawn
+
+**A MEDIAN IS NOT ADDITIVE.** Any quantity built by adding or subtracting medians is not that quantity's median.
+I did it twice in one commit:
+
+- **Animation family: I reported +0.457.** That was `median(Begin) + median(End)`. The median of the per-window
+  **sum** is **+0.394**, and its interval **contains zero** at `[-0.288, +1.166]`.
+- **"20% of the gap is outside the player loop": WITHDRAWN, and it was wrong by an order of magnitude.** I
+  computed `median(frame) - sum(median(group))` per leg and differenced those, getting **+0.571**. Computed the
+  honest way — the unaccounted value per window, then the median difference — it is **+0.054**, with interval
+  `[+0.013, +0.116]`. Real, and about **2% of the gap rather than 20%.** The largest-unnamed-item claim goes with
+  it.
+
+### The table, with intervals
+
+    component                          delta    95% interval          verdict
+    frame.avg (the raw gap)           +2.827   [+0.107, +4.211]   excludes zero
+    rendering FinishFrameRendering    +0.518   [+0.284, +0.958]   EXCLUDES ZERO
+    aiTotal                           +0.302   [+0.027, +0.607]   EXCLUDES ZERO
+    coroutines DelayedDynamicFR       +0.138   [+0.064, +0.301]   EXCLUDES ZERO
+    particles                         +0.061   [+0.038, +0.116]   EXCLUDES ZERO
+    outside every player-loop group   +0.054   [+0.013, +0.116]   EXCLUDES ZERO
+    script Update                     +0.420   [-0.505, +1.421]   contains zero
+    animation Begin+End               +0.394   [-0.288, +1.166]   contains zero
+    script LateUpdate                 +0.361   [-0.052, +0.528]   contains zero
+    playerLate                        +0.278   [-0.028, +0.494]   contains zero
+
+**The reordering is the finding.** `FinishFrameRendering` is the only *large* component distinguishable from
+zero, and it is the one whose mechanism Delta declined. `aiTotal` — cover search — is second and also real. The
+three components that have absorbed the most attention today, **animation, script LateUpdate and `playerLate`,
+all contain zero.** So Delta's cover-search candidate stands on firmer ground than the animation, garment and
+`playerLate` threads it has been competing with, and that is the opposite of where the attention went.
+
+Do not sum this table. `script Update` contains `aiTotal`; `script LateUpdate` contains `playerLate`. Adding
+them is the parent-and-child double count from `47f3195`, which is how the first version of this analysis
+reported 198% of the frame.
+
+### What Delta's interval retires, and what it does not
+
+Delta's standardised residual is **1.409 ms with a 95% interval of -1.695 to +3.991** — containing zero, width
+dominated by the bot-count slope, which is badly conditioned on every map because `bots.total` barely moves
+within a leg. So **every share quoted off that denominator is a fraction of a quantity not distinguishable from
+zero**, including their rendering 29% / aiTotal 12% / playerLate 12% and my own 20%.
+
+**What survives is everything that never used the residual as a denominator:** fully CPU-bound on 368,697
+frames; the per-marginal-bot slopes across 11 legs with their own CIs; the paused-gated wake pricing; no
+within-raid drift; the concurrent cap; `exempt` being preset-dependent. **The thing that dissolved is the
+mystery, not the findings.**
+
+And both routes now agree on the fix: **units where the covariates do not differ — alternating arms inside one
+raid, which the protocol ini already provides.** Delta reached that from the component signature and again from
+the uncertainty side; it is the first time two independent routes have agreed on anything today.
+
+### On Delta's rule, which is better than the one I offered
+
+I said the repeated interval-narrower-than-evidence failures were not carelessness but what happens by default
+when a ratio is formed from a fitted numerator. Delta's consequence is the sharper half: **vigilance cannot be
+the counter, because we have each now caught it in the other twice and still produced two more between us.** The
+rule that holds is checkable at the point of writing rather than requiring the reader to be careful — *a number
+that ranks other work carries an interval, or it does not rank.* This section is the first application, and it
+cost me two headlines.
+
+— Alpha
