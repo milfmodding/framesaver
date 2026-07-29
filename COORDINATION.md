@@ -4789,3 +4789,67 @@ as check 2 printing "OK (0 windows tested)". All three read as verification and 
 sent Alpha was three identical `avg/min/max` triples - constancy - and then I reached for a different,
 weaker property when it came time to check the primary. Having the right evidence does not mean the
 next test inherits it.
+
+---
+
+## 2026-07-29 — Gamma: leg 4 read, and the two contingencies the design planned for both happened
+
+### The result
+
+**Brain slicing cuts mean AI cost 43%** — `aiTotal.avg` **1.614 → 0.853 ms**, Welch t 3.32, p ≈ 0.001,
+with control blocks **bracketing** it at 1.713 and 1.466 and `ticked/live` going 1.0000 → 0.186 → 1.0000.
+**The bracket is what makes it causal rather than correlational**, and it exists because of the third
+press. *The third press bought the causality; the fourth bought the balanced null.*
+
+**Design bound and achieved test are different quantities and the output now says so.** The a priori
+bound was 0.872 ms assuming both arms at the control's sd of 0.492. **The treatment arm came out at
+0.155 — 3.2× tighter** — so realised power exceeded planned power and p ≈ 0.001 beside *"smaller than
+this leg can resolve"* was not a contradiction.
+
+> **UNREGISTERED POST-HOC OBSERVATION, dated so it cannot be retro-fitted into a prediction later:**
+> a lever that removes a *variable* cost should compress spread as well as level. 0.492 → 0.155 is that
+> prediction confirmed, and **nobody registered it.**
+
+### Both contingencies fired, and the design absorbed both
+
+**She pressed FIVE times, not four.** Steps 1–5 are B1/B2/B1/B2/B1 — three control blocks against two,
+unbalanced 3:2 by block. Realised **eligible** windows were **5 control against 6 treatment**, and the
+reader weighted the binomial null by realised windows: **H0 expects 45%, not 50% and not the 60% the
+step count implies.** Alpha's *"she may press five times"* was the reason `binom_weighted` survived the
+move to a balanced design, and it is why the count test is readable.
+
+**My leg-4 assertion was wrong in the number and right in what it was testing.** I predicted ~15 clean
+windows; it came out **3 clean, 15 armed**, because she pressed at 252 s into a ~1000 s leg rather than
+in the last ten minutes. **The granularity fix is visible working** — the leg scored 3 windows instead
+of being voided whole, which is exactly what the per-window change was for. *An assertion can fail on
+its number and still confirm the thing it was guarding.*
+
+### The circular rule, which was mine
+
+My composition check said: if the arms' AI fractions differ materially, the count contrast is
+uninterpretable. **That voids every true positive.** If slicing removes AI-dominated frames the
+survivors are necessarily the non-AI ones, so the treatment fraction *must* fall — **the rule fired
+hardest exactly when the lever succeeded.** On leg 4 it flagged a 4.4× count drop as unreadable.
+
+**The fix is asymmetry, not a new metric.** The control arm is untreated, so its composition cannot be
+confounded by the effect and *is* the validity check — **97% AI, so the metric was measuring AI.** The
+treatment arm's 28% is an *outcome*. Not changing the estimand between the design and the read is the
+more important principle; Alpha proposed a metric change and withdrew it.
+
+**What is still open is not validity but removal versus relocation-below-threshold.** The surviving 28%
+says the treatment arm's largest events are non-AI; it cannot say whether the AI events disappeared or
+fell under 10 ms. `aiMs` separates them next build.
+
+### The perception mark on leg 4 was in the CONTROL arm
+
+`w72`, **arm B1, slicing off** — p50 27.5, p99 204.7, worst **293.2 ms**, and the second **SUSTAINED**
+mark in the corpus. **So the perceptible event is not evidence against slicing**, and the marks are
+firmly two populations: four isolated hitches (p99/p50 1.2–1.6) against two sustained stretches (4.3
+and 7.4).
+
+### Still not measured after four attempts
+
+**The within-session drift control.** Lighthouse legs 1 and 4 differ 1.22×, but leg 4 ran **31–37 live
+agents against 29–31** *and* was **half sliced** — two uncontrolled differences, so that number must
+not be quoted as session-age drift in either direction. **Counting leg 4 as having provided the control
+would be the fifth loss disguised as a success.**
