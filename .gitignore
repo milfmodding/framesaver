@@ -1,5 +1,33 @@
+# Editors / tooling
 .idea
 .vs
+__pycache__/
+*.user
+*.suo
+
+# Build output. `bin` and `obj` cover the normal .NET locations, including
+# tests/unwrap/bin. The patterns below catch compiled output that lands anywhere
+# else - a copy taken by hand, a stray deploy, a rollback saved during a session.
 bin
 obj
-__pycache__/
+TestResults/
+*.pdb
+*.exe
+*.nupkg
+*.dll
+
+# ...but the FROZEN BUILD ARTIFACTS are deliberate and tracked, so they are
+# exempted rather than needing `git add -f` every time one is taken.
+#
+# Read the negation as a rule about intent: a dll whose name carries the commit
+# and the md5 is EVIDENCE - COORDINATION.md cites several of them by filename,
+# and the whole point of freezing a binary is being able to say which one a
+# measurement came from. A dll anywhere else is detritus. The pattern is what
+# tells those two apart, so do not "simplify" it away.
+#
+# It matches direct children of artifacts/ only, which is why a hand-taken copy
+# in artifacts/rollback/ stays ignored.
+!artifacts/Framesaver-*.dll
+
+# Rollback copies taken before a deploy. Useful on disk, not history.
+artifacts/rollback/
