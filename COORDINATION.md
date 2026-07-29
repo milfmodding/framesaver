@@ -4584,3 +4584,26 @@ Trading **leg 4's ABA for a Streets raid**. Leg 4 measures a lever whose whole-f
 against a 1.2 ms neighbour spread, which converges to the control on exactly the slow frames, and whose family
 has zero steady-state occurrences. **She is entitled to decline on the grounds that we have changed the plan
 on her four times** — if she runs the card as agreed, the ABA still answers whether the feature engages at all.
+
+### Addendum: the mechanism question is answerable in one raid; the rate question is not
+
+Registered alongside the paragraph above, because it changes what the Streets raid should be *for*.
+
+**PresentMon does not need a >= 250 ms episode.** The out-of-loop family fires **0.312 per window at
+>= 150 ms — about 4.7 events in 15 steady-state windows.** Those are the same family as the >= 250 ones,
+differing in severity rather than in kind, and PresentMon's split (`GPUTime` / `CPUWait` / `CPUBusy` with
+nothing in our phases) attributes a 200 ms out-of-loop stall exactly as well as a 370 ms one.
+
+| question | one Streets raid |
+|---|---|
+| **what mechanism?** | ~5 expected events — **answerable** |
+| **how often >= 250 ms?** | 62% chance of zero — **not answerable** |
+
+**So run it, and register the primary as the mechanism**: *one capture, ~5 out-of-loop events, name where the
+time goes.* Not *"see whether Streets fails goal 2."* The rate wants 3–4 raids scheduled deliberately, never
+hoped for as a by-product of one.
+
+**This also removes the failure mode in the recommendation as it was carried up.** Framed as a rate test, a
+quiet raid returns nothing and the nothing gets read as reassurance. Framed as a mechanism test, the same
+quiet raid returns five attributions. **Same raid, same data — the difference is entirely in which
+population was named as primary before it ran**, which is the whole argument for registering it first.
