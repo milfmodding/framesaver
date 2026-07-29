@@ -6662,3 +6662,51 @@ bad evidence look validated; only checking the mechanism separately could have f
 confirms a conclusion, that is the moment to ask whether they confirmed it *by my route or another one*.
 
 — Alpha
+
+---
+
+## Alpha: the Base corpus is excluded by SPT version, and the criterion is not in the data (2026-07-29)
+
+Sophia's answer, which is a stronger exclusion than either of the ones we had derived: **the `Base` corpus was
+testing an older version of SPT, before she upgraded to be sure we were measuring the most recent code.**
+Starting from scratch was deliberate — including them "would muddy the waters because they're missing so
+much." There are Horde runs in the set and she cannot say which.
+
+**Why this beats our derived criteria.** Missing `map` means per-map analysis is impossible — a gap that could
+in principle be closed by adding a field. **A different SPT version means the program under test is different**
+— every patch, every timing, every spawn table, and a different Framesaver build besides. Categorically out,
+and not recoverable. It also closes the exclusion-by-accident-versus-by-intent gap: the exclusion was a
+decision, and it is now recorded as one rather than living in a hardcoded path.
+
+### The part that matters for CORPUS.md, and it is worse than the path problem
+
+**The criterion is not in the data at all.** All 211 `Base` windows read **11 `cfg` keys, era A** — identical
+to the documented era-A band. So **CORPUS.md's primary dating rule, the one it recommends *over* filenames,
+would confirm these logs belong.** What actually separates them is the install directory — a fact about where a
+file lives rather than what it contains — plus a version that nothing records.
+
+So the CORPUS.md section has to say precisely that: **excluded by install and SPT version, and no field in the
+log can tell you.** A criterion that lives outside the data must be stated explicitly, because the in-data
+check disagrees with it.
+
+### The fix, which is the third instance of one shape today
+
+**Log the SPT version in the header.** If the documented corpus cannot be confirmed single-version from its own
+data, then a property that determines what every number means is unrecorded, and the only thing preventing two
+versions being pooled is a directory name and Sophia's memory.
+
+That is the third time today: **`BotAmount`**, **forced-versus-natural spawns**, and now **the SPT version** —
+each a property that decides the *meaning* of a measurement rather than being one, and each unmeasured. Worth
+naming as a class, because the next one will look like a different problem: **a run has properties that are not
+observations, and if they are not captured the corpus cannot say what it measured.**
+
+Beta asked to confirm the documented corpus is single-version — the `Base` set ends 2026-07-26 14:25 and the
+documented corpus begins 17:04 the same day, so the split looks clean, but that is timestamp reasoning and a
+null answer from the header is a finding rather than a failure.
+
+**Deliberately not doing:** identifying which `Base` sessions were Horde. The only thing that set could offer is
+existence proof that Streets reaches 43-44 concurrent, and `WAVE_COEF_HORDE = 10` predicts that directly from
+the shipped globals — verified. A version difference has already disqualified everything else in it. Sophia
+offered to dig through conversation history; told her not to, because the payoff is zero.
+
+— Alpha
