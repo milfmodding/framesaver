@@ -174,3 +174,67 @@ retire a measurement problem carried through four attempts, so it is the stronge
 here.
 
 **What it needs:** no new mechanism — a match-all mode over the same list Leica already walks.
+
+---
+
+## Map edits for performance
+
+Sophia, 2026-07-30: "a decent case to be made for seeing if we COULD do map edits to help with
+performance issues."
+
+**Why it is a real candidate rather than a whim.** `FinishFrameRendering` is **3.8 ms, 24.4% of
+the Lighthouse frame**, and it is **not bot-scaled** - Spearman against awake bots is -0.111 and
++0.076 across two raids, against the animator's +0.681. So it does not respond to anything a
+performance mod can do to AI, and its owners are scene content and material variety. That makes
+geometry, renderer count and material count the only levers that reach it.
+
+**Why not now:** it is a content project rather than a code one, it needs an asset pipeline this
+project does not have, and shipping map edits is a different distribution and compatibility
+problem than shipping a plugin. Also downstream of Echo's mipmap ride-along, which would say
+whether variety costs CPU at all.
+
+**What it needs first:** the ride-along result. If material variety moves CPUBusy, content is
+implicated and this becomes worth costing. If only GPUBusy moves, we have 2.24x GPU headroom and
+the whole avenue is uninteresting.
+
+---
+
+## Blanket-patch every MonoBehaviour LateUpdate for per-class timing
+
+Sophia, 2026-07-30, from an experiment she ran years ago and cannot recall the outcome of: at boot
+and on a cadence, Harmony-patch every active `MonoBehaviour::LateUpdate` and record class plus
+timing. She flagged the risk herself - that it lands in the same pit as the Unity profiler,
+inflating managed method time and obscuring real cost.
+
+**It is a worse pit than the profiler's, and in a specific way.** The profiler inflates managed
+relative to native - a LEVEL error, and it reports call counts so you can normalise. Harmony
+overhead here is paid **per call**, so a type with 500 cheap instances absorbs 500x the overhead
+while a type with 1 expensive instance absorbs 1x. **It distorts the RANKING, not the level - and
+the ranking is the entire purpose.** It would systematically over-attribute to numerous-cheap
+classes and under-attribute to few-expensive ones, which is backwards from what the exercise is
+for.
+
+**And the prize is smaller than the phase headline suggests.**
+
+    ScriptRunBehaviourLateUpdate     1.500 ms (raid 1)   1.038 ms (raid 1.5)
+    already attributed to playerLate 0.781      52%      0.444      43%
+    UNATTRIBUTED remainder           0.719 ms            0.594 ms
+    for scale, the animator          3.519 ms            1.809 ms
+
+So the target is **0.6-0.7 ms**, in a phase already half-attributed, against an animator 2-3x
+larger. Whether the instrument costs more than that depends entirely on calls per frame, which
+**we do not know** - at 500 calls and 200 ns overhead it adds 0.10 ms, at 2000 it adds 0.40, at
+5000 it adds 1.0 and costs more than it measures.
+
+**The cheap step that comes first: COUNT, do not time.** An instance census by type touches no
+call path and gives the denominator plus the candidate list. Then patch 5-10 types selectively
+rather than hundreds.
+
+**And the control that makes timing-by-patch usable at all: a NO-OP patch of identical shape on
+the same types.** Diff the instrumented run against the no-op run and the overhead is measured
+rather than assumed. That is make-it-fail-on-purpose applied to an instrument's own cost, and
+without it the numbers cannot be corrected for the thing that produced them.
+
+**Why not now:** the prize is under a millisecond, the animator and the script Update phase are
+both larger and cheaper to reach, and re-patching on a cadence would generate its own hitches
+inside the tail we are trying to measure.
