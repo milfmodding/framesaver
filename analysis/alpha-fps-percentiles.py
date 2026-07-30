@@ -75,6 +75,12 @@ def main():
         return 2
 
     per_map = defaultdict(list)
+    # Which runs contributed how many frames to each map. A per-map percentile pools RAW FRAMES,
+    # which is the correct estimator (a percentile of pooled frames, not a median of per-leg
+    # percentiles) but it weights each leg by its frame COUNT. A long leg therefore dominates its
+    # map, and a "Lighthouse p75" that is 80% one evening's raid is a fact about that raid.
+    # Disclosed with a number rather than left for the reader to assume equal weighting.
+    per_map_runs = defaultdict(lambda: defaultdict(int))
     per_run = {}
     grand = []
 
@@ -110,6 +116,7 @@ def main():
         per_run[os.path.basename(nd)] = [v for _m, v in got]
         for m, v in got:
             per_map[m].append(v)
+            per_map_runs[m][os.path.basename(nd)] += 1
             grand.append(v)
 
     if not grand:
@@ -137,6 +144,18 @@ def main():
     print("  by map")
     for m in sorted(per_map):
         report(m, per_map[m])
+    print()
+    print("  MAP ROWS ARE FRAME-WEIGHTED, not leg-weighted. Each map's percentile pools raw")
+    print("  frames, so a longer leg counts more. Where one leg dominates, that map's gate")
+    print("  number is a fact about that leg:")
+    for m in sorted(per_map):
+        runs = per_map_runs[m]
+        tot = sum(runs.values())
+        top, topn = max(runs.items(), key=lambda kv: kv[1])
+        flag = "  <- SINGLE LEG" if len(runs) == 1 else ("  <- DOMINATED" if topn > 0.6 * tot else "")
+        print("    %-22s %2d leg(s), largest %3.0f%% of %7d frames (%s)%s"
+              % (m, len(runs), 100.0 * topn / tot, tot,
+                 top.replace("framesaver-", "").replace(".ndjson", "")[:34], flag))
     print()
     print("  " + "-" * 100)
     report("ALL IN-RAID FRAMES", grand)
