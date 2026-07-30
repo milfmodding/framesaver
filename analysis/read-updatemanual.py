@@ -32,6 +32,20 @@ the census-implied call count instead of the actual one recovers a per-TICKING-b
 mean. Both are printed. The first bias needs awake-population distance buckets,
 which do not exist yet -- awake-and-far is the control group this contrast lacks.
 
+A THIRD DEFLATOR, AND THIS ONE SUBTRACTS EXACTLY. Corpses tick UpdateManual and
+read as awake: `BotsClass.UpdateByUnity` has no liveness test and the guard is
+inside the method, past the postfix. `deadCalls`/`deadMs` (26fb3d6, Beta) are a
+SUBSET of `awakeCalls`/`awakeMs`, not a fourth bucket, so live-awake is a
+subtraction rather than a model -- and it replaces the estimate for the part of
+the dilution it covers. Corpses sit in `bots.awake` as well, so the section 3
+ratio had them above AND below the line, partly cancelling and UNDERSTATING the
+idle dilution among live bots. Both sides are corpse-free now.
+
+Written against a field that had not shipped when this file was, revised when
+`deadMs` landed and still before the first raid carrying either. Absent is not
+zero: a log predating the field says so and falls back, rather than reporting a
+corpse-free number it cannot support.
+
 WHAT IT CANNOT ANSWER. Sums and counts, no maximum. A window mean stays flat
 while one call spikes to 40 ms, so `updateManual` IS SILENT ON GOAL 2. Nobody
 should reach for this field when the subject is stutter.
@@ -122,6 +136,40 @@ def mean_or_none(total, calls):
     return (total / calls) if calls else None
 
 
+def has_dead(w):
+    """Whether this window's build emitted the corpse subset at all.
+
+    `deadCalls` absent means the field predates the build; `deadCalls` at 0
+    means it looked and found no corpses. Treating the first as the second
+    would report a corpse-free contrast off a log that never measured one.
+    """
+    return um(w).get('deadCalls') is not None
+
+
+def live(w, use_dead):
+    """(ms, calls) for awake bots that are actually alive.
+
+    deadCalls/deadMs are a SUBSET of awakeCalls/awakeMs - the postfix adds a
+    corpse to the awake bucket and then again to the dead one - so this is a
+    subtraction, not a fourth bucket.
+
+    `use_dead` is the STRATUM's verdict, not this window's, and the caller must
+    pass it rather than let this function check has_dead() itself. A stratum
+    spanning both builds would otherwise subtract on the windows that carry the
+    field and not on the ones that do not, pooling corrected totals with
+    uncorrected ones against a census adjusted for neither. Found by a synthetic
+    of mixed windows: it reported a ratio of 0.833 and a contrast 20% high,
+    while section 1 printed a promise to treat mixed as absent that nothing
+    implemented.
+    """
+    ms = float(um(w).get('awakeMs') or 0.0)
+    calls = um(w).get('awakeCalls') or 0
+    if use_dead and has_dead(w):
+        ms -= float(um(w).get('deadMs') or 0.0)
+        calls -= um(w).get('deadCalls') or 0
+    return max(ms, 0.0), max(calls, 0)
+
+
 def main(argv):
     if len(argv) < 2:
         print(__doc__)
@@ -157,6 +205,28 @@ def main(argv):
     zero_calls = [w for w in wins if not um(w).get('awakeCalls')]
     if zero_calls:
         print('  windows with awakeCalls == 0   %d   <- no data, distinct from zero cost' % len(zero_calls))
+
+    # Absent, mixed and present are three outcomes, not two. A run that pools
+    # corpse-corrected windows with uncorrected ones produces a contrast that is
+    # neither, and the per-window subtraction hides it - so mixed is
+    # reported and then treated as absent for the whole stratum rather
+    # than per window.
+    n_dead = sum(1 for w in wins if has_dead(w))
+    total_ac = sum(um(w).get('awakeCalls') or 0 for w in wins)
+    if n_dead == 0:
+        print('  deadCalls                ABSENT - build predates it. Corpses stay in the')
+        print('                           awake bucket below and cannot be subtracted.')
+    elif n_dead < len(wins):
+        print('  deadCalls                MIXED - %d of %d windows carry it' % (n_dead, len(wins)))
+        print('                           Any stratum spanning both is treated as absent.')
+    else:
+        total_dc = sum(um(w).get('deadCalls') or 0 for w in wins)
+        share = (100.0 * total_dc / total_ac) if total_ac else 0.0
+        print('  deadCalls (subset of awake)  %d of %d calls   %.2f%% of the awake bucket'
+              % (total_dc, total_ac, share))
+        if total_dc == 0:
+            print('    zero corpses measured - a real finding here, not a missing field,')
+            print('    because the field is present in every window.')
 
     print()
     print('=' * 78)
@@ -197,19 +267,29 @@ def main(argv):
             print('  ! no window in this stratum has both buckets populated - no contrast.')
             failed.append('standBy=%s deactivateSleeping=%s has no two-bucket window' % (sb, ds))
             continue
+        # Corpse-free on BOTH sides or neither. Corpses tick once a frame
+        # and the census counts them awake as well, so leaving them above
+        # and below the line cancels part of the very dilution this ratio
+        # exists to measure. deadCalls/frames is the mean corpse count per
+        # frame, which is what comes off the census.
+        dead_known = all(has_dead(w) for w in ws)
         ratios = []
         for w in ws:
-            rate = (um(w).get('awakeCalls') or 0) / float(w['frames'])
+            l_ms, l_calls = live(w, dead_known)
+            rate = l_calls / float(w['frames'])
             census = (w.get('bots') or {}).get('awake') or 0
-            ratio = (rate / census) if census else float('nan')
+            if dead_known:
+                census -= (um(w).get('deadCalls') or 0) / float(w['frames'])
+            ratio = (rate / census) if census > 0 else float('nan')
             if not math.isnan(ratio):
                 ratios.append(ratio)
         med = None
         if not ratios:
-            print('  no window has bots.awake > 0 - dilution not assessable')
+            print('  no window has a positive live awake census - dilution not assessable')
         else:
             med = st.median(ratios)
-            print('  median awakeCalls/frames / bots.awake   %.3f' % med)
+            print('  median liveAwakeCalls/frames / live bots.awake   %.3f%s'
+                  % (med, '' if dead_known else '   (corpses NOT removed)'))
             if med > 1.0 + DILUTION_TOL:
                 print('  ! %.0f%% more awake CALLS than awake BOTS. The excess is NonActive-but-unpaused'
                       % ((med - 1.0) * 100.0))
@@ -224,15 +304,38 @@ def main(argv):
         print('=' * 78)
         print('4. THE CONTRAST   standBy=%s deactivateSleeping=%s' % (sb, ds))
         print('=' * 78)
-        aw_ms = sum(float(um(w).get('awakeMs') or 0.0) for w in ws)
-        aw_n = sum(um(w).get('awakeCalls') or 0 for w in ws)
+        aw_ms, aw_n = 0.0, 0
+        for w in ws:
+            l_ms, l_calls = live(w, dead_known)
+            aw_ms += l_ms
+            aw_n += l_calls
         pa_ms = sum(float(um(w).get('pausedMs') or 0.0) for w in ws)
         pa_n = sum(um(w).get('pausedCalls') or 0 for w in ws)
         aw = mean_or_none(aw_ms, aw_n)
         pa = mean_or_none(pa_ms, pa_n)
-        print('  awake    %10.4f ms over %8d calls   mean %s' % (aw_ms, aw_n, '%.5f' % aw if aw else 'n/a'))
-        print('  paused   %10.4f ms over %8d calls   mean %s' % (pa_ms, pa_n, '%.5f' % pa if pa else 'n/a'))
+        label = 'awake (live)' if dead_known else 'awake (corpses in)'
+        print('  %-18s %10.4f ms over %8d calls   mean %s'
+              % (label, aw_ms, aw_n, '%.5f' % aw if aw else 'n/a'))
+        print('  %-18s %10.4f ms over %8d calls   mean %s'
+              % ('paused', pa_ms, pa_n, '%.5f' % pa if pa else 'n/a'))
+
+        # Newly reachable once corpses are subtracted: a stratum whose every
+        # awake call was a corpse leaves no live bucket at all. The window
+        # filter above only guarantees awakeCalls > 0, which corpses satisfy.
+        if aw is None or pa is None:
+            print('  ! no live awake calls remain after subtracting corpses - no contrast.')
+            failed.append('standBy=%s deactivateSleeping=%s is all-corpse after subtraction'
+                          % (sb, ds))
+            continue
+
         print('  contrast (awake - paused)   %.5f ms/call' % (aw - pa))
+        if dead_known:
+            raw_ms = sum(float(um(w).get('awakeMs') or 0.0) for w in ws)
+            raw_n = sum(um(w).get('awakeCalls') or 0 for w in ws)
+            raw = mean_or_none(raw_ms, raw_n)
+            if raw:
+                print('    corpse subtraction moved the awake mean %+.1f%%  (%.5f -> %.5f)'
+                      % (100.0 * (aw - raw) / raw, raw, aw))
 
         # The correction section 3 promises. The excess calls cost ~0, so
         # dividing by the census-implied call count rather than the actual one
@@ -241,7 +344,12 @@ def main(argv):
         # a second number would just look like a second measurement.
         best = aw - pa
         if med is not None and med > 1.0 + DILUTION_TOL:
-            census_calls = sum(w['frames'] * ((w.get('bots') or {}).get('awake') or 0) for w in ws)
+            census_calls = 0.0
+            for w in ws:
+                c = (w.get('bots') or {}).get('awake') or 0
+                if dead_known:
+                    c -= (um(w).get('deadCalls') or 0) / float(w['frames'])
+                census_calls += w['frames'] * max(c, 0.0)
             aw_corr = mean_or_none(aw_ms, census_calls)
             if aw_corr is not None:
                 best = aw_corr - pa
@@ -252,9 +360,15 @@ def main(argv):
         # Per-window contrasts, so the spread is between windows rather than
         # between calls. A call-level sd would be dominated by which bots were
         # in the window, which is the confound, not the noise.
+        #
+        # Corpse-subtracted like the pooled figure above. It was not, at first,
+        # and the synthetic caught it: the pooled contrast read 0.01981 while
+        # the per-window median under it read 0.01318 off raw awake means. Two
+        # numbers on adjacent lines, differing by 50%, both labelled contrast.
         per = []
         for w in ws:
-            a = mean_or_none(float(um(w).get('awakeMs') or 0.0), um(w).get('awakeCalls') or 0)
+            l_ms, l_calls = live(w, dead_known)
+            a = mean_or_none(l_ms, l_calls)
             p = mean_or_none(float(um(w).get('pausedMs') or 0.0), um(w).get('pausedCalls') or 0)
             if a is not None and p is not None:
                 per.append(a - p)
@@ -269,8 +383,48 @@ def main(argv):
         # want, and the form most likely to be quoted past its warrant.
         # The corrected contrast when there was one, because this is the line
         # that gets quoted and the uncorrected version understates it.
-        med_awake = st.median([(w.get('bots') or {}).get('awake') or 0 for w in ws])
-        print('  x median %d awake bots  =  %.4f ms/frame' % (med_awake, best * med_awake))
+        live_census = []
+        for w in ws:
+            c = float((w.get('bots') or {}).get('awake') or 0)
+            if dead_known:
+                c -= (um(w).get('deadCalls') or 0) / float(w['frames'])
+            live_census.append(max(c, 0.0))
+        med_awake = st.median(live_census)
+        print('  x median %.1f %s awake bots  =  %.4f ms/frame'
+              % (med_awake, 'live' if dead_known else 'census (corpses in)',
+                 best * med_awake))
+
+        # Second route to a frame-level number, needing no bot count at all.
+        # It answers a DIFFERENT question from the line above - what awake bots
+        # cost, not what stand-by buys - and is exact where that one is a
+        # product of two estimates. Printed together because when they are
+        # wildly inconsistent it is the bot count that is wrong, and there is
+        # otherwise nothing to catch that.
+        tot_frames = sum(w['frames'] for w in ws)
+        if tot_frames:
+            direct = aw_ms / tot_frames
+            print('  direct: live awake ms / frame  =  %.4f ms/frame   (no bot count;'
+                  % direct)
+            print('    this is what awake bots COST, not what stand-by BUYS)')
+
+            # Two ms/frame numbers on adjacent lines will get reconciled by
+            # whoever reads them, so say what a gap MEANS before someone
+            # invents a reason. The line above pools every window; the one
+            # before it multiplies by a MEDIAN. They diverge when the awake
+            # population is skewed across windows - a few crowded windows
+            # carrying most of the calls - which is a fact about the raid,
+            # not a defect in either number. It is also the only signal here
+            # that a single median bot count does not describe the run.
+            ref = best * med_awake
+            if ref and direct and abs(direct - ref) / max(abs(ref), 1e-9) > 0.25:
+                mean_awake = sum(live_census) / len(live_census)
+                print('  ! the two disagree by %.0f%%. Not an error: the first uses the MEDIAN'
+                      % (100.0 * abs(direct - ref) / abs(ref)))
+                print('    awake count (%.1f) and the second pools all frames; mean awake is'
+                      % med_awake)
+                print('    %.1f. A skewed awake population across windows is the cause, and'
+                      % mean_awake)
+                print('    no single per-frame figure describes this run. Quote neither alone.')
         print()
         print('  THIS IS A CONTRAST, NOT A PRICE. Disjoint buckets, non-random assignment,')
         print('  biased both ways and neither bound. Quote it as an order of magnitude.')
