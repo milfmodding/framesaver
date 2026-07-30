@@ -144,6 +144,21 @@ class P {
         Check("skipped prefix is counted, not silently dropped",
               json.Contains("\"unstampedCalls\":1"), true);
 
+        // Corpses tick UpdateManual and read as AWAKE:
+        // BotsClass.UpdateByUnity has no liveness test and the guard is
+        // INSIDE the method, after our postfix. Counted as a subset rather
+        // than removed, so no existing log changes meaning. Subtract it
+        // before quoting a per-bot cost - a long raid with many deaths is
+        // not cheaper per live bot, it has more corpses in the denominator.
+        var addDead = umt.GetMethod("AddDead", BindingFlags.NonPublic | BindingFlags.Static);
+        addDead.Invoke(null, null);
+        addDead.Invoke(null, null);
+        var deadSb = new System.Text.StringBuilder();
+        append.Invoke(null, new object[] { deadSb });
+        string deadJson = deadSb.ToString();
+        Check("dead calls counted", deadJson.Contains("\"deadCalls\":2"), true);
+        Check("and NOT subtracted from awakeCalls", deadJson.Contains("\"awakeCalls\":2"), true);
+
         // A window boundary has to zero every field, or the first window after a busy one
         // reports the busy one's totals against its own call counts - the hold-last-value
         // shape that cost us 40 loading windows on aiTotal.
@@ -152,7 +167,7 @@ class P {
         append.Invoke(null, new object[] { sb2 });
         Check("ResetWindow zeroes every field",
               sb2.ToString(), "{\"awakeMs\":0,\"awakeCalls\":0,\"pausedMs\":0,"
-                              + "\"pausedCalls\":0,\"unstampedCalls\":0}");
+                              + "\"pausedCalls\":0,\"unstampedCalls\":0,\"deadCalls\":0}");
 
         // The point of this block is one field: forcedButExcluded must be null when either
         // half was not observed, and [] only when both were and the answer really is empty.
