@@ -21,7 +21,35 @@ partitions the corpus into three eras**, which is the primary way to date a log:
 |---|---|---|---|
 | **A** | 11 | — | 2026-07-26 → `20260727-005816` |
 | **B** | 15 | `suspendGc`, `reclaimStandBy`, `deactivateSleeping`, `keepFighting` | `20260727-010740` → `20260727-201220` |
-| **C** | 20 | the two GC knobs, `drainInUpdateOnly`, `drainDiagnostics`, `gcSliceApplied` | `20260727-232217` onward |
+| **C** | 20 | the two GC knobs, `drainInUpdateOnly`, `drainDiagnostics`, `gcSliceApplied` | `20260727-232217` → `20260728-125209` |
+| **D** | 21 | `windowSeconds` | `20260728-153030` → `20260729-215652` |
+| **E** | 23+ | `sleepDistance`, `wakeDistance` (1ad93f4) — count to be CONFIRMED from the first era-E log, not assumed | raid 2 onward |
+
+**Era D was undocumented until 2026-07-30 and six logs were already in it**, including both of the
+2026-07-29 Lighthouse raids that a day of analysis rested on. The table said "era C onward" while the
+newest four logs carried a key era C does not have. Nobody read a phantom regression out of it, but that
+is the exact failure this section records having already cost two agents once — and the table being one
+era stale is how it happens. `windowSeconds` is the single key gained.
+
+**Era E's count is deliberately written as `23+` rather than a number.** Beta reports three cfg keys
+gained and I can name two of them; guessing the third and writing `23` would put a fabricated count in
+the primary dating instrument. Confirm it from the first raid-2 log and replace this row.
+
+### A boundary that has NO field signature, and therefore cannot be dated by key count at all
+
+**`1ad93f4` changed a MECHANISM, not a field.** Before it, `Sleep distance` and `Wake distance` were
+stamped onto a bot exactly once at activation; after it they are re-applied every check interval. Any
+comparison spanning that commit compares two mechanisms, and **no `cfg` key count distinguishes them** —
+both eras report the same distances with the same key names.
+
+So this is the first entry here that must be dated by commit rather than by data, which makes it the
+weakest kind of provenance we have and the reason it is written down rather than reconstructed from
+timestamps during a disagreement.
+
+**Nothing existing is invalidated**, and that is checkable rather than reassuring: **no protocol ini has
+ever armed a distance option, and across all 24 logs no session carried more than one distance setting.**
+Setting equalled population in every window in the corpus. The bug was latent — it would have bitten the
+first protocol to arm a distance, which is the one that was prevented.
 
 **Prefer this to timestamps.** In-data provenance survives files being copied, renamed, or re-dated by a
 filesystem; a timestamp does not. It also resolves the `Expand phase` semantic inversion below without needing
