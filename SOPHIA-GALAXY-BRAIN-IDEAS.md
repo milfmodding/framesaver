@@ -218,7 +218,7 @@ for.
 
     ScriptRunBehaviourLateUpdate     1.500 ms (raid 1)   1.038 ms (raid 1.5)
     already attributed to playerLate 0.781      52%      0.444      43%
-    UNATTRIBUTED remainder           0.719 ms            0.594 ms
+    UNATTRIBUTED remainder           0.679 ms            0.596 ms
     for scale, the animator          3.519 ms            1.809 ms
 
 So the target is **0.6-0.7 ms**, in a phase already half-attributed, against an animator 2-3x
@@ -226,15 +226,95 @@ larger. Whether the instrument costs more than that depends entirely on calls pe
 **we do not know** - at 500 calls and 200 ns overhead it adds 0.10 ms, at 2000 it adds 0.40, at
 5000 it adds 1.0 and costs more than it measures.
 
+### THE DECIDING RESULT: the remainder is awake-invariant, so no AI-side lever reaches it
+
+`alpha-lateupdate-remainder-scaling.py` and `alpha-lateupdate-remainder-partial.py`, within-leg.
+
+Gamma's first argument for the park was that `skipLate` was TRUE in both legs, so the remainder is
+what SURVIVED our lever rather than what awaits it. Correctly scoped - but one step stronger than
+the premise, because `skipLate` suppresses the LateUpdate of **sleeping** bots and says nothing
+about awake ones, and sleeping more bots is exactly our lever. So it was worth measuring instead
+of arguing.
+
+The raw correlation looked like bot work: rho(remainder, awake) **+0.443** in raid 1, against the
+animator's +0.681. But awake also tracks frame time (+0.518), and everything is bigger in a busy
+window. Removing the common busyness term by taking the remainder's SHARE of the frame inverts it:
+
+                                raid 1     raid 1.5
+    rho(remainder share, awake)  -0.384     -0.269
+    rho(animator  share, awake)  +0.329     +0.481   <- positive control, behaves
+    remainder, ms per awake bot  +0.0040    +0.0052
+    animator,  ms per awake bot  +0.1350    +0.0613  <- same split, same windows
+    remainder as % of animator      3.0%       8.6%
+
+**The remainder moves 0.010 ms across a two-bot swing - in both legs, to the same three
+decimals - while the animator moves 0.12-0.34 ms in the same windows.** The positive control
+rules out "the test cannot see scaling"; it sees it fine on the leaf we know is bot-scaled.
+
+So the remainder belongs in the same category as `FinishFrameRendering`: **the largest block that
+is not ours to attack.** It does not matter what is inside it by class, because nothing we can
+turn off changes it. That holds without reference to any config, which is why it is the argument
+to keep.
+
+And the ceiling if the whole thing vanished, instrument and attribution both perfect: **68.1 ->
+71.4 fps** in raid 1, **82.6 -> 86.7** in raid 1.5. Under four fps for total elimination of a
+block we have just shown we cannot move.
+
+**A population note worth keeping.** Gamma read the remainder as 0.726/0.592 and I read 0.679/0.596
+from the same key - a 7% gap on raid 1 from a different steady-state filter (I drop windows with an
+empty roster and the truncated final window). Neither is wrong and it changes no conclusion, but
+this is the same population error in its mildest form: two people agreeing on a number to three
+decimals for `ScriptRunBehaviourLateUpdate` and differing on the thing derived from it, because
+"steady state" was never written down.
+
 **The cheap step that comes first: COUNT, do not time.** An instance census by type touches no
 call path and gives the denominator plus the candidate list. Then patch 5-10 types selectively
 rather than hundreds.
+
+Gamma's route for that count, 2026-07-30: **not** `ComponentCensusPatches`, which enumerates from
+specific roots via `GetComponentsInChildren`, caps at 4096 and runs four times a raid - and whose
+cadence is load-bearing, because it sorts and builds strings and once put an 85-99 ms spike in a
+window when the writer ran inline. Instead one `FindObjectsByType<MonoBehaviour>(FindObjectsSortMode
+.None)` pass (the 2022.3 replacement for the deprecated `FindObjectsOfType`; we are on 2022.3.43f1),
+grouped by type, filtered by reflection to types declaring `LateUpdate` anywhere in the hierarchy.
+Costs tens of ms, once, at a mark, off the hot path - the same bargain the existing census makes.
+It yields instances per type, which is an **upper bound** on calls per frame, since Unity only
+calls `LateUpdate` on enabled components of active objects. An upper bound is what decides
+affordability, so the looseness costs nothing.
 
 **And the control that makes timing-by-patch usable at all: a NO-OP patch of identical shape on
 the same types.** Diff the instrumented run against the no-op run and the overhead is measured
 rather than assumed. That is make-it-fail-on-purpose applied to an instrument's own cost, and
 without it the numbers cannot be corrected for the thing that produced them.
 
-**Why not now:** the prize is under a millisecond, the animator and the script Update phase are
-both larger and cheaper to reach, and re-patching on a cadence would generate its own hitches
+Gamma's two refinements, both of which make the control harder than the measurement it protects:
+
+  - **It is TWO controls, not one.** Unpatched -> no-op measures *dispatch* (the detour and the
+    call frame). No-op -> timing measures *the measurement* (two `Stopwatch.GetTimestamp()` calls
+    and a store). One diff conflates them and UNDERESTIMATES, because the timing prefix does real
+    work the no-op does not. If only one gets built, build the second - it is the larger term.
+  - **A cross-raid no-op control cannot resolve this at all.** Between-leg noise is ~0.7 ms on
+    `FinishFrameRendering` alone and a cross-raid A/B on a rendering quantity needs ~28 raids. The
+    overhead being measured is 0.10-0.40 ms: **it sits under the noise floor of the design.** It
+    has to be alternating arms inside one raid, which for a patch means patching and unpatching
+    per window and accepts JIT churn as a new confound.
+
+**The one Unity-dispatch risk that is not folklore.** Harmony patches `Update`/`LateUpdate` across
+the ecosystem routinely and Mono dispatches through the method's current code pointer, so a detour
+is honoured - retire the general reputation. But if dispatch for some type bypassed the patched body,
+the counter reads zero, and **zero reads as "this type costs nothing"** in an instrument whose only
+output is a ranking. It would not look like a failure, it would look like a finding. Cheap guard:
+**patch ONE known-hot LateUpdate and require a non-zero counter** before patching hundreds - the
+folklore then gets retired through its own execution path rather than by argument. Also: hundreds
+of patches cost JIT time and memory at boot (one-time, not a measurement threat) and collide with
+any other mod patching the same methods, which is `ModCompat` territory rather than telemetry.
+
+**Why not now:** the remainder does not respond to the only lever we have (0.004-0.005 ms per awake
+bot, positive control clean), total elimination buys under four fps, the instrument distorts the
+ranking rather than the level in the direction of numerous-cheap classes, its own control needs a
+within-raid design it does not have, and re-patching on a cadence would generate its own hitches
 inside the tail we are trying to measure.
+
+**Not parked, and separable:** the type census. It answers "is this affordable" and "what are the
+candidates" without touching a call path, and the candidate list has value on its own. Gamma will
+build it on the word and put it behind raid 2, not in front of it.
