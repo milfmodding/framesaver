@@ -29,8 +29,16 @@ A RE-WAKE IS NOT A CONTINUATION. `Ended()` closes a span on death or sleep and
 and `awakeS` RESETS between them. Regressing a bot's rows without splitting on
 that reset injects a large negative step wherever a bot slept and woke again --
 which is exactly the population the stand-by work moves, so the artefact would
-correlate with the treatment. Rows are split into spans at any decrease in
-`awakeS` and each span is regressed alone.
+correlate with the treatment.
+
+Spans are identified by `spanS`, the span's start timestamp, so the identity is
+exact: same `id` AND same `spanS` is one continuous awake period. This file
+originally split on a DECREASE in `awakeS`, which Beta showed fails in one
+direction -- a bot that sleeps and re-wakes early in a window ends that window
+older than the previous row, so the age rises across a genuine reset and the
+break is invisible. Reachable at our default 60 s window and not only at long
+ones. The decrease rule is retained as an independent cross-check and any
+disagreement between the two is reported rather than silently resolved.
 
 CORPSES ARE ALREADY OUT. `Ended()` drops a bot on death and the age is excluded
 outright rather than counted, so these rows are corpse-free by construction --
@@ -85,19 +93,49 @@ def load(paths):
 def spans(bot_rows):
     """Split one bot's rows into continuous-awake spans.
 
-    A decrease in `awakeS` means the previous span ended and a new one began.
-    Equal is also a break: two rows at the same age carry no slope information
-    and would divide by zero variance.
+    Returns (spans, disagreements) where `disagreements` counts adjacent pairs
+    on which the two rules below reach different verdicts.
+
+    `spanS` (ebae1e6) is the span's START timestamp, so identity is EXACT:
+    same id AND same spanS is the same continuous awake period, and no
+    inference is involved.
+
+    The age-decrease rule this file shipped with was nearly right and failed in
+    one direction, which Beta found. A bot that sleeps and re-wakes EARLY in a
+    window can end that window OLDER than the previous row, so `awakeS` RISES
+    across a genuine reset and the break is invisible. Reachable at our default
+    60 s window, not only at long ones: a bot at age 40 that sleeps and wakes
+    5 s later reads ~53 at the next window close, and 53 > 40 looks continuous.
+    A bot that sleeps and re-wakes inside a window IS the treated population,
+    so the artefact would correlate with the treatment rather than falling
+    randomly -- the exact failure the split exists to prevent, arriving by the
+    one route the old rule did not cover.
+
+    The decrease rule is KEPT as a cross-check rather than deleted. It is free,
+    it is independent, and a disagreement between two rules for one quantity
+    means one of them is wrong -- which is worth surfacing rather than
+    resolving silently in favour of the newer one.
     """
-    out, cur = [], []
+    out, cur, disagree = [], [], 0
     for r in bot_rows:
-        if cur and r['awakeS'] <= cur[-1]['awakeS']:
-            out.append(cur)
-            cur = []
+        if cur:
+            prev = cur[-1]
+            by_start = (r.get('spanS') is not None
+                        and prev.get('spanS') is not None
+                        and r['spanS'] != prev['spanS'])
+            by_age = r['awakeS'] <= prev['awakeS']
+            has_start = r.get('spanS') is not None and prev.get('spanS') is not None
+            if has_start and by_start != by_age:
+                disagree += 1
+            # spanS decides where it exists; the age rule is the fallback for
+            # rows predating the field, never an override of an exact identity.
+            if by_start if has_start else by_age:
+                out.append(cur)
+                cur = []
         cur.append(r)
     if cur:
         out.append(cur)
-    return out
+    return out, disagree
 
 
 def ols_slope(xs, ys):
@@ -168,9 +206,15 @@ def main(argv):
             if r.get('id'):
                 by_bot[(path, r['id'])].append((wn, r))
     all_spans = []
+    disagreements = 0
+    no_start = 0
     for key, wrs in by_bot.items():
         wrs.sort(key=lambda t: t[0])
-        for sp in spans([r for _, r in wrs]):
+        rs = [r for _, r in wrs]
+        no_start += sum(1 for r in rs if r.get('spanS') is None)
+        sps, dis = spans(rs)
+        disagreements += dis
+        for sp in sps:
             all_spans.append((key, sp))
 
     print()
@@ -179,6 +223,15 @@ def main(argv):
     print('=' * 78)
     print('  bots            %d' % len(by_bot))
     print('  spans           %d   (a re-wake starts a new one)' % len(all_spans))
+    if no_start:
+        print('  ! %d row(s) carry no spanS - split fell back to the age rule for those,' % no_start)
+        print('    which cannot see a re-wake early in a window. Build predates ebae1e6.')
+    if disagreements:
+        print('  ! spanS and the age rule disagree on %d boundaries.' % disagreements)
+        print('    spanS wins - it is an identity, not an inference - but a disagreement')
+        print('    means one rule is wrong and the count is worth carrying to whoever')
+        print('    owns the emitter. Expected shape: a re-wake early in a long window,')
+        print('    invisible to the age rule because awakeS rose across the reset.')
     multi = [sp for _, sp in all_spans if len(sp) >= MIN_ROWS_PER_SPAN]
     print('  spans >= %d rows %d' % (MIN_ROWS_PER_SPAN, len(multi)))
     if all_spans:
