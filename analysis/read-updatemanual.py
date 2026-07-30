@@ -451,11 +451,23 @@ def main(argv):
     # their raid segment, 33 of 33, so the raid ended at the window boundary
     # and Singleton<IBotGame> was gone when the census read at window close.
     #
-    # `final` does not mark them - they are full-length windows, not truncated
-    # ones - so no existing population filter excludes them, and steady.py
-    # should NOT be changed to: their FRAME data is perfectly good. Only the
-    # bots.* fields are invalid, which is a per-field validity question rather
-    # than a population one.
+    # `final` marks only 17 of the 33; the other 16 reach every reader.
+    #
+    # I CLAIMED THOSE 16 WERE FULL-LENGTH AND THEY ARE NOT. That claim came
+    # from their absence in a short-window list they could not appear in -
+    # they predate `windowSec` entirely, so the query that found short windows
+    # never saw them. Absence of evidence read as evidence of absence.
+    #
+    # Reconstructed as frames x frame.avg, those 16 run a median of 25.0 s
+    # against a configured 60, with 15 of 16 under 54 s - while the other 385
+    # in-raid windows sit at a median of 60.0 s. They ARE truncated, which is
+    # what `final` exists to exclude and does not.
+    #
+    # Not fixed here. A population change reaching every reader, minutes before
+    # a raid, over 16 of 418 windows already excluded by two accidents, is the
+    # same trade Beta declined on censusRead. Recorded, proposed, deferred - and
+    # the FRAME data in them is still good, so the exclusion belongs to per-bot
+    # quantities rather than to everything.
     # Those windows were excluded from the ratio only because a zero census
     # makes it NaN, and from the contrast only because an empty paused bucket
     # drops them - incidental safety twice over, which is the pattern this file
