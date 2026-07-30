@@ -256,6 +256,87 @@ def main():
                 note("zero death lines. Possible, but Player.OnDead is virtual and Beta "
                      "could not rule out an override - check before trusting death data.")
 
+        # ---- fields that shipped for raid 2 --------------------------------------
+        #
+        # PRESENCE-ONLY WHERE A ZERO IS THE SUCCESS CASE, and that distinction is the whole
+        # reason these are separated from the probes above. Gamma's warning: under
+        # `Force for all roles`, `standByBlocked` reading 0 means the flag is working - so a
+        # checker that treats 0 as degenerate would fail the run that worked. Same for
+        # `bossGroups.linked`, which is legitimately 0 when no garrison spawned.
+        #
+        # This is the mirror of the defect this file exists to catch. Elsewhere a 0 that
+        # should have been a value reads as measured-and-zero; here a 0 IS the value, and
+        # demanding non-zero would invent a failure.
+        pct = [w["framePct"] for w in raid if isinstance(w.get("framePct"), dict)]
+        if not pct:
+            (note if TOLERANT else fail)("framePct absent from all %d raid windows" % len(raid))
+        else:
+            missing75 = sum(1 for p in pct if p.get("p75") is None)
+            if missing75 == len(pct):
+                (note if TOLERANT else fail)(
+                    "framePct.p75 absent from all %d windows - the GATE metric. Sophia moved "
+                    "the gate to p75 with a p99 guard, and without this field it exists only "
+                    "on maps carrying a PresentMon capture." % len(pct))
+            elif missing75:
+                fail("framePct.p75 absent from %d of %d windows - partial, so any p75 quoted "
+                     "would silently be over a subset" % (missing75, len(pct)))
+            else:
+                note("framePct.p75 present in all %d windows (the gate metric)" % len(pct))
+
+        # Grouped by block, and `continue` rather than `break` - the first version broke out
+        # of the whole loop when a block was absent, so a missing `bossGroups` silently
+        # skipped `standByTransitions` entirely. One absent block hid two more. That is the
+        # mirror of the defect already fixed in this file, where a missing block reported
+        # once per key and turned 6 problems into 12: same failure to separate the block
+        # from its contents, inverted.
+        for block, keys in (("bots", ("standByBlocked",)),
+                            ("bossGroups", ("linked", "heldAwake")),
+                            ("standByTransitions", ("woken", "slept", "diedAwake"))):
+            have = [w[block] for w in raid if isinstance(w.get(block), dict)]
+            if not have:
+                (note if TOLERANT else fail)("%s absent from all %d raid windows - so its %d "
+                                             "field(s) are unchecked, not passing"
+                                             % (block, len(raid), len(keys)))
+                continue
+            for key in keys:
+                absent = sum(1 for h in have if key not in h)
+                if absent == len(have):
+                    (note if TOLERANT else fail)(
+                        "%s.%s ABSENT - presence-only field, this build should emit it"
+                        % (block, key))
+                elif absent:
+                    fail("%s.%s absent from %d of %d windows - partial emission"
+                         % (block, key, absent, len(have)))
+                else:
+                    note("%s.%s present in all %d windows (PRESENCE-ONLY: 0 may be the "
+                         "success case, so its value is deliberately not judged here)"
+                         % (block, key, len(have)))
+
+        cfgs = [w["cfg"] for w in raid if isinstance(w.get("cfg"), dict)]
+        if not cfgs:
+            (note if TOLERANT else fail)("cfg absent from all %d raid windows" % len(raid))
+        else:
+            for k in ("sleepDistance", "wakeDistance"):
+                vals = {c.get(k) for c in cfgs}
+                if vals == {None}:
+                    (note if TOLERANT else fail)("cfg.%s ABSENT - a log that cannot say what "
+                                                 "distances were in force cannot be compared "
+                                                 "to one that can" % k)
+                elif len(vals) > 1:
+                    fail("cfg.%s VARIES within one log (%s) - a distance changed mid-run and "
+                         "no analysis may pool these windows"
+                         % (k, ", ".join(str(v) for v in sorted(vals, key=str))))
+                else:
+                    note("cfg.%s = %s" % (k, vals.pop()))
+
+        hdr_role = header.get("roleSleep")
+        if hdr_role is None:
+            (note if TOLERANT else fail)("header.roleSleep ABSENT - the role-distance table in "
+                                         "force is not recorded, so configuration would have to "
+                                         "be inferred from behaviour later")
+        else:
+            note("header.roleSleep present: %s" % json.dumps(hdr_role)[:110])
+
         mods = [w.get("agents", {}).get("mods") for w in raid]
         present = [m for m in mods if m is not None]
         if not present:

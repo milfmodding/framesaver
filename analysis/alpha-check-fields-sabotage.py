@@ -71,21 +71,33 @@ def header():
                     "width": 2560, "height": 1440, "fullScreenMode": "ExclusiveFullScreen"},
         "system": {"cpu": "AMD Ryzen 7 5800X3D", "cores": 16, "cpuMhz": 3400,
                    "ramMb": 32677, "os": "Windows 11 (10.0.26200) 64bit"},
+        "roleSleep": {"roles": ["exUsec"], "sleepDistance": 0.0},
     }
 
 
 def window(n):
     return {
         "type": "sample", "state": "raid", "window": n, "qpc": 1000000 + n * 10000,
-        "framePct": {"p50": 14.8, "p95": 22.1, "p99": 31.0, "p999": 58.2},
+        "framePct": {"p50": 14.8, "p75": 16.2, "p95": 22.1, "p99": 31.0, "p999": 58.2},
+        # standByBlocked is 0 here on purpose: under `Force for all roles` a 0 is the SUCCESS
+        # case, so a baseline carrying 0 must pass. It is checked presence-only for exactly
+        # that reason, and a baseline that omitted it would hide the check rather than test it.
         "bots": {"awake": 12, "asleep": 17, "total": 29, "animCulled": 17,
-                 "animCulledOffScreen": 11, "exempt": 0, "roleUnknown": 0},
+                 "animCulledOffScreen": 11, "exempt": 0, "roleUnknown": 0,
+                 "standByBlocked": 0},
         "updateManual": {"awakeMs": 1.21, "awakeCalls": 900, "pausedMs": 0.18,
                          "pausedCalls": 1200, "unstampedCalls": 0},
         "spawnGate": {"sawWaves": True, "sawSettings": True, "entries": 140,
                       "pveOffline": True, "botAmountWaves": "AsOnline",
                       "forcedButExcluded": []},
         "agents": {"mods": ["BigBrain", "SAIN"], "slicing": False, "suppressSlicing": False},
+        # Raid-2 era fields. The zeroes are deliberate: `standByBlocked`, `linked` and the
+        # transition counts are PRESENCE-ONLY, because 0 is the success case for the first
+        # and legitimate for the others, so a baseline carrying zeroes must still pass.
+        "bossGroups": {"linked": 0, "heldAwake": 0},
+        "standByTransitions": {"woken": 0, "wokenMs": 0.0, "slept": 0, "sleptMs": 0.0,
+                               "diedAwake": 0, "diedAsleep": 0},
+        "cfg": {"sleepDistance": 150.0, "wakeDistance": 130.0, "brainPeriod": 0.0},
     }
 
 
@@ -311,26 +323,52 @@ def main():
             print("\n  REFUSED  --real asked for, no logs found in %s" % LOGDIR)
             failed += 1
         else:
-            def has_new_fields(path):
-                """Does this log's header carry the blocks that shipped in 646c45d?"""
+            def era(path):
+                """Which field ERA does this log belong to?
+
+                There are now three, not two, and the first version of this control assumed
+                one boundary: it tested for `display`/`platform` (the 646c45d era) and called
+                anything carrying them "post-field". Once the checker learned the raid-2
+                fields, every 646c45d-era log became pre-field for the NEW set while still
+                reading post-field here - so a correct strict failure reported as a MISMATCH.
+
+                Classifying against the checker's CURRENT set is what makes this self-updating
+                rather than another expectation that goes stale.
+                """
+                hdr = None
+                win = None
                 for ln in open(path, encoding="utf-8-sig", errors="replace"):
                     try:
                         o = json.loads(ln)
                     except ValueError:
                         continue
-                    if o.get("type") == "header":
-                        return "display" in o and "platform" in o
-                return None
+                    if o.get("type") == "header" and hdr is None:
+                        hdr = o
+                    elif (o.get("type") == "sample" and o.get("state") == "raid"
+                          and not o.get("final") and win is None):
+                        win = o
+                    if hdr is not None and win is not None:
+                        break
+                if hdr is None or win is None:
+                    return "unreadable"
+                if "roleSleep" in hdr and isinstance(win.get("standByTransitions"), dict):
+                    return "current"
+                if "display" in hdr and "platform" in hdr:
+                    return "legacy"
+                return "ancient"
 
-            post = [p for p in logs if has_new_fields(p) is True]
-            pre = [p for p in logs if has_new_fields(p) is False]
+            eras = {p: era(p) for p in logs}
+            post = [p for p in logs if eras[p] == "current"]
+            pre = [p for p in logs if eras[p] in ("legacy", "ancient")]
             print("\n  real-input control: %d post-field log(s), %d pre-field"
                   % (len(post), len(pre)))
 
             for kind, cands, want in (("post-field", post, 0), ("pre-field", pre, 1)):
                 if not cands:
-                    print("            %-10s none on disk - this direction is UNTESTED"
+                    print("            %-10s none on disk - this direction is UNTESTED, not"
                           % kind)
+                    print("                       passing. No log yet carries the checker's")
+                    print("                       current field set; raid 2 will supply one.")
                     continue
                 p = cands[-1]
                 sc, _ = run(CHECKER, p, [])
