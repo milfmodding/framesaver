@@ -81,12 +81,21 @@ WARMUP_S = 120.0
 # threshold: each early window against its own leg's later baseline, over ALL
 # in-raid windows including the ones warm-up would exclude - because the
 # excluded population is the subject and cannot be filtered by the thing under
-# test. Window 1 carries a worst-frame ratio of 4.38x; windows 2-4 sit at 0.97
-# to 0.99. The damage is one window and it is entirely in the tail.
+# test. The damage is one window and it is entirely in the tail.
 #
-# Window 1's MEAN ratio is 1.008, the LOWEST of the four, because early raid has
-# fewer bots awake - so a mean-based warm-up check would have concluded there is
-# no warm-up at all. A mean can look settled while the tail has not.
+# Figures are Alpha's SECOND run, after the positional teardown exclusion below
+# was applied to their late baseline - their first dropped only `final`, which
+# marks 17 of 33, leaving 16 truncated windows in the baseline the ratio divides
+# by. Both populations, because a corrected number that cannot be compared to
+# the one it replaced is not obviously a correction:
+#
+#     dropping `final` only    window 1  mean 1.008   worst 4.38x
+#     dropping teardown, all   window 1  mean 0.985   worst 4.53x
+#
+# It survives and strengthens. And window 1's MEAN ratio is BELOW baseline and
+# the lowest of the four, because early raid has fewer bots awake - so a
+# mean-based warm-up check would have concluded there is no warm-up at all.
+# A mean can look settled while the tail has not.
 WARMUP_DURATION_S = 60.0
 
 
