@@ -57,7 +57,14 @@ def median(xs):
 
 
 def header_arm(path):
-    """Whole-leg arm from the header, which carries it in every log in the corpus.
+    """(arm, sleepDistance) from the header, which carries BOTH in every log in the corpus.
+
+    `sleepDistance` comes from the header rather than `cfg` because `cfg.sleepDistance` does not
+    exist before era E and no log in the corpus has it - the first version of the geometry check
+    read `cfg` and printed nothing at all, silently, for every map. Fourth time today that a field
+    was in the header and not on the window, and the third time reaching for `cfg` first cost
+    something.
+
 
     Read here as well as in the percentile reader because a pooling guard that cannot name the
     likely CAUSE of a divergence gets ignored - "these legs differ" prompts a shrug, "these legs
@@ -75,8 +82,8 @@ def header_arm(path):
             continue
         c = o.get("config") or {}
         v = c.get("forceAllRoles")
-        return "unknown" if v is None else ("forceAll" if v else "default")
-    return "unknown"
+        return ("unknown" if v is None else ("forceAll" if v else "default")), c.get("sleepDistance")
+    return "unknown", None
 
 
 groups = defaultdict(dict)  # map -> leg -> {field: median}
@@ -90,7 +97,7 @@ for path in sorted(glob.glob(os.path.join(LOG, "framesaver-*.ndjson"))):
             except ValueError:
                 pass
     kept, _ = steady.partition(raw)
-    arm = header_arm(path)
+    arm, hdr_sleep = header_arm(path)
     # Keyed by (map, raid index), NOT by map or by log. A SESSION log can hold several raids on
     # different maps, and `20260726-183701-ai-stack` does exactly that - raid 1 on factory4_day,
     # raid 2 on TarkovStreets. Keying a whole log to one map is how that leg got reported to me as
@@ -99,13 +106,24 @@ for path in sorted(glob.glob(os.path.join(LOG, "framesaver-*.ndjson"))):
     for w in kept:
         b = dict(w.get("bots") or {})
         if b.get("total"):
-            b["_standBy"] = bool((w.get("cfg") or {}).get("standBy"))
+            cfg = w.get("cfg") or {}
+            b["_standBy"] = bool(cfg.get("standBy"))
+            b["_sleepDist"] = cfg.get("sleepDistance")
+            # Player positional extent, for the geometric capability check below.
+            p = w.get("pos") or {}
+            for ax in ("x", "y", "z"):
+                v = p.get(ax)
+                b["_" + ax] = tuple(v) if isinstance(v, list) and len(v) == 2 else None
             by_map[(str(w.get("map")), w.get("raid"))].append(b)
     name = os.path.basename(path).replace("framesaver-", "").replace(".ndjson", "")
     for (m, raid), bs in by_map.items():
+        xs = [v for b in bs for v in (b.get("_x") or ())]
+        zs = [v for b in bs for v in (b.get("_z") or ())]
         groups[m]["%s r%s [%s]" % (name[:30], raid, arm)] = {
             "n": len(bs),
             "standByAlwaysOn": all(b["_standBy"] for b in bs),
+            "sleepDist": next((b["_sleepDist"] for b in bs if b.get("_sleepDist")), hdr_sleep),
+            "extent": (max(max(xs) - min(xs), max(zs) - min(zs)) if xs and zs else None),
             **{f: median([b.get(f) or 0 for b in bs]) for f in FIELDS}}
 
 print("POOLING GUARD: are the legs behind each map's number the same population?")
@@ -134,6 +152,30 @@ for m in sorted(groups):
     # recorded asleep > 0? If yes, sleeping demonstrably works here and a zero leg is anomalous. If
     # no, the map itself may be smaller than the threshold and the two explanations are not
     # separable from these logs - so it says that instead of picking one.
+    # GEOMETRIC CAPABILITY, Beta's general form: the map has to be bigger than the sleep radius for
+    # the feature to exist at all. Confirmed from the corpus - factory4_day is four raids and twenty
+    # windows with not one sleeping bot, while every other map sleeps in 84-96% of windows.
+    #
+    # This matters BEFORE analysis, not after: a map that cannot sleep is a structural exclusion for
+    # any stand-by comparison, and pooling its windows dilutes the effect with windows that could
+    # never have shown one. It also kills an inference - "the phenomenon spans both maps in one
+    # session, so the cause is session-level" does not survive, because factory's zero would read
+    # zero in a perfectly healthy session. A constant read as a measurement, and persuasive because
+    # it AGREED.
+    #
+    # Player positional extent is a LOWER bound on map size - the player need not visit the corners -
+    # so extent >= sleepDistance proves capability while extent < sleepDistance only suggests the
+    # opposite. Said that way round rather than asserted, and the corpus outcome is the arbiter.
+    extents = [legs[leg]["extent"] for leg in legs if legs[leg]["extent"]]
+    sleep_d = next((legs[leg]["sleepDist"] for leg in legs if legs[leg]["sleepDist"]), None)
+    if extents and sleep_d:
+        best = max(extents)
+        verdict = ("CAN sleep - player alone spanned more than the radius" if best >= sleep_d
+                   else "player never spanned the radius; combined with the outcome below this is"
+                        " a geometric exclusion")
+        print("      geometry: widest player extent %.0f m vs sleepDistance %g m -> %s"
+              % (best, sleep_d, verdict))
+
     map_ever_slept = any(legs[leg]["asleep"] > 0 for leg in legs)
     zero = [leg for leg in sorted(legs)
             if legs[leg]["standByAlwaysOn"] and legs[leg]["asleep"] == 0]
