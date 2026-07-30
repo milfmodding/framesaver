@@ -113,6 +113,42 @@
       dotnet build -c Release                     compiles only
       dotnet build -c Release -p:Deploy=true      compiles and deploys
   -->
+  <!--
+    Refuses to deploy a binary built from uncommitted sources.
+
+    The stamp in AssemblyInformationalVersion is HEAD at build time, and the SDK
+    writes it whether or not the tree is clean - so a deploy from a dirty tree
+    installs a binary whose stamp names a commit whose SOURCE IS NOT WHAT IS
+    INSIDE IT. Every control we have downstream reads that stamp: the gate
+    compares it, the rollback rule exists because a rebuild stamps differently,
+    and "the install matches GO" is a statement about it. A stamp that can be
+    wrong makes all three statements about the wrong thing.
+
+    Compiling dirty is normal and stays allowed - that is most of a working day.
+    Only the copy into plugins is gated, because that is the step that makes a
+    lie durable.
+
+    If git cannot run we WARN and proceed rather than failing closed, so the mod
+    still builds for anyone without git - but the warning says verification was
+    skipped, because "cannot tell" must not read as "clean". That is the same
+    rule as deadAwake's zero and roleUnknown's count.
+  -->
+  <Target Name="RefuseDirtyDeploy" BeforeTargets="PostBuild" Condition="'$(Deploy)' == 'true'">
+    <Exec Command="git status --porcelain -- *.cs Patches/*.cs Framesaver.csproj"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="true" StandardOutputImportance="low"
+          ContinueOnError="true" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="FramesaverDirty" />
+      <Output TaskParameter="ExitCode" PropertyName="FramesaverGitExit" />
+    </Exec>
+
+    <Warning Condition="'$(FramesaverGitExit)' != '0'"
+             Text="Framesaver: could not run git, so the clean-tree check was SKIPPED, not passed. The stamp on this binary may not describe its source." />
+
+    <Error Condition="'$(FramesaverGitExit)' == '0' And '$(FramesaverDirty)' != ''"
+           Text="Framesaver: refusing to deploy. Compiled sources differ from HEAD, so the build stamp would name a commit this binary was not built from:%0A$(FramesaverDirty)%0ACommit first, then rebuild - the stamp is read from git HEAD at build time." />
+  </Target>
+
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <Copy Condition="'$(Deploy)' == 'true'"
           SourceFiles="$(TargetPath)" DestinationFolder="$(BepInExDir)\plugins\" />
