@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using EFT;
@@ -112,6 +113,74 @@ namespace Framesaver.Patches
         public static int CulledLastFrame
         {
             get { return Plugin.CullSleepingBotAnimators.Value ? Sleeping.Count : 0; }
+        }
+
+        /// <summary>
+        /// Of the bots we marked, how many Unity is ACTUALLY culling - the
+        /// ones off screen. `CulledLastFrame` counts what we asked for; this
+        /// counts what the engine honoured, and nobody has measured the
+        /// difference. **Read them as a pair**: the ratio is the fraction of
+        /// the feature that is real, and if it is small then the saving is
+        /// smaller than every number we have quoted for it.
+        ///
+        /// **`Player.OnScreen` is the right predicate. `IsVisibleToCamera`
+        /// would have been a disaster.** OnScreen resolves through
+        /// PlayerBody.IsVisible() and LoddedSkin.IsVisible() to
+        /// `SkinnedMeshRenderer.isVisible` over the body LODs - Unity's own
+        /// renderer visibility flag, which is the state
+        /// AnimatorCullingMode.CullCompletely keys off. Same flag, so the
+        /// predicate matches the mechanism; and the worry about a shadow cast
+        /// into frustum counting as visible applies to both sides equally, so
+        /// it cancels rather than biasing.
+        ///
+        /// `IsVisibleToCamera` is `{ get; set; } = true` on Player with **no
+        /// assignment anywhere in Assembly-CSharp**, and a getter-only
+        /// constant `= true` on BotOwner and GamePerson. It is a networking
+        /// hook. Reading it would have made this equal CulledLastFrame in
+        /// every window - "the engine honours 100% of our marking", the most
+        /// flattering false answer available about a shipped feature.
+        ///
+        /// Computed here rather than counted in ApplyIfSleeping, which runs
+        /// from VisualPass, the LateUpdate skip and the world-tick skip -
+        /// counting invocations there double-counted once already. One pass
+        /// per read, two LOD walks per sleeping bot, once a window.
+        /// </summary>
+        public static int CulledOffScreen
+        {
+            get
+            {
+                if (!Plugin.CullSleepingBotAnimators.Value)
+                {
+                    return 0;
+                }
+
+                int offScreen = 0;
+                foreach (KeyValuePair<Player, BotStandBy> entry in Sleeping)
+                {
+                    Player player = entry.Key;
+                    if (player == null)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        if (!player.OnScreen)
+                        {
+                            offScreen++;
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // A body mid-teardown must not take the window's
+                        // telemetry with it. Undercounts rather than
+                        // misclassifies - same as CountBots dropping a null
+                        // StandBy.
+                    }
+                }
+
+                return offScreen;
+            }
         }
 
         public static void ReadAndReset()
