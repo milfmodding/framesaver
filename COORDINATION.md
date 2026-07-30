@@ -8052,3 +8052,118 @@ what telemetry-off-by-default-with-an-easy-enable is for. So *"the first thing I
 issues"* is load-bearing for the DanW relationship, not only for our own debugging.
 
 — Alpha
+
+---
+
+## 2026-07-29 — Beta: handoff at the fifth compaction. Nine builds, and what they cost to get right.
+
+State verified against disk, not recalled. **Install, gate and `bin/Release` all agree at
+`7c92af8` / `447b0a76bc8d5b2fd8a9f43a12acb4dc`.** Queue drained in `1438fb1`. Every field
+below was confirmed present in the **deployed** binary by searching its `#US` heap, not by
+trusting the build log.
+
+### What is live that was not this morning
+
+| field | line type | what it answers |
+|---|---|---|
+| `updateManual{awakeMs,awakeCalls,pausedMs,pausedCalls,unstampedCalls}` | window | the marginal cost of one awake bot, **paired** |
+| `spawnGate{forced,excluded,forcedButExcluded,botAmountWaves,botAmountRaid,pveOffline,entries}` | window | the gates that decide whether a garrison arrives |
+| `platform{sptAssembly,game,unity}` | header | what the numbers were measured against |
+| `display{vSyncCount,targetFrameRate,refreshHz,…}` | header | whether a frame cap made goal 1 pass for free |
+| `system{cpu,cores,cpuMhz,ramMb,os}` | header | whose machine the p50 belongs to |
+| `agents.mods[]` | window | which AI mods were present |
+| `botSpawn` / `death` | **own lines** | the ledger |
+
+### The three numbers to read first, because each is a defect if it is not what it should be
+
+1. **`updateManual.unstampedCalls` must be 0.** Non-zero means `HarmonyPriority.First` did
+   not keep our prefix ahead of `SleepingBotStandByPumpPatch`, and the awake/paused split is
+   over a partial roster.
+2. **`spawnGate.forcedButExcluded` must be `[]`, never `null`.** `null` means one half was
+   never observed. **Empty IS the all-clear, so the two must never be confused.**
+3. **`spawnGate.botAmountWaves` must read `AsOnline`.** Registered in `c5c4d2b` *before* the
+   patch existed, then inverted by Sophia's answer: it is now a **calibration of the patch**,
+   not a test of the corpus. Anything else means the patch is wrong.
+
+### The ledger contract, because two analyses depend on it
+
+`botSpawn` and `death` pair on **`id` (= `Player.ProfileId`)**. Three rules, none optional:
+
+- **Pair where `isAI == true`.** The type is `death`, not `botDeath`, because `Player.OnDead`
+  fires for Sophia too. Unfiltered, her own death reports the missed-spawn-hook signature
+  every raid.
+- **Group by raid.** Ids *should* be unique across a session; **I could not prove it from a
+  read**, grouping by raid costs nothing, and assuming session-uniqueness would silently pair
+  a raid-4 death with a raid-1 spawn.
+- **`killerState` has three values and must never collapse to two.** `named` / `none` /
+  `unread`. `killer` is the game's attribution; `damageBy` is the blow's own account. **They
+  disagree on artillery** — `LastAggressor` is nulled *after* the branch that may have set it
+  — so reading the wrong one increases attribution to Sophia, which is the direction the
+  whole design exists to prevent.
+
+`bots.total` is a **census**; this is a **ledger**. Neither reads the other, so their
+disagreement is the **despawn count** rather than a tautology.
+
+### `source` is deliberately absent. Do not add it from the estimate.
+
+I estimated three stamps for a spawn-source field and Alpha approved on that number. **There
+are nine `BotCreationDataClass` construction sites** — `BossSpawnerClass` builds three by
+itself (boss `:75`, escorts `:291`, Zryachiy's supports `:323`), `BotSpawner` six more. A
+stamp on a boss and none on its escorts gives a garrison whose leader has a source and whose
+followers do not.
+
+The route that would work is the single funnel `BotCreationDataClass.Create`, which all nine
+reach; it needs each caller checked for an intervening `await` first.
+
+### Four failure shapes worth more than the code
+
+**A guard that faithfully reports a known defect is not a reason to ship the defect.** Alpha's
+three conditions on the source field were all satisfiable, and the orphan count would have
+reported the same defect every raid. Its inverse is also live here: **a guard that has never
+fired is not evidence the hazard is absent** — `ProfileBuild.Depth`'s latch still has not
+fired.
+
+**A principle that worked once is not evidence its precondition holds again.** `Patcher.log`
+beat a file mtime because an event's own record outranks a derived artifact. Applying that by
+analogy to the death event was wrong — `Player.cs:7416` raises *both* arguments from victim
+fields at one instant, so there was no record to prefer. **The analogy carried the conclusion
+without carrying the precondition.** I have been leaning on "prefer the identifier that
+travels with the thing" all day and never checked its precondition either.
+
+**A change's blast radius is not bounded by its category.** A *logging* change would have
+latched `ModCompat` against an unfinished plugin list and switched `SuppressSlicing` off for
+the session, with no trace but different AI behaviour. `Chainloader.PluginInfos` looks like a
+query; `EnsureDetected()` makes the first query a write. **This hazard has now redirected two
+designs, so it is a constraint, not a caveat.**
+
+**An honest limitation placed where it will be read as the conclusion is still a misreport.**
+My "ten of seventeen logs have no in-directory version evidence" was true and correctly
+stated, and it read as an open question next to a certification that had closed it.
+Overstating confidence feels like a lie and gets checked; understating it feels like rigour
+and does not.
+
+### And the trigger that generated most of today
+
+`BotAmount`, forced-versus-natural spawns, and the SPT version were all invisible to every
+check we had. **None was found by a test failing.** Every one surfaced by asking *what was
+this number measured against*, rather than *was it measured correctly*. A test can only check
+what it was pointed at.
+
+Its companion, from the same day: **ask what a read costs, not only what it returns.**
+
+### Smaller things a future me would want
+
+- **`bin/Release` is stamped at build time from git HEAD.** Build, commit, then **rebuild** —
+  otherwise the artifact carries the previous commit's sha. Bit me once.
+- **Wrapping comments mechanically produces orphaned words.** I ran a script over
+  `BotLogPatches.cs` and it left lines ending in "the", "an", "what". Rewrap by hand.
+- **`ModCompat.cs` has 50 over-length comment lines, all pre-existing**, left alone on purpose.
+  I quoted that count wrong three times in a row, in commits whose subject was wrong counts. **A
+  count quoted from an earlier reading is stale the moment anything between the reading and the
+  quoting changed the thing counted — including the edit you are making right now.**
+- **An IL literal search must be a byte search.** `File.ReadAllText(Encoding.Unicode)` decodes
+  from offset 0 in 2-byte units and misses any `#US` literal at an odd offset. Mine failed
+  loudly; written slightly differently it would have passed vacuously. **It now has a control
+  asserting a literal the code does not emit is NOT found.**
+
+— Beta
