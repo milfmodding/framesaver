@@ -44,6 +44,28 @@ def pct(sorted_vals, p):
     return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (i - lo)
 
 
+def leg_arm(ndjson):
+    """The treatment arm of a whole leg, read from the header `config` block.
+
+    Returns 'forceAll' / 'default' / 'unknown'. `unknown` means the header genuinely lacks the key
+    - which no log in the present corpus does - and is kept distinct from False so a future build
+    that drops the key can never be read as having run the default arm.
+    """
+    for ln in open(ndjson, encoding="utf-8-sig", errors="replace"):
+        ln = ln.strip()
+        if not ln.endswith("}"):
+            continue
+        try:
+            o = json.loads(ln)
+        except ValueError:
+            continue
+        if o.get("type") != "header":
+            continue
+        v = (o.get("config") or {}).get("forceAllRoles")
+        return "unknown" if v is None else ("forceAll" if v else "default")
+    return "unknown"
+
+
 def in_raid_windows(ndjson):
     """Contiguous [lo, hi) qpc spans for in-raid, non-final windows, tagged by map."""
     spans, prevqpc = [], None
@@ -81,6 +103,21 @@ def main():
     # map, and a "Lighthouse p75" that is 80% one evening's raid is a fact about that raid.
     # Disclosed with a number rather than left for the reader to assume equal weighting.
     per_map_runs = defaultdict(lambda: defaultdict(int))
+    # Frames split by map AND by the treatment arm the LEG ran in. Added 2026-07-30 after the
+    # weighting disclosure showed 48% of Lighthouse's frames came from raid 1.5 - which ran
+    # `Force for all roles` ON, so a number reading as a Lighthouse baseline was half treatment.
+    #
+    # `cfg.forceAllRoles` is null on every sample line in all 24 logs, and Gamma read that as the
+    # discriminator being absent from the data. It is absent PER WINDOW. The HEADER carries it in
+    # 24 of 24 - 23 False and raid 1.5 True - so a whole-leg attribution, which is all a per-map
+    # percentile needs, is available today and does not wait on a build. Only a within-raid ABAB
+    # contrast needs the per-window key. UNKNOWN is therefore the wrong label for these legs: the
+    # answer is knowable and printing UNKNOWN would discard it.
+    per_map_arm = defaultdict(list)
+    # Arm rows need the SAME weighting disclosure as map rows, or the fix recreates the defect one
+    # level down: Lighthouse [default] is itself mostly one leg, and its two legs disagree by 8 fps
+    # at p75. Splitting by arm without disclosing composition would just move the assumption.
+    per_map_arm_runs = defaultdict(lambda: defaultdict(int))
     per_run = {}
     grand = []
 
@@ -114,9 +151,12 @@ def main():
             print("skip %s: 0 frames joined" % os.path.basename(nd))
             continue
         per_run[os.path.basename(nd)] = [v for _m, v in got]
+        arm = leg_arm(nd)
         for m, v in got:
             per_map[m].append(v)
             per_map_runs[m][os.path.basename(nd)] += 1
+            per_map_arm[(m, arm)].append(v)
+            per_map_arm_runs[(m, arm)][os.path.basename(nd)] += 1
             grand.append(v)
 
     if not grand:
@@ -156,6 +196,29 @@ def main():
         print("    %-22s %2d leg(s), largest %3.0f%% of %7d frames (%s)%s"
               % (m, len(runs), 100.0 * topn / tot, tot,
                  top.replace("framesaver-", "").replace(".ndjson", "")[:34], flag))
+    print()
+    # Split by arm so a map row that mixes treatment into a baseline cannot be quoted as a gate.
+    # The arm comes from the header, which carries it for every log in the corpus - so this needed
+    # no new telemetry, only reading a field that was already there.
+    print("  BY MAP AND TREATMENT ARM. `forceAll` legs ran Force for all roles ON and are NOT a")
+    print("  baseline. Quote the `default` row as the gate figure for a map:")
+    print(hdr)
+    print("  " + "-" * 100)
+    for (m, arm) in sorted(per_map_arm):
+        report("%s [%s]" % (m, arm), per_map_arm[(m, arm)])
+        runs = per_map_arm_runs[(m, arm)]
+        tot = sum(runs.values())
+        top, topn = max(runs.items(), key=lambda kv: kv[1])
+        note = "SINGLE LEG" if len(runs) == 1 else ("largest %.0f%%" % (100.0 * topn / tot))
+        print("      from %d leg(s), %s: %s" % (len(runs), note, ", ".join(
+            "%s %.0f%%" % (r.replace("framesaver-", "").replace(".ndjson", "")[:30],
+                           100.0 * c / tot) for r, c in sorted(runs.items(), key=lambda kv: -kv[1]))))
+    mixed = sorted({m for (m, _a) in per_map_arm}
+                   & {m for (m, a) in per_map_arm if a == "forceAll"}
+                   & {m for (m, a) in per_map_arm if a == "default"})
+    if mixed:
+        print("  -> %s mix both arms, so the pooled row above is NOT a baseline for %s"
+              % (", ".join(mixed), "it" if len(mixed) == 1 else "them"))
     print()
     print("  " + "-" * 100)
     report("ALL IN-RAID FRAMES", grand)
