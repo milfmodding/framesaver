@@ -152,8 +152,21 @@
     <Error Condition="'$(FramesaverGitExit)' != '0' And '$(AllowUnverifiedDeploy)' != 'true'"
            Text="Framesaver: refusing to deploy. git could not run, so the clean-tree check was SKIPPED, not passed - and SourceLink reads .git directly, so this binary still carries a plausible-looking stamp that nothing has checked against its source. Re-run with -p:AllowUnverifiedDeploy=true if you accept that." />
 
-    <Warning Condition="'$(AllowUnverifiedDeploy)' == 'true'"
-             Text="Framesaver: AllowUnverifiedDeploy is set - the clean-tree check did not run. This binary's stamp may not describe its source." />
+    <!--
+      Gated on the git failure as well as the flag, because the flag alone said
+      something false. With git working and the tree dirty, one build emitted
+      this warning AND the refusal below - and the refusal cannot fire unless
+      the check ran, so the control refuted its own warning in a single run.
+
+      The live case was worse than the contradiction: clean tree, git present,
+      flag set, deploying while telling the operator their binary is unverified
+      when it is fully verified. A warning that is wrong in ordinary use is one
+      people learn to scroll past, and the habit carries to the run where it was
+      true. Same argument as the DRIP note in COORDINATION.md, arriving inside a
+      control built the same evening.
+    -->
+    <Warning Condition="'$(AllowUnverifiedDeploy)' == 'true' And '$(FramesaverGitExit)' != '0'"
+             Text="Framesaver: AllowUnverifiedDeploy is set and git could not run, so the clean-tree check did not run. This binary's stamp may not describe its source." />
 
     <Error Condition="'$(FramesaverGitExit)' == '0' And '$(FramesaverDirty)' != ''"
            Text="Framesaver: refusing to deploy. Compiled sources differ from HEAD, so the build stamp would name a commit this binary was not built from:%0A$(FramesaverDirty)%0ACommit first, then rebuild - the stamp is read from git HEAD at build time." />
