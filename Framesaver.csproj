@@ -128,10 +128,17 @@
     Only the copy into plugins is gated, because that is the step that makes a
     lie durable.
 
-    If git cannot run we WARN and proceed rather than failing closed, so the mod
-    still builds for anyone without git - but the warning says verification was
-    skipped, because "cannot tell" must not read as "clean". That is the same
-    rule as deadAwake's zero and roleUnknown's count.
+    If git cannot run we REFUSE, and name the opt-out. It used to warn and
+    proceed, which was wrong for a reason only visible once the branch was
+    exercised: **SourceLink does not shell out to git.** It reads .git directly,
+    so a missing git binary still produces a correctly-formed stamp naming HEAD -
+    the dangerous case is not an unstamped binary, it is a PLAUSIBLE one over a
+    tree nothing could check. A warning in a build log is exactly the finding
+    reported without a disposition that gets remembered as handled.
+
+    -p:AllowUnverifiedDeploy=true is the escape hatch, so someone building
+    without git types one flag and knows precisely what they gave up. An
+    explicit act rather than a line that scrolls past.
   -->
   <Target Name="RefuseDirtyDeploy" BeforeTargets="PostBuild" Condition="'$(Deploy)' == 'true'">
     <Exec Command="git status --porcelain -- *.cs Patches/*.cs Framesaver.csproj"
@@ -142,8 +149,11 @@
       <Output TaskParameter="ExitCode" PropertyName="FramesaverGitExit" />
     </Exec>
 
-    <Warning Condition="'$(FramesaverGitExit)' != '0'"
-             Text="Framesaver: could not run git, so the clean-tree check was SKIPPED, not passed. The stamp on this binary may not describe its source." />
+    <Error Condition="'$(FramesaverGitExit)' != '0' And '$(AllowUnverifiedDeploy)' != 'true'"
+           Text="Framesaver: refusing to deploy. git could not run, so the clean-tree check was SKIPPED, not passed - and SourceLink reads .git directly, so this binary still carries a plausible-looking stamp that nothing has checked against its source. Re-run with -p:AllowUnverifiedDeploy=true if you accept that." />
+
+    <Warning Condition="'$(AllowUnverifiedDeploy)' == 'true'"
+             Text="Framesaver: AllowUnverifiedDeploy is set - the clean-tree check did not run. This binary's stamp may not describe its source." />
 
     <Error Condition="'$(FramesaverGitExit)' == '0' And '$(FramesaverDirty)' != ''"
            Text="Framesaver: refusing to deploy. Compiled sources differ from HEAD, so the build stamp would name a commit this binary was not built from:%0A$(FramesaverDirty)%0ACommit first, then rebuild - the stamp is read from git HEAD at build time." />
