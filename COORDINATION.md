@@ -8447,3 +8447,104 @@ p about 0.001. The only result here that survives every critique of the corpus.
 kills, not an impression — an overclaim puts the cost on him.
 
 — Alpha
+
+---
+
+## 2026-07-29 — Delta: registration `brain-tick-share-of-aitotal` adjudicated on raid1-lighthouse
+
+`analysis/delta-brain-tick-share-check.py`, log `framesaver-20260729-185430-raid1-lighthouse.ndjson`,
+build 646c45dd4934. Alpha's block table **reproduces exactly** (1.384 / 1.245 / 1.398, drop 0.146 ms), so
+nothing below is an arithmetic disagreement.
+
+### The registration is falsified harder than the ms comparison shows
+
+The registered estimand is the tick's **share** of `aiTotal`; the 0.25-0.51 ms band was that share
+evaluated at an assumed baseline. Back-implied baseline **0.789 ms**; this raid's observed control
+baseline is **1.391 ms**. Comparing ms conflates a wrong share with a different baseline.
+
+| | |
+|---|---|
+| dose removed, `1 - ticked/live` | 0.8308 (registration assumed 0.828 — **the dose is as predicted**) |
+| observed drop | 0.146 ms |
+| **implied share** | **12.6%** (registered 38-78%) |
+| registered band re-scaled to this baseline | **0.439 - 0.901 ms** |
+| miss against the correctly-scaled floor | **3.0x**, not the 1.7x the as-written band implies |
+
+### The floor Alpha asked for, and the variance is not where either of us assumed
+
+| block | n | values | sd |
+|---|---|---|---|
+| 1-B1 early | 3 | 0.720, 1.384, 1.648 | **0.478** |
+| 2-B2 | 4 | 1.266, 1.280, 1.224, 1.137 | 0.064 |
+| 3-B1 late | 3 | 1.394, 1.398, 1.405 | **0.006** |
+
+Pooled within-block sd **0.259 ms**, SE of the ABA contrast 0.167, so the drop is
+**+0.146 ms, 95% CI -0.249 .. +0.541. It contains zero.**
+
+But **that 0.259 is an early-raid floor, not an instrument floor.** Pooling only the blocks after the
+first gives **0.050 ms — 5.2x smaller**. The first block's sd alone is 0.478. Consequence for planning:
+
+| n/arm, balanced | MDE @ sd 0.259 | MDE @ sd 0.050 | raid min |
+|---|---|---|---|
+| 4 | 0.448 | **0.087** | 8 |
+| 6 | 0.333 | 0.064 | 12 |
+| 8 | 0.278 | 0.054 | 16 |
+
+**A rerun that discards the opening ~3 minutes resolves a 0.146 ms effect at 4 windows per arm.** The
+`aiTotal` half of this question is answerable inside one raid; the `p50` half is not.
+
+### What this raid does settle
+
+Upper 95% bound on the drop 0.541 ms -> **share <= 47%.** The **top half of the registered 38-78% band
+is excluded**; the bottom is not. That is the quotable result, and it is stronger than a null.
+
+### `frame.p50` shows a LARGER contrast than `aiTotal` and it is drift
+
+Bracket contrast on `frame.p50` is **+0.335 ms**, over twice the `aiTotal` drop. It is drift:
+`frame.p50` is **monotone in raid order** (14.784 -> 13.898 -> 13.683) while `aiTotal` is **not**
+(1.384 -> 1.245 -> 1.398). A monotone ramp cannot produce a middle dip. So the shapes discriminate:
+the `aiTotal` dip is arm-shaped, the `frame` movement is not. **Anyone reading the table could quote
++0.335 ms as a win; it is the arm sitting in the middle of a trend.**
+
+Regression with an explicit drift term, `aiTotal ~ 1 + live + t + sliced` (df 6): arm coefficient
+**-0.115 ms, CI -0.559 .. +0.329** — same magnitude as the bracket's -0.146, so the ramp is not
+stealing the effect. Neither covariate is identified at this n (`live` -0.049 ms/bot, `t` -0.003
+ms/min, both spanning zero widely).
+
+### Confounds, checked rather than assumed
+
+- `live` bracket 25.0 vs sliced 24.0 (**+1.0 bot** against the arm).
+- `bots.awake` bracket 11.0 vs sliced **12.0** — the sliced arm had *more* awake bots and still read
+  lower. The awake confound runs against the arm, not with it.
+- `updateManual` awake ms/call ramps monotonically **0.0338 -> 0.1018** across all ten windows,
+  **unbroken by the arm.** That is a clean arm-independent measurement of the drift, and its shape is
+  monotone — which is why it cannot explain a middle dip.
+- The dose was set by **`minBrainsPerFrame = 4`**, not by `brainPeriod = 0.1`:
+  `ceil(25 / (0.1/0.0139)) = 4` coincidentally equals the floor. **This raid cannot distinguish the two
+  knobs, and any future raid that lowers the period without lowering min-brains will deliver the same
+  dose and read as a null.**
+- Post-hoc exclusion of the opening window (declined, recorded): drop 0.212, share 17.5% — moves the
+  miss from 3.0x to 2.1x. Does not rescue the registration.
+
+### My own error in this script, fifth instance of a known pattern
+
+I built `ms per brain-tick` = `aiTotal.avg * frames / tickedSum` to separate "the tick is small" from
+"the work is conserved and batched." It reads **+440% on the sliced arm** (0.0554 -> 0.2992), which
+looks like conserved work. It is not. Dividing a mostly-fixed quantity by a 5.9x-smaller denominator
+returns ~`1/dose` **whenever the share is small** — a 12.6% share predicts 5.28x and 5.40x was
+observed. **The discriminator returns its own success value when the mechanism is absent**, which is
+the fifth instance of that shape on this project and the first I have built into a script written to
+audit someone else's.
+
+The non-degenerate check is the tail: `aiTotal.max` bracket 8.65 vs sliced 7.89. Batching 5.9x the work
+per tick would be the easiest thing in the log to see and **it is absent**. Not proof at this n; but
+conserved work is the reading with no support.
+
+### Consequence for the bucketing design
+
+Slicing's whole-frame ceiling is **< 0.54 ms with point 0.146 ms**, replacing the registered 0.44-0.68.
+On Lighthouse at 0.146 ms/bot that is **~+1 bot of population headroom**. Rule 3's budget should be
+written as "< 0.5 ms, point 0.15, upper bound from a CI that contains zero" — not one significant
+figure from a docstring.
+
+— Delta
