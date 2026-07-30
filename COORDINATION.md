@@ -8346,3 +8346,104 @@ that do not matter.**
   the size of what moves is the flaw, and the added per-bot replication lands on the same main thread.
 
 — Delta
+
+---
+
+# ALPHA: STATE AND NEXT ACTIONS AT THE FIFTH COMPACTION (2026-07-29)
+
+Written as a consolidation, not a summary. Everything above is findings; this is the operational state and the
+plan, in one place, because ~20 sections were appended today and a future reader would otherwise have to
+reassemble the plan from fragments of a half-megabyte append-only file. **Read this first, then go up for
+reasoning.**
+
+## Deployed and verified
+
+    deployed md5   447b0a76bc8d5b2fd8a9f43a12acb4dc
+    commit stamp   7c92af8de78d          (read from the assembly by the harness own reader)
+    harness/GO     7c92af8               matching
+    rollback       artifacts/rollback/Framesaver-e6cca83-4b839995.dll   (untracked, on disk)
+    pre-flight     green, exit 0, all six structured registrations resolved
+    build queue    DRAINED - nothing pending
+
+Nine builds went out in one deploy: `UpdateManual` timing, the spawn gate, platform header, `sptAssembly`
+rename, display + system + per-window mod list, and the bot ledger. **The stamp is a docs-only commit, so it
+identifies the tree rather than the IL — that is the documented case, not a defect.**
+
+## Harness changes made today
+
+- **Self-elevates at the top**, so the UAC prompt lands before anything starts. `--restart_as_admin` was
+  rejected on the record: it exits the process we launched, so every lifecycle guarantee built on that handle
+  becomes confidently wrong. **The elevation path itself is UNTESTED** — exercise it with
+  `-DryRun -TestElevation`, which starts nothing.
+- **Post-flight runs `harness/check-fields.py` automatically** and **hard-fails a run whose vsync or frame cap
+  could pin p50 at the gate** — a capped run would *pass* the 60 fps criterion while being insensitive to
+  everything the mod does. Exit 2 REFUSED is kept distinct from exit 1 FAILED.
+- `analysis/alpha-ledger-reconcile.py` is run **by hand**, with a nine-case self-test and a sabotage control
+  (neuter `fail()` and the suite must drop to 3 of 9).
+
+## First raid: three fields, each with a specific meaning if wrong
+
+    updateManual.unstampedCalls   must be 0        non-zero = the awake/paused split is over a partial roster
+    spawnGate.forcedButExcluded   [] not null      null = could not compute, must not read as an all-clear
+    spawnGate.botAmountWaves      AsOnline         anything else = the patch is wrong, not the corpus
+
+## The three-raid sequence, and what each one is FOR
+
+1. **Current build, no install change.** Closes **one** release-blocking evidence gap — the stand-by benefit,
+   from `awake - paused` on `UpdateManual`. **CORRECTION TO A CLAIM I MADE TO SOPHIA: it does not close the
+   animator gap.** `animCulled` is still `Sleeping.Count`, counting bots we *marked* rather than bots Unity
+   culled, and the real count was never built. I told her one raid closed both gaps, having assumed a build I
+   had asked for had happened. Requested from Beta as a narrow addition (`animCulledVisible` beside the
+   existing field, never instead of it) with instructions not to hold up her session for it.
+2. **QuestingBots installed, reclaim ON, slicing arms from the protocol ini.**
+3. **Same shape, reclaim OFF.** Reproduces the "p50 roughly doubled" accident deliberately and prices the
+   subsystem cost that the whole rule-3 budget currently rests on as one significant figure from a docstring.
+
+**2 and 3 cannot be arms in one raid:** `TryReclaimStandBy` sets the flag true and nothing sets it back, so the
+treatment is sticky per bot. Between-raid is required and **is fine here** — the effect is a p50 doubling, order
+13 ms, against a 0.68-0.74 ms noise floor.
+
+## The measurement rule that governs everything next session
+
+**Three independent routes reached it** — component signature, uncertainty propagation, and enumeration.
+**Between-raid comparisons on this corpus cannot adjudicate small effects.** The standardised Lighthouse
+residual is 1.409 ms with a 95% interval of **-1.695 to +3.991**, containing zero, and the frame gap itself spans
+-1.497 to +4.138. So every share ever quoted off that denominator — mine and Delta's — is a fraction of a
+quantity not distinguishable from zero.
+
+**Within-raid alternating arms are not the better instrument, they are the only one**, and the protocol ini
+already provides them. **But the failure is for SMALL effects, not all effects** — that distinction is what
+makes raid 3 legitimate, and flattening it would be the handoff error this project has already made once.
+
+## Release checklist, as decided with Sophia
+
+- **LICENSE** — CC0, on her pre-flight for pushing. Covered.
+- **Telemetry off by default with an easy enable**, documented as the first thing to try when reporting issues.
+  **Do not flip before the test raids.** When flipped, post-flight's "produced no new ndjson" message becomes
+  wrong and needs to know a telemetry-off run is expected.
+- **`Reclaim stand-by from QuestingBots` -> `false`**, decided on cost-bearing. Currently inert without
+  QuestingBots installed, so flipping costs nothing before raid 2 — but it **relabels raids 2 and 3**.
+- **Rename that key while renaming is still free** — no installed base yet, and the name under-describes it by
+  its own code comment.
+- **Slicing default** — `Brain update period = 0` ships inert AND `Defer to other AI mods` ships `true`, so the
+  one measured feature is disabled twice over. Her live config has `Defer = false`, which is why the slicing
+  measurements exist at all. **The corpus was collected under a non-default value of the flag that decides
+  whether the headline feature runs.**
+- **Three flags are ON inside a section named `4. Experimental`.**
+- **Two flags are doing work by default with no written justification anywhere**: `Max delta time = 0.1` and
+  `Drain completions in Update only = true`. Three more are inert and cuttable.
+- **Config surface is 37 entries, not the 36 I first reported** — reconcile any future count against the
+  declared `ConfigEntry` fields.
+- **Sweep all 37 descriptions**: the `Reclaim stand-by` text contains a duplicated clause, user-facing.
+- **Drop ORBIT** — two touch points: the detection list and the `SuppressSlicing` gate, plus its name in
+  user-facing config prose.
+- **Labs has never been launched**, needs a keycard, and is the one map where PMCs respect the bot cap.
+
+## DanW outreach — gated on raid 2
+
+**Sayable:** slicing at 5.4x fewer ticks and -43% AI per bot, from within-raid arms with a control bracket,
+p about 0.001. The only result here that survives every critique of the corpus.
+**Not sayable:** that his bots are unbroken. Send the spawn-to-death displacement distribution filtered to AI
+kills, not an impression — an overclaim puts the cost on him.
+
+— Alpha
