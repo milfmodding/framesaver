@@ -18,23 +18,31 @@ happens once and holds for life, which a per-interval revocable flag would not
 give. `botStandBy.forced` records the arm on the bot's own line, so the mixture
 stops being a confound and becomes the design.
 
-THE CONFOUND, STATED BEFORE ANY NUMBER. Assignment is by SPAWN TIME, which is not
-random. Bots assigned to different arms spawned at different points in the raid,
-so they differ in raid phase, player position, roster size and what was happening
-around them. This is a natural experiment, not a randomised one, and section 3
-prints the spawn-time overlap because a contrast between two non-overlapping
-windows of raid time is a comparison of raid phases wearing an arm label.
+THE CONFOUND, STATED BEFORE ANY NUMBER. Assignment is by ACTIVATION TIME,
+which is not random. Bots assigned to different arms ACTIVATED at different
+points in the raid, so they differ in raid phase, player position, roster size
+and what was happening around them. This is a natural experiment, not a
+randomised one, and section 3 prints the activation-time overlap, because a
+contrast between two non-overlapping stretches of raid time is a comparison of
+raid phases wearing an arm label.
+
+ACTIVATION, NOT CREATION, AND THE DIFFERENCE IS NOT COSMETIC. `method_10` fires
+only when the bot is PreActive, its weapon manager is ready, and a NavMesh
+sample succeeds -- retrying on a one-second timer when it does not. So a bot
+created during arm A can activate during arm B and carries B's grant. Beta found
+this; the code here already read the `botStandBy` stamp, which is the activation
+one, but every label in this file said "spawn" until they did.
 
 AND A REGISTERED INTERACTION WITH read-botwindow.py, WHICH IS THE POINT OF
 WRITING THIS NOW. That reader tests whether per-bot cost varies with awake AGE.
-If it finds a non-zero slope, then bots that spawned earlier are older on average
+If it finds a non-zero slope, then bots that activated earlier are older
 and therefore cost differently FOR A REASON THAT IS NOT THE ARM -- and since
-assignment here is by spawn time, the age effect maps directly onto the arm
-split. So:
+assignment here is by activation time, the age effect maps directly onto the
+arm split. So:
 
     age slope indistinguishable from zero  ->  this contrast is interpretable
     age slope one-sided                    ->  this contrast is CONFOUNDED by
-                                               spawn-time composition and the
+                                               activation-time composition and
                                                two readers must be read together
 
 Neither outcome is known. Both are registered here, before either has run, so
@@ -53,12 +61,13 @@ import sys
 
 MIN_BOTS_PER_ARM = 8    # below this the split has no power worth reporting
 MIN_CALLS = 30          # a per-bot mean over fewer calls is mostly noise
-OVERLAP_MIN = 0.30      # spawn-time overlap below this and the arms are phases
+OVERLAP_MIN = 0.30      # below this overlap the arms are raid phases, not arms
+LATENCY_WARN = 5.0      # activation lag above this and the arm label is shaky
 
 
 def load(paths):
-    """botStandBy assignments and botWindow rows, keyed by (log, bot id)."""
-    arms, rows = {}, collections.defaultdict(list)
+    """botStandBy assignments, botWindow rows and botSpawn, by (log, bot id)."""
+    arms, rows, born = {}, collections.defaultdict(list), {}
     for path in paths:
         try:
             fh = open(path, 'r', encoding='utf-8', errors='replace')
@@ -83,7 +92,9 @@ def load(paths):
                     arms.setdefault((path, obj['id']), obj)
                 elif kind == 'botWindow' and obj.get('id'):
                     rows[(path, obj['id'])].append(obj)
-    return arms, rows
+                elif kind == 'botSpawn' and obj.get('id'):
+                    born.setdefault((path, obj['id']), obj)
+    return arms, rows, born
 
 
 def main(argv):
@@ -91,7 +102,7 @@ def main(argv):
         print(__doc__)
         return 2
 
-    arms, rows = load(argv[1:])
+    arms, rows, born = load(argv[1:])
     print('=' * 78)
     print('1. THE JOIN, AND WHAT IT LOSES')
     print('=' * 78)
@@ -168,24 +179,46 @@ def main(argv):
 
     print()
     print('=' * 78)
-    print('3. SPAWN-TIME OVERLAP   the confound, before the contrast')
+    print('3. ACTIVATION-TIME OVERLAP   the confound, before the contrast')
     print('=' * 78)
-    spawn = collections.defaultdict(list)
+    act = collections.defaultdict(list)
     for k in matched:
         a = arms[k]
         el = a.get('raidElapsed')
         if el is not None:
-            spawn[bool(a.get('forced'))].append(float(el))
-    if len(spawn) < 2:
+            act[bool(a.get('forced'))].append(float(el))
+    if len(act) < 2:
         print('  only one arm present - no contrast, and no overlap to report.')
         print('\nGATE FAILED - a one-arm input cannot answer this.')
         return 1
     lo_hi = {}
-    for arm, xs in spawn.items():
+    for arm, xs in act.items():
         xs.sort()
         lo_hi[arm] = (xs[0], xs[-1])
-        print('  forced=%-5s n=%-4d spawn raidElapsed %.0f .. %.0f s (median %.0f)'
+        print('  forced=%-5s n=%-4d activated %.0f .. %.0f s (median %.0f)'
               % (arm, len(xs), xs[0], xs[-1], st.median(xs)))
+    # Activation latency, which Beta pointed out is free once both lines are
+    # loaded: botStandBy.raidElapsed - botSpawn.raidElapsed for the same id. A
+    # bot with a long lag is one whose arm label is least trustworthy, because
+    # it is the one most likely to have been created under the other arm.
+    lags = []
+    for k in matched:
+        b = born.get(k)
+        if not b:
+            continue
+        t0, t1 = b.get('raidElapsed'), arms[k].get('raidElapsed')
+        if t0 is not None and t1 is not None:
+            lags.append(float(t1) - float(t0))
+    if lags:
+        slow = sum(1 for x in lags if x > LATENCY_WARN)
+        print('  activation lag  median %.1f s  max %.1f s  over %.0fs: %d of %d bots'
+              % (st.median(lags), max(lags), LATENCY_WARN, slow, len(lags)))
+        if slow:
+            print('    those %d were created under one arm and may have activated under' % slow)
+            print('    the other - their labels are the least trustworthy in the set.')
+    else:
+        print('  activation lag  not computable (no botSpawn line carries raidElapsed)')
+
     (a_lo, a_hi), (b_lo, b_hi) = lo_hi[True], lo_hi[False]
     inter = max(0.0, min(a_hi, b_hi) - max(a_lo, b_lo))
     union = max(a_hi, b_hi) - min(a_lo, b_lo)
@@ -230,10 +263,10 @@ def main(argv):
     print('=' * 78)
     print('5. WHAT THIS CANNOT ANSWER')
     print('=' * 78)
-    print('  Assignment is by spawn time, not at random, so this is a natural')
+    print('  Assignment is by activation time, not at random, so this is a natural')
     print('  experiment. Quote it as a direction, never as a price.')
     print('  If read-botwindow finds a non-zero awake-age slope, this contrast is')
-    print('  CONFOUNDED by spawn-time composition and the two must be read together.')
+    print('  CONFOUNDED by activation-time composition and both must be read together.')
     print('  Registered before either ran, so the reading cannot be chosen after.')
     print('  And these are sums and counts with no maximum: silent on goal 2.')
     return 0
