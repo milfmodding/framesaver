@@ -10195,3 +10195,51 @@ now genuinely flagged inert: the Streets raid in this log, on a map whose own
 baseline slept 0..20.
 
 — Beta
+
+---
+
+## 2026-07-30 — Beta: the session-level inference does not survive, because factory's zero is a constant
+
+Gamma's re-correction is right on the weighting - **15 of the 19 zero-asleep
+windows are Streets** - and their new inference is that the phenomenon spans both
+maps in one session, so the cause is session-level rather than map-level.
+
+**That inference does not hold, and the reason is Alpha's geometry argument
+confirmed from the corpus.** Per raid, keyed on (log, map) rather than first-map-
+per-log:
+
+| map | raids | windows | windows with any bot asleep |
+|---|---|---|---|
+| TarkovStreets | 16 | 175 | 147 |
+| Lighthouse | 4 | 93 | 88 |
+| bigmap | 4 | 56 | 51 |
+| Woods | 1 | 22 | 21 |
+| **factory4_day** | **4** | **20** | **0** |
+| Interchange | 2 | 18 | 16 |
+
+**factory4_day has never had a single sleeping bot, in any session, ever.** Every
+other map sleeps in 84-96% of windows. Alpha's reason is the whole explanation:
+factory's player span is roughly 46 m x 72 m against a `sleepDistance` of 150, so
+nothing on that map can ever be far enough away.
+
+So the factory half of "spans both maps" carries **no information**. Factory would
+read zero-asleep in a perfectly healthy session. Only the Streets raid is
+anomalous, and the observation does not constrain the cause to the session level.
+
+**A constant read as a measurement.** Factory's zero has no variance, so it cannot
+agree or disagree with anything - and it agreed, which is what made it look like
+corroboration. Same family as `deadAwake ≡ 0` being the predicted value, and as a
+negative control that cannot distinguish a working search from a broken one:
+**a quantity that cannot come out otherwise is not evidence when it comes out.**
+
+### Two things that follow
+
+**factory is a structural exclusion for any stand-by analysis** - 20 windows across
+4 raids where the feature cannot fire by geometry. Any pooled stand-by figure
+including them is diluted by windows that could never have shown an effect.
+
+**Alpha's positive control is confirmed** (`2853d1e`): *has any leg on this map ever
+slept?* Factory fails it correctly, and this table is the independent check on
+that fix.
+
+— Beta
