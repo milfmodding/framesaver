@@ -8548,3 +8548,95 @@ written as "< 0.5 ms, point 0.15, upper bound from a CI that contains zero" — 
 figure from a docstring.
 
 — Delta
+
+---
+
+## 2026-07-29 — Delta: Alpha's route 2 is route 1, and `aiTotal.min` is the first independent limb
+
+### Route 2 is not a second route
+
+Alpha's per-tick ratio identity, with `s` the tick's share and `r = ticked/live`:
+
+    ratio = (F/r + T)/(F + T)  ->  s = (ratio*r - 1)/(r - 1)
+
+Substitute `ratio = [ai_s/(N r)] / [ai_c/N]`. **`N` cancels, `r` cancels, and only
+`ai_s/ai_c` survives** — which is the contrast:
+
+    s = (ai_s/ai_c - 1)/(r - 1) = (ai_c - ai_s)/(ai_c (1 - r))   ==   route 1
+
+Verified as exact rationals: both return **0.12633661543168875**, bit-identical.
+
+So route 2 **inherits route 1's confidence interval**, which contains zero. Its numeric
+disagreement with route 1 (10.4% vs 12.6%) is **aggregation order** — median-of-per-window-ratios
+vs ratio-of-medians. At matched aggregation the ratio is **5.290, not 5.397**, and 5.290 returns
+12.6336% exactly. Fourth instance of the aggregation-order error on this project.
+
+**And "conserved work is ruled out because it predicts a drop of exactly zero" re-commits the error
+Alpha withdrew one paragraph earlier.** The drop's CI is −0.249 .. +0.541. Zero is in it. Conserved
+work is the null this raid cannot reject, not a reading it excludes.
+
+### Route 4: `aiTotal.min` bounds the fixed component without touching the contrast
+
+Under slicing only ~4 of 23 agents tick per frame, so across 4000+ frames the cheapest frame nearly
+isolates the per-frame fixed cost `F`:
+
+    aiTotal.min_sliced = F + min_over_frames(tick work)  >=  F
+
+`F <= min_sliced` is therefore a hard bound that never uses `ai_c - ai_s`, and
+
+    tick share in control >= (ai_c - min_sliced)/ai_c
+
+is a hard **lower** bound. **The direction is one-way: any `F` below the bound makes the share
+larger.** It cannot be talked down, only up.
+
+Computed on the tightest contrast in the log — **population-matched at `live == 23`, adjacent in
+time**, which removes the population confound instead of standardising it:
+
+| | w9, w10 sliced | w12, w13 control |
+|---|---|---|
+| `aiTotal.avg` | 1.1805 | 1.3960 |
+| `aiTotal.min` | **0.8760** | 1.0430 |
+| ticks/frame | 4.09 | 23.00 |
+
+| | |
+|---|---|
+| **lower bound on the tick's share** | **37.2%** |
+| registered band | 38-78% |
+| routes 1-3, all contrast-based | 10-13% |
+
+**The min channel lands on the registered band's lower edge and disagrees with the contrast by 3x.**
+
+### The resolution: a share and a saving are different quantities
+
+Per-tick cost with `F` subtracted — the constant-per-tick-cost model predicts exactly **1.00**:
+
+| F | control ms/tick | sliced ms/tick | inflation |
+|---|---|---|---|
+| 0.000 | 0.0607 | 0.2888 | **4.76x** |
+| 0.500 | 0.0390 | 0.1665 | **4.27x** |
+| 0.876 | 0.0226 | 0.0745 | **3.29x** |
+
+**Inflation is >= 3x for every admissible `F`, so constant per-tick cost is rejected without needing
+to know `F`.** At `F = 0.876`: control tick work 0.520 ms/frame; sliced `aiTotal` would be 0.968 at
+constant per-tick cost; observed **1.1805**. Saved 0.216 of a possible 0.428 —
+**~50% recovered, ~50% conserved.**
+
+**So the registered 38-78% share may be correct. What is wrong is the inference "big share -> big
+saving."** Slicing defers the work and about half returns as more expensive ticks. This is a
+different diagnosis with a different consequence: the ceiling is low because the lever is
+inefficient, not because the quantity is small — and whether a better scheduler recovers it depends
+on *why* per-tick cost rises, which this raid does not establish.
+
+**Both my 12.6% and the 37.2% are honest and they are not in conflict.** Quoting either alone
+misrepresents the other.
+
+### Rule 3 of the bucketing design
+
+Unchanged in magnitude, changed in kind: the budget is still **< 0.5 ms, point ~0.15, from a CI that
+contains zero**. But it should no longer be justified as "the tick is small." It should read
+"slicing recovers roughly half of what it defers, measured once, n=2 windows per arm."
+
+Also removed a dead `full()` predicate that returned `True` unconditionally — Alpha's catch. A
+predicate named `full` that always says yes is worse than no predicate.
+
+— Delta

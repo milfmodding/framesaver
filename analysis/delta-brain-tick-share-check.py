@@ -25,8 +25,24 @@ What it does:
      for whether any scheduling policy can recover the cost.
   6. Checks whether the drop appears in `frame` at all, and whether frame's
      block pattern is monotone in raid order (drift) or dips on the arm.
+  7. ROUTE 4, added after Alpha's reply: `aiTotal.min` on the sliced arm bounds
+     the per-frame FIXED cost F from above, because only ~4 of 23 agents tick per
+     frame there. That yields a LOWER bound on the tick's share which never
+     touches the contrast -- the first genuinely independent limb. It disagrees
+     with routes 1-3 by ~3x, and the resolution is that a share and a saving are
+     different quantities: slicing defers work and about half of it returns as
+     more expensive ticks.
 
 Known weaknesses, stated up front:
+  - Route 4 assumes F is the same in both arms and that some frame's ~4 ticked
+    agents were collectively near-free. Both push ONE WAY: any F below the bound
+    makes the share larger and the implied conservation stronger, so the
+    conclusion cannot be talked down, only up. It still rests on n=2 windows per
+    arm and wants a balanced interleave.
+  - Route 2 as Alpha wrote it (per-tick ratio) is NOT independent of route 1 --
+    it is route 1 rearranged; N and r cancel and only ai_s/ai_c survives. Proven
+    with exact rationals in the route-4 section. Its numeric disagreement with
+    route 1 is aggregation order, not new information.
   - n = 3/4/3 windows. Every interval here is wide and none of them is a
     substitute for a balanced interleave.
   - The linear-in-t drift term in (4) is an assumption. The per-window dump is
@@ -71,11 +87,6 @@ print()
 # Alpha's inclusion rule: raid state, not flushed by protocol, live bots > 0,
 # and a full window. "Full" is not a field -- derive it from windowSeconds.
 WSEC = hdr["windowSeconds"]
-
-
-def full(o):
-    return o.get("windowSec", WSEC) is None or True  # replaced below
-
 
 rows = []
 prev_t = None
@@ -390,3 +401,84 @@ print()
 print("  aiTotal.max per block (a conserved-work signature should raise the tail):")
 for b in blocks:
     print("  step %d %-3s  max median %.2f ms" % (b["step"], b["arm"], med([o["aiTotal"]["max"] for o in b["w"]])))
+
+# ------------------------------------------------------------------ route 4
+
+print()
+print("=" * 78)
+print("ROUTE 4: aiTotal.min AS A DIRECT HANDLE ON THE FIXED COMPONENT F.")
+print("=" * 78)
+print("""
+Routes 1-3 all measure the CONTRAST -- how much slicing saved. None of them
+measures the tick's SHARE independently, because a share and a saving are only
+the same quantity if the deferred work actually goes away.
+
+`aiTotal.min` does measure the share independently. Under slicing only ~4 of 23
+agents tick per frame, so across 4000+ frames the cheapest frame nearly isolates
+the per-frame fixed cost:
+
+    aiTotal.min_sliced = F + min_over_frames(tick work)  >=  F
+
+so F <= min_sliced is a hard upper bound that never touches the contrast. Then
+
+    tick share in control = (aiTotal_control - F) / aiTotal_control  >=  (ai_c - min_s)/ai_c
+
+is a hard LOWER bound on the share. Note the direction: any F below the bound
+makes the share LARGER, so this cannot be talked down.
+
+Use the tightest contrast in the log -- the population-matched, adjacent-in-time
+windows at live == 23, which removes the population confound entirely instead of
+standardising it away.
+""")
+
+matched_s = [o for o in keep if o["protocol"]["arm"] == "B2" and o["agents"]["live"] == 23]
+matched_c = [o for o in keep if o["protocol"]["arm"] == "B1" and o["agents"]["live"] == 23]
+print("  matched at live == 23:")
+for o in matched_s + matched_c:
+    print("    w%-3d %-3s t=%6.1f  avg %.3f  min %.4f  ticks/frame %6.3f"
+          % (o["window"], o["protocol"]["arm"], o["t"], o["aiTotal"]["avg"],
+             o["aiTotal"]["min"], o["agents"]["tickedSum"] / o["frames"]))
+
+ai_s = st.mean([o["aiTotal"]["avg"] for o in matched_s])
+ai_c = st.mean([o["aiTotal"]["avg"] for o in matched_c])
+mn_s = st.mean([o["aiTotal"]["min"] for o in matched_s])
+tpf_s = st.mean([o["agents"]["tickedSum"] / o["frames"] for o in matched_s])
+tpf_c = st.mean([o["agents"]["tickedSum"] / o["frames"] for o in matched_c])
+r_m = tpf_s / tpf_c
+print()
+print("  control  aiTotal.avg          %.4f ms   (%.2f ticks/frame)" % (ai_c, tpf_c))
+print("  sliced   aiTotal.avg          %.4f ms   (%.2f ticks/frame)" % (ai_s, tpf_s))
+print("  sliced   aiTotal.min          %.4f ms   -> F <= this" % mn_s)
+print("  dose r                        %.4f" % r_m)
+print()
+share_lo = (ai_c - mn_s) / ai_c
+print("  LOWER BOUND on the tick's share of aiTotal   %.1f%%" % (100 * share_lo))
+print("  registered band                              %.0f-%.0f%%"
+      % (100 * REG_LO_SH, 100 * REG_HI_SH))
+print("  routes 1-3 (contrast-based)                  10-13%%")
+print("  -> the min channel and the contrast disagree by ~3x, and they are")
+print("     measuring DIFFERENT quantities. Both can be true at once.")
+print()
+print("  per-tick cost, F subtracted (constant-cost model predicts exactly 1.00):")
+for Ftry in (0.0, 0.25, 0.50, mn_s):
+    pt_c = (ai_c - Ftry) / tpf_c
+    pt_s = (ai_s - Ftry) / tpf_s
+    print("    F = %.4f   control %.4f  sliced %.4f  ->  %.2fx"
+          % (Ftry, pt_c, pt_s, pt_s / pt_c))
+print("  -> inflation is >= 3x for EVERY admissible F. Constant per-tick cost is")
+print("     rejected without needing to know F.")
+print()
+print("  how much of the deferred work actually went away, at F = %.4f:" % mn_s)
+T_c = ai_c - mn_s
+expect_s = mn_s + T_c * r_m
+saved = ai_c - ai_s
+possible = ai_c - expect_s
+print("    control tick work            %.4f ms/frame" % T_c)
+print("    sliced aiTotal if per-tick cost were constant   %.4f ms" % expect_s)
+print("    observed sliced aiTotal                         %.4f ms" % ai_s)
+print("    saved %.4f of a possible %.4f  ->  %.0f%% recovered, %.0f%% CONSERVED"
+      % (saved, possible, 100 * saved / possible, 100 * (1 - saved / possible)))
+print()
+print("  Reading: the tick may well be the 38-78%% share I registered. What is")
+print("  wrong is the inference 'big share -> big saving'. Slicing defers the")
+print("  work and about half of it comes back as more expensive ticks.")
