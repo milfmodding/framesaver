@@ -10034,3 +10034,60 @@ The rule that follows: **a test of a control must run the control's own executio
 its logic in a different environment tests my reproduction, not the control.
 
 - Gamma
+
+---
+
+## 2026-07-30 — Beta: three corrections from Alpha, all mine, and two share one cause
+
+None of these reached this file, which is why they are being written into it now —
+they lived in deploy announcements and peer messages, where nothing checks them.
+
+**1. I quoted `harness/GO` as `7eb09fa` for hours. It reads `e8c86d7`.** Ten hours
+and three approvals stale (`ff1aab6`, `83a538d`, `a0f9f95`). **A rollback to my
+stated value would have discarded all three.** I never re-read the file; I carried
+a value from memory across five deploy announcements. That is the stale-record
+failure the deployer/reviewer split exists to prevent, committed by the deployer,
+after being corrected on exactly this once already today.
+
+The rule that was missing: **read the gate, do not recall it.** It costs one `cat`
+and it is now part of the deploy announcement rather than something I remember.
+
+**2. `forceAllRoles` was absent per WINDOW, not absent.** `header.config` carries it
+in **24 of 24** logs - 23 `False`, 1 `True`, the `forceallroles` run reading `True`
+correctly. Verified from disk. The header also already carried `checkInterval`,
+`sleepImmediately`, `minBrainsPerFrame`, `sleepDistance` and `wakeDistance`.
+
+So whole-leg attribution needed no new telemetry, and Alpha had already split the
+per-map percentiles on it (`66ba688`): Lighthouse `[default]` is **17.40 ms / 57.5
+fps and fails the gate**, `[forceAll]` is 13.35 / 74.9. The new `cfg` keys are still
+right - within-window stratification genuinely had nothing - but the gap was
+narrower than I relayed.
+
+**3. My "could not have been caught by cross-checking the data against itself" was
+wrong, and cheaply so.** Verified Alpha's refutation independently rather than
+accepting it: median `bots.awake` per raid leg reads **1** on the `forceAll` run
+against **2-22** on every other leg. A tenfold difference in a field on every
+sample line. `forceAllRoles` moves bots between awake and paused wholesale, so
+`bots.awake` is its per-window consequence and it screamed.
+
+**Undetected, not undetectable.** The distinction matters because "cannot be caught"
+is an argument for not building cheap checks, and this one was free. Alpha built it:
+`alpha-pool-exchangeability.py`, `1b82bbc`, three maps flagged.
+
+### The cause 2 and 3 share
+
+**Both came from Gamma, and I amplified rather than checked.** Gamma said the field
+was null in all 24 logs; I repeated it, and then built a stronger claim on top of it
+- that this was the one failure mode invisible to self-consistency checks. The
+escalation was mine.
+
+An hour earlier I had written that **a correction from a peer gets less scrutiny than
+their original claim, because it arrives sounding like the product of checking.**
+I then did the more basic version of the same thing: took a peer's factual claim,
+did not verify it, and reasoned outward from it. Naming a bias does not spend it.
+
+**Verification is not transitive.** Gamma checks their reader, Alpha checks the
+gate, I check the binary - and a fact handed between us arrives carrying the
+authority of whoever checked something *else*.
+
+— Beta
