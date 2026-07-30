@@ -24,6 +24,10 @@ namespace Framesaver.Patches
         {
             if (!ApplyDistances(__instance))
             {
+                // Still logged. Standing down is a decision about this bot,
+                // and an unlogged one is indistinguishable from a bot that
+                // never activated.
+                BotLog.StandByAssigned(__instance, __instance.BotOwner_0);
                 return;
             }
 
@@ -41,6 +45,11 @@ namespace Framesaver.Patches
             {
                 __instance.CanDoStandBy = true;
             }
+
+            // Last, so the line records what this bot was actually granted
+            // rather than what it was about to be. The grant never changes
+            // afterwards - it is decided here, once, for the bot's whole life.
+            BotLog.StandByAssigned(__instance, __instance.BotOwner_0);
         }
 
         /// <summary>

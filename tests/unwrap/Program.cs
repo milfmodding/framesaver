@@ -315,6 +315,16 @@ class P {
             return false;
         };
 
+        // botStandBy carries the EFFECTIVE grant beside the role property.
+        // botSpawn.canStandBy cannot answer it: Create is a static factory at
+        // BotOwner.cs:1033 and InitPoints runs at :1772 on the activation
+        // path, so at spawn-write time the grant has not been decided. The
+        // pair is the measurement - under forceAllRoles a bot reads false on
+        // roleAllows while holding a true grant.
+        foreach (var lit in new[] { "{\"type\":\"botStandBy\"", ",\"effective\":",
+                                    ",\"roleAllows\":", ",\"forced\":" })
+            Check($"emits {lit}", inUs(lit), true);
+
         foreach (var lit in new[] { "{\"type\":\"botSpawn\"", "{\"type\":\"death\"",
                                     "\"killerState\":\"named\"", "\"killerState\":\"none\"",
                                     "\"killerState\":\"unread\"", ",\"canStandBy\":",
