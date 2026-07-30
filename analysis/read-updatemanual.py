@@ -146,6 +146,28 @@ def has_dead(w):
     return um(w).get('deadCalls') is not None
 
 
+def census_corpses(w):
+    """(corpses inside bots.awake, route) for this window.
+
+    `bots.deadAwake` (cb47968) is the census counting corpses in its own awake
+    branch, a subset of `bots.awake` exactly as deadCalls is of awakeCalls.
+    Before it existed the only route was deadCalls/frames -- the window-MEAN
+    corpse count implied by the call rate, held against an INSTANTANEOUS census
+    taken at window close. They answer the same question two ways and neither
+    is a substitute for the other's provenance, so the direct one leads and the
+    derived one both backs it up and checks it.
+
+    None means no route at all: the build predates both, and the caller must
+    not silently treat that as zero corpses.
+    """
+    bots = w.get('bots') or {}
+    if bots.get('deadAwake') is not None:
+        return float(bots['deadAwake']), 'census'
+    if has_dead(w) and w.get('frames'):
+        return (um(w).get('deadCalls') or 0) / float(w['frames']), 'derived'
+    return None, 'none'
+
+
 def live(w, use_dead):
     """(ms, calls) for awake bots that are actually alive.
 
@@ -273,13 +295,36 @@ def main(argv):
         # exists to measure. deadCalls/frames is the mean corpse count per
         # frame, which is what comes off the census.
         dead_known = all(has_dead(w) for w in ws)
+        census_known = all(census_corpses(w)[0] is not None for w in ws)
+
+        # Where both routes exist they are two instruments for one quantity, so
+        # print the gap rather than picking the direct one and moving on. A
+        # window-mean call rate and an instantaneous census cannot be expected
+        # to match exactly; a LARGE gap means corpses are entering or leaving
+        # the roster fast enough that neither describes the window.
+        both = [(float((w.get('bots') or {}).get('deadAwake')),
+                 (um(w).get('deadCalls') or 0) / float(w['frames']))
+                for w in ws
+                if (w.get('bots') or {}).get('deadAwake') is not None
+                and has_dead(w) and w.get('frames')]
+        if both:
+            gaps = [abs(c - d) for c, d in both]
+            scale = st.median([max(c, d) for c, d in both])
+            print('  corpse count, two routes: census median %.2f, call-rate median %.2f'
+                  % (st.median([c for c, _ in both]), st.median([d for _, d in both])))
+            if scale > 0 and st.median(gaps) / scale > DILUTION_TOL:
+                print('  ! the two corpse routes differ by more than %.0f%% - the roster is'
+                      % (DILUTION_TOL * 100.0))
+                print('    turning over inside the window and neither count describes it.')
+
         ratios = []
         for w in ws:
             l_ms, l_calls = live(w, dead_known)
             rate = l_calls / float(w['frames'])
-            census = (w.get('bots') or {}).get('awake') or 0
-            if dead_known:
-                census -= (um(w).get('deadCalls') or 0) / float(w['frames'])
+            census = float((w.get('bots') or {}).get('awake') or 0)
+            corpses, _route = census_corpses(w)
+            if census_known and corpses is not None:
+                census -= corpses
             ratio = (rate / census) if census > 0 else float('nan')
             if not math.isnan(ratio):
                 ratios.append(ratio)
@@ -346,9 +391,10 @@ def main(argv):
         if med is not None and med > 1.0 + DILUTION_TOL:
             census_calls = 0.0
             for w in ws:
-                c = (w.get('bots') or {}).get('awake') or 0
-                if dead_known:
-                    c -= (um(w).get('deadCalls') or 0) / float(w['frames'])
+                c = float((w.get('bots') or {}).get('awake') or 0)
+                corpses, _route = census_corpses(w)
+                if census_known and corpses is not None:
+                    c -= corpses
                 census_calls += w['frames'] * max(c, 0.0)
             aw_corr = mean_or_none(aw_ms, census_calls)
             if aw_corr is not None:
@@ -386,12 +432,13 @@ def main(argv):
         live_census = []
         for w in ws:
             c = float((w.get('bots') or {}).get('awake') or 0)
-            if dead_known:
-                c -= (um(w).get('deadCalls') or 0) / float(w['frames'])
+            corpses, _route = census_corpses(w)
+            if census_known and corpses is not None:
+                c -= corpses
             live_census.append(max(c, 0.0))
         med_awake = st.median(live_census)
         print('  x median %.1f %s awake bots  =  %.4f ms/frame'
-              % (med_awake, 'live' if dead_known else 'census (corpses in)',
+              % (med_awake, 'live' if census_known else 'census (corpses in)',
                  best * med_awake))
 
         # Second route to a frame-level number, needing no bot count at all.
