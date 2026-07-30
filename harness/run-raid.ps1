@@ -947,6 +947,43 @@ function Invoke-PostFlight {
     }
 
     Invoke-FieldCensus $new
+    Invoke-SpawnCeiling $new
+}
+
+function Invoke-SpawnCeiling {
+    <#
+      Did any role spawn more times than the map's base.json can declare?
+
+      Beta's audit of what DeactivateSleepingBotState makes us drive found that
+      BossSpawnerClass.Class334.method_0 subscribes to the BotState Active edge and
+      SPAWNS THE BOSS'S FOLLOWERS. It unsubscribes itself on the same edge, so we are
+      fine - but had it not, every wake of a sleeping boss would have spawned another
+      escort group, and the failure would have been silent. The ledger records every
+      extra escort, because botSpawn hooks BotOwner.Create; nothing CHECKED it. The
+      reconciler reads ledger-above-census as a despawn count and reports it.
+
+      Seen but not checked is the shape this project keeps finding, so it is checked
+      here, at the end of the raid that produced it, rather than during analysis days
+      later. Its failure path was exercised by injecting duplicate followerBigPipe
+      spawns into a real log: exit 1, naming the role and its ceiling.
+    #>
+    param($New)
+
+    $script = Join-Path $PSScriptRoot 'check-spawn-ceiling.py'
+    if (-not (Test-Path -LiteralPath $script)) {
+        Warn 'no check-spawn-ceiling.py beside the harness - spawn ceilings NOT checked'
+        return
+    }
+    if (@($New).Count -eq 0) { return }
+
+    foreach ($log in $New) {
+        # 2>&1 is safe here only because $LASTEXITCODE is what gets read, never $?.
+        $out = & python $script $log.FullName 2>&1
+        foreach ($line in $out) { Note "  $line" }
+        if ($LASTEXITCODE -eq 0)    { Ok 'spawn ceilings: every role within what the database declares' }
+        elseif ($LASTEXITCODE -eq 1) { Bad 'a role exceeded its declared ceiling - see above, do not score this run' }
+        else                         { Warn "spawn ceiling check REFUSED to report (exit $LASTEXITCODE)" }
+    }
 }
 
 # Refuses a run whose new telemetry emitted but carries nothing.
