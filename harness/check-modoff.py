@@ -190,6 +190,28 @@ def main():
         print("             pool the two lengths: a 30 s window covers half the time and gets")
         print("             equal weight. Per-FRAME percentiles from PresentMon are unaffected.")
 
+    # WHAT A CLEAN RESULT HERE STILL DOES NOT MEAN. Stated on every run rather than in a doc,
+    # because a checker that prints "clean" and nothing else invites the reading that the baseline
+    # is vanilla. Beta's audit of the five acting levers, 2026-07-30:
+    #
+    #  * `leakFix = false` does NOT remove our replacement of `AICoreControllerClass.Update` - that
+    #    runs whenever telemetry is on, and telemetry must be on for this raid to produce anything.
+    #    It mirrors vanilla (same drain of HashSet_1 into HashSet_0.Remove, deliberately not
+    #    clearing), with one known difference: our SafeUpdate LOGS the first few agent exceptions
+    #    where vanilla swallows them silently, capped at ten distinct offenders. So the baseline is
+    #    "our replacement behaving like vanilla", not vanilla. **Structural: it cannot be turned off
+    #    without turning off the measurement.**
+    #  * `Profile player loop` instruments the Unity player loop and stays on, because the mod-on
+    #    corpus has it on and removing it would change the comparison rather than clean it.
+    #
+    # Both are present in BOTH arms, so a mod-on-minus-mod-off difference still cancels them. They
+    # bound what the baseline can be called, not what it can be compared to.
+    print("  A clean result below means every CONFIGURABLE lever was off. It does not mean vanilla:")
+    print("    - our AICoreControllerClass.Update replacement runs whenever telemetry is on, and")
+    print("      mirrors vanilla except that it logs the first few agent exceptions (cap 10).")
+    print("    - the player-loop profiler stays on, as it is on in the mod-on corpus.")
+    print("    Both are in BOTH arms, so a mod-on minus mod-off difference cancels them.")
+
     print()
     if absent:
         print("REFUSED: %d lever(s) unreportable by this build." % len(absent))
