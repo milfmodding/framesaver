@@ -60,7 +60,9 @@ import math
 import statistics as st
 import sys
 
-STEADY_S = 120.0        # same warm-up discard as the marathon reader
+import steady
+
+STEADY_S = steady.WARMUP_S   # the shared definition; see analysis/steady.py
 MIN_WINDOWS = 3         # below this the spread has no meaning to report
 # Dilution tolerance on `awakeCalls/frames` vs `bots.awake`. Not a tuned number:
 # `bots.awake` is an instantaneous census at window close and the call rate is a
@@ -96,17 +98,23 @@ def load(paths):
 
 
 def eligible(rows):
-    """In-raid, past warm-up, carrying both the field and its denominators.
+    """Steady-state per analysis/steady.py, carrying the field and its denominators.
 
-    `final` is excluded explicitly. It was excluded before only as a side effect
-    of `bots.total > 0`, which nobody had noticed was doing the work.
+    The population test is IMPORTED rather than restated. This function used to
+    spell it out and got it wrong in a way nothing could see: it never tested
+    `state == 'raid'`, and was saved only because no non-raid sample in this
+    corpus carries `raidElapsed >= 120` -- zero of 520. Excluded as a side
+    effect, which is the defect the docstring one line above already named about
+    `final`. Alpha and I then quoted the same remainder as 0.679 and 0.726 ms
+    because our definitions differed by clauses neither of us had written down.
+
+    `require_population` stays FALSE here. bots.total > 0 is right for
+    read-marathon's per-bot quantities and wrong for this file's per-frame ones,
+    where a window with no bots is a legitimate observation rather than a gap.
     """
+    kept, dropped = steady.partition(rows)
     out = []
-    for w in rows:
-        if w.get('final'):
-            continue
-        if (w.get('raidElapsed') or 0.0) < STEADY_S:
-            continue
+    for w in kept:
         if w.get('updateManual') is None:
             continue
         if not w.get('frames'):
@@ -114,7 +122,7 @@ def eligible(rows):
         if (w.get('bots') or {}).get('awake') is None:
             continue
         out.append(w)
-    return out
+    return out, dropped
 
 
 def um(w):
@@ -213,13 +221,15 @@ def main(argv):
         print('no sample windows found')
         return 2
 
-    wins = eligible(rows)
+    wins, dropped = eligible(rows)
     print('=' * 78)
     print('1. FIELD PRESENT AND DENOMINATORS INTACT')
     print('=' * 78)
     print('  sample windows           %d' % len(rows))
     print('  carrying updateManual    %d' % sum(1 for w in rows if w.get('updateManual') is not None))
-    print('  eligible (past %.0fs)    %d' % (STEADY_S, len(wins)))
+    print('  population               %s' % steady.describe())
+    print('  eligible                 %d   (dropped: %s)'
+          % (len(wins), ', '.join('%s %d' % (k, v) for k, v in dropped.items() if v)))
     if not wins:
         print('\nGATE FAILED - no eligible window carries updateManual.')
         return 1
@@ -283,7 +293,7 @@ def main(argv):
     for (sb, ds), all_ws in sorted(groups.items()):
         # A window with either bucket empty is dropped from the POOLED sums too,
         # not just from the per-window spread. Keeping it contributes awake ms
-        # with no paused counterpart, which biases the contrast upward by exactly
+        # with no paused counterpart, which biases the contrast upward by
         # the awake total of the dropped window. Found by a synthetic that put
         # one such window in the stratum: it changed the pooled mean and printed
         # no warning, because the pooled paused count was non-zero from the

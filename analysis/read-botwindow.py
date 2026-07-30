@@ -58,6 +58,8 @@ import math
 import statistics as st
 import sys
 
+import steady
+
 MIN_ROWS_PER_SPAN = 3   # two points are a difference, not a slope
 MIN_CALLS = 30          # a per-window mean over fewer calls is mostly noise
 MIN_SPANS = 8           # below this the sign test has no power worth reporting
@@ -175,7 +177,15 @@ def main(argv):
     checked = 0
     for key, rs in sorted(rows.items()):
         w = samples.get(key)
-        if not w or w.get('updateManual') is None:
+        # Population from analysis/steady.py, but with the warm-up cut turned
+        # OFF deliberately: a within-bot slope wants the whole span, and a bot
+        # awake from the first minute would otherwise have its early rows
+        # removed and its trajectory truncated at the young end - biasing the
+        # very slope this file measures. In-raid and not-final still apply,
+        # because a truncated final window's ms are not comparable.
+        if not w or not steady.is_steady(w, warmup_s=0.0):
+            continue
+        if w.get('updateManual') is None:
             continue
         um = w['updateManual']
         if um.get('deadMs') is None:
