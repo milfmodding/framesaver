@@ -381,6 +381,68 @@ class P {
         // quietly appear later.
         Check("no bare groupHeldAwake field (control)", inUs(",\"groupHeldAwake\":"), false);
 
+        // ---- Stand-by transition timing ------------------------------------
+        //
+        // Driven through the same statics the two choke points use. What is
+        // NOT covered here: that Wake() declines to count a call which found
+        // the bot already awake. That discrimination needs a live BotOwner,
+        // and it is the number's whole meaning - without it the count is the
+        // exempt population times the check rate. Stated rather than faked.
+        Console.WriteLine("\nStandByTransitions");
+        var sbt = asm.GetType("Framesaver.Patches.StandByTransitions");
+        var woken = sbt.GetMethod("Woken", BindingFlags.NonPublic | BindingFlags.Static);
+        var slept = sbt.GetMethod("Slept", BindingFlags.NonPublic | BindingFlags.Static);
+        var sbtAppend = sbt.GetMethod("Append", BindingFlags.Public | BindingFlags.Static);
+        var sbtReset = sbt.GetMethod("ResetWindow", BindingFlags.Public | BindingFlags.Static);
+
+        sbtReset.Invoke(null, null);
+        woken.Invoke(null, new object[] { freq / 1000 });   // 1.0 ms
+        woken.Invoke(null, new object[] { freq / 1000 });   // 1.0 ms
+        slept.Invoke(null, new object[] { freq / 4000 });   // 0.25 ms
+        var sbt1 = new System.Text.StringBuilder();
+        sbtAppend.Invoke(null, new object[] { sbt1 });
+        string tj = sbt1.ToString();
+        Check("wake count", tj.Contains("\"woken\":2"), true);
+        Check("wake ms", tj.Contains("\"wokenMs\":2"), true);
+        Check("sleep count", tj.Contains("\"slept\":1"), true);
+        Check("sleep ms does not land in wokenMs", tj.Contains("\"sleptMs\":0.25"), true);
+
+        sbtReset.Invoke(null, null);
+        var sbt2 = new System.Text.StringBuilder();
+        sbtAppend.Invoke(null, new object[] { sbt2 });
+        Check("ResetWindow zeroes both directions",
+              sbt2.ToString(), "{\"woken\":0,\"wokenMs\":0,\"slept\":0,\"sleptMs\":0}");
+
+        // A comma-decimal locale turns "wokenMs":2.5 into "wokenMs":2,5 and
+        // every window in the file stops parsing. Both timers pass
+        // InvariantCulture explicitly; this is what fails if someone removes
+        // it. It bit us once already on updateManual, caught before deploy by
+        // reading rather than by a test - so the test exists now, and covers
+        // the older timer too.
+        var prev = System.Threading.Thread.CurrentThread.CurrentCulture;
+        try {
+            System.Threading.Thread.CurrentThread.CurrentCulture =
+                new System.Globalization.CultureInfo("de-DE");
+            sbtReset.Invoke(null, null);
+            slept.Invoke(null, new object[] { freq / 4000 });
+            var deSb = new System.Text.StringBuilder();
+            sbtAppend.Invoke(null, new object[] { deSb });
+            Check("transitions: decimal point survives de-DE",
+                  deSb.ToString().Contains("\"sleptMs\":0.25"), true);
+
+            reset.Invoke(null, null);
+            add.Invoke(null, new object[] { freq / 4000, true });
+            var deSb2 = new System.Text.StringBuilder();
+            append.Invoke(null, new object[] { deSb2 });
+            Check("updateManual: decimal point survives de-DE",
+                  deSb2.ToString().Contains("\"pausedMs\":0.25"), true);
+        } finally {
+            System.Threading.Thread.CurrentThread.CurrentCulture = prev;
+        }
+
+        foreach (var lit in new[] { ",\"standByTransitions\":", "{\"woken\":", ",\"sleptMs\":" })
+            Check($"emits {lit}", inUs(lit), true);
+
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
         return bad == 0 ? 0 : 1;
     }

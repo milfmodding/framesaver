@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
 using Comfort.Common;
 using EFT;
@@ -169,15 +170,37 @@ namespace Framesaver.Patches
         /// </summary>
         private static void Wake(BotStandBy standBy, BotOwner bot)
         {
-            if (standBy.StandByType_1 != BotStandByType.active)
+            bool asleep = standBy.StandByType_1 != BotStandByType.active;
+            bool deactivated = bot.BotState == EBotState.NonActive;
+
+            // Already awake, so there is no transition to make or to time.
+            // Wake() runs every check interval for every bot an exemption
+            // holds awake, so without this the count would be the exempt
+            // population times the check rate rather than churn. Behaviourally
+            // identical to falling through - both branches below were already
+            // no-ops in this case.
+            if (!asleep && !deactivated)
+            {
+                return;
+            }
+
+            long start = Stopwatch.GetTimestamp();
+
+            if (asleep)
             {
                 standBy.Activate();
             }
 
-            if (bot.BotState == EBotState.NonActive)
+            if (deactivated)
             {
                 bot.BotState = EBotState.Active;
             }
+
+            // Spans Activate(), the BotState setter and everything downstream
+            // of both - our own StandByType postfix, and OnBotStateChange's
+            // subscribers. That envelope is the point: the cost of a wake is
+            // what it triggers, not what this method executes.
+            StandByTransitions.Woken(Stopwatch.GetTimestamp() - start);
         }
 
         /// <summary>
@@ -325,7 +348,30 @@ namespace Framesaver.Patches
                    && player.HealthController.IsAlive;
         }
 
+        /// <summary>
+        /// Times the sleep path, recording only when a transition actually
+        /// happened.
+        ///
+        /// A before/after read rather than Wake's pair of predicates, because
+        /// the guards below are spread across four early returns and any one
+        /// of them can decline the transition - first aid outstanding, already
+        /// paused, or the vanilla goToSave route finding nothing to do. One
+        /// comparison covers every exit, including ones added later.
+        /// </summary>
         private static void GoToSleep(BotStandBy standBy, BotOwner bot)
+        {
+            BotStandByType before = standBy.StandByType_1;
+            long start = Stopwatch.GetTimestamp();
+
+            GoToSleepInner(standBy, bot);
+
+            if (standBy.StandByType_1 != before)
+            {
+                StandByTransitions.Slept(Stopwatch.GetTimestamp() - start);
+            }
+        }
+
+        private static void GoToSleepInner(BotStandBy standBy, BotOwner bot)
         {
             if (!Plugin.SleepImmediately.Value)
             {
