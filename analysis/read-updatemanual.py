@@ -433,6 +433,42 @@ def main(argv):
         print('    ! our prefix was skipped on %d calls - those samples were dropped, not' % unstamped)
         print('      mis-timed, but HarmonyPriority.First is no longer holding.')
 
+    # THE CENSUS AND THE CALL RATE COUNT DIFFERENT POPULATIONS, and section 3
+    # divides one by the other. `updateManual` counts every bot whose
+    # UpdateManual runs; `CountBots` skips any bot with a null StandBy. That
+    # skip is documented in Telemetry.cs, which says agents.live is reported
+    # alongside precisely so the two can be cross-checked rather than assumed
+    # equal - and this reader never did the cross-check.
+    #
+    # It is not theoretical. 23 of 401 in-raid windows disagree, 20 of them
+    # past the warm-up cut, and the severe ones read awake=0 asleep=0 against
+    # agents.live of 20-25: the whole roster invisible to the census mid-raid.
+    # Those windows were excluded from the ratio only because a zero census
+    # makes it NaN, and from the contrast only because an empty paused bucket
+    # drops them - incidental safety twice over, which is the pattern this file
+    # keeps finding elsewhere.
+    # `n_live`, not `live` - that name is the module-level function this file
+    # uses to subtract corpses, and shadowing it here crashed every log that
+    # carries agents.live. I missed it by checking the first fourteen lines of
+    # output instead of the exit code, one message after telling Alpha the fix
+    # is something that must be found or a code that must be zero.
+    mismatch = []
+    for w in wins:
+        b = w.get('bots') or {}
+        n_live = (w.get('agents') or {}).get('live')
+        aw, asl = b.get('awake'), b.get('asleep')
+        if n_live is None or aw is None or asl is None:
+            continue
+        if abs(n_live - (aw + asl)) > 1:
+            mismatch.append((w, n_live, aw + asl))
+    if mismatch:
+        print('  ! %d window(s) where agents.live disagrees with awake+asleep by >1.'
+              % len(mismatch))
+        print('    CountBots dropped bots with a null StandBy, so the census-implied')
+        print('    denominator in section 3 is wrong for those windows - not noisy,')
+        print('    wrong. Worst: live %d against census %d.'
+              % max(mismatch, key=lambda t: t[1] - t[2])[1:])
+
     zero_calls = [w for w in wins if not um(w).get('awakeCalls')]
     if zero_calls:
         print('  windows with awakeCalls == 0   %d   <- no data, distinct from zero cost' % len(zero_calls))
