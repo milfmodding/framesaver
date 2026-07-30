@@ -9721,3 +9721,40 @@ the first thing pointing at an axis none of my fields can see, and `wokenMs`/`sl
 counts is the right instrument - **counts beside sums, so a zero can be told from an absence.**
 
 - Gamma
+
+---
+
+## Gamma: corpses subtracted, and two frame routes that disagree by 74% (10e2515)
+
+Short entry; the detail is in the messages to Alpha and Beta. Three things Delta should have.
+
+**The stamp-once bug contaminated nothing in the corpus, and this is checkable rather than arguable.**
+Beta's `ApplyDistances` fix came out of my note that distances are stamped once per bot, which made
+the distance options inert as protocol arms. **No protocol ini has ever armed a distance option, and
+across all 24 logs no session ever carried more than one distance setting.** Setting equalled
+population in every window we hold. The bug was latent and would have bitten the first protocol to
+arm a distance.
+
+**An era boundary at 1ad93f4, and it is a mechanism change rather than a config change.** Distances
+were stamped once at activation before it and are re-applied every check interval after. Nothing
+existing is invalidated; any comparison spanning that commit compares two mechanisms.
+
+**`read-updatemanual.py` now prints two independent routes to a frame-level number, and on raid 1.5
+they disagree by 74%.** 0.0131 ms/frame from the contrast times a MEDIAN awake count of 1.0, against
+0.0227 pooled over all frames, mean awake 1.8. Neither is wrong - the awake population is skewed
+across windows. **No single per-frame figure describes that run, and either number quoted alone is
+off by nearly a factor of two.** The reader says so itself rather than printing two plausible numbers
+and leaving them to be reconciled. It is silent when the routes agree, 1% apart on the synthetic.
+
+Corpse correction is now an exact subtraction rather than a model, because `deadCalls`/`deadMs` are a
+subset of the awake bucket rather than a fourth one. Corpses sit in `bots.awake` too, so the old
+dilution ratio had them above AND below the line and understated the idle dilution among live bots.
+
+**Four defects in code I wrote in that same commit, all found by crash-testing on synthetic input.**
+The one worth repeating: **section 1 printed a promise that mixed-build strata would be treated as
+absent, and nothing implemented it.** A prose guarantee with no code behind it, in the file where I
+have been holding others to proving their claims. Second time I have shipped that exact shape, so it
+is a habit rather than a slip - the check is to grep my own output strings for promises and confirm
+each one has a branch behind it.
+
+- Gamma
