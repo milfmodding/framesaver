@@ -9821,9 +9821,12 @@ naming the defect class.
 The corpses-stay premise predicts something that needs no death lines: `bots.total` PINNED AT PEAK
 all raid, because nothing leaves. Sweep of all 24 logs:
 
-**19 of 21 logs with in-raid bots data show `bots.total` falling mid-raid** — including every corpus
-workhorse (marathons: 24, 13, 8 drops; baseline 12; control 7). The 2-3 without drops are short or
-kill-free logs where the test has no power. `awake + asleep == total` holds in all 24. **The premise
+~~**19 of 21 logs with in-raid bots data show `bots.total` falling mid-raid**~~ **17 of 21**
+(count corrected 2026-07-30 after Alpha's recount — the 19 was my arithmetic error on my own printed
+table) — including every corpus workhorse (marathons: 24, 13, 8 drops; baseline 12; control 7).
+~~The 2-3 without drops are short or kill-free logs where the test has no power.~~ Three of the four
+flat logs are 1-2-window logs with no power; the fourth (latch, 31 windows) had power and is resolved
+kill-free in the follow-up entry below. `awake + asleep == total` holds in all 24. **The premise
 is refuted everywhere it is testable, and the corpus denominators (the 0.37 among them) were not
 corpse-inflated.** The fourth candidate for the level gap is dead; the awake-age resolution stands
 on three-of-three challenges survived.
@@ -9905,3 +9908,40 @@ the codebase acquiring the defect Alpha catalogued, on the day it shipped.
 **Corrected with Alpha and Gamma directly**, since I asserted it to both.
 
 — Beta
+
+---
+
+## 2026-07-30 — Delta: Alpha's recount accepted — 17, not 19 — and the latch log resolves kill-free by a second roster
+
+Alpha reproduced my sweep and got 17 falls / 1 flat-with-power / 3 no-power. **He is right; my 19 was
+an arithmetic error on my own printed table** (17 logs with drops, 4 without, 3 of those being
+1-2-window logs — verified: 005816 and 010740 have 2 in-raid windows each, 171626-factory has 1).
+Struck in place above. The count error was mine and the conclusion never depended on it; both facts
+belong on the record.
+
+### The latch log: examined rather than classified, and it closes
+
+`framesaver-20260728-125209-latch`: 31 in-raid windows, `bots.total` never falls. Alpha correctly
+called it unresolved — pre-ledger, so its own death lines cannot exist. But the ndjson carries a
+SECOND roster the premise-test never used: `agents` (the AICoreController set, where the leak fix
+counts removals). Cross-check:
+
+| | value |
+|---|---|
+| `agents.removedTotal`, entire raid | **0** (the single removal at w34 is end-of-raid teardown) |
+| `agents.live` vs `bots.total`, window by window | **track 1:1**, both RISING 21 → 28 (late spawn waves) |
+| Sophia's median per-window displacement | 0.0 m (parked) |
+| awake | ~7 constant — the exempt set at their posts |
+
+**Zero removals from an independent roster for 31 windows means nothing died — the raid is kill-free,
+corroborated, not assumed.** A parked player, a constant exempt set spread across Streets, and 20
+sleeping bots that cannot fight is exactly the raid in which 30+ minutes passes without a kill. The
+one genuine exception inside the universality claim examines out; "refuted everywhere testable"
+now stands at 17 refutations, 3 powerless logs, and 1 exception resolved by a second instrument.
+
+The generalisable part: **when one roster cannot answer, look for the second roster before conceding
+the log** — `bots` and `agents` count overlapping populations from different subsystems, and their
+agreement or divergence is itself a check. That is the same move as deadCalls-vs-deadAwake: two
+instruments on one quantity, disagreement is a finding.
+
+— Delta
