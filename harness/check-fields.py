@@ -102,13 +102,19 @@ def main():
             refusals.append("cannot read %s: %s" % (path, e))
             continue
 
-        header, raid, spawns, deaths = None, [], 0, 0
+        header, raid, spawns, deaths, standby = None, [], 0, 0, 0
+        # Every `type` seen, counted. Beta found that this chain was an if/elif with no else, so an
+        # unknown line type fell through in total silence - which is comfortable when a new build
+        # adds one and dangerous when a build STOPS emitting one, because both look like nothing.
+        # Counting every type turns "I do not recognise this" into a printed fact.
+        seen_types = {}
         for ln in lines:
             try:
                 o = json.loads(ln)
             except ValueError:
                 continue
             t = o.get("type")
+            seen_types[t] = seen_types.get(t, 0) + 1
             if t == "header" and header is None:
                 header = o
             elif t == "sample" and o.get("state") == "raid" and not o.get("final"):
@@ -117,6 +123,8 @@ def main():
                 spawns += 1
             elif t == "death":
                 deaths += 1
+            elif t == "botStandBy":
+                standby += 1
 
         if header is None:
             refusals.append("%s: no header line - refusing to report" % path)
@@ -129,6 +137,53 @@ def main():
             continue
 
         print("    header commit %s, %d raid windows" % (str(header.get("commit"))[:12], len(raid)))
+        # The types the FORMAT legitimately has, not the types this chain dispatches on. The first
+        # version listed only the latter, so `census`, `mark` and `spike` reported as unrecognised
+        # on every log in the corpus - a warning that fires on everything is a warning nobody reads,
+        # and it would have trained the next person to skip the line that matters.
+        known = {"header", "sample", "botSpawn", "death", "botStandBy",
+                 "census", "mark", "spike"}
+        extra = sorted(k for k in seen_types if k not in known)
+        if extra:
+            print("    line types this checker does not know: %s"
+                  % ", ".join("%s x%d" % (k, seen_types[k]) for k in extra))
+            notes.append("%s: unrecognised line type(s) %s - not an error, but a field nobody "
+                         "registered is a field nobody checks" % (path, ", ".join(map(str, extra))))
+
+        # ---- botStandBy: PRESENCE-ONLY, and paired with botSpawn -----------------
+        #
+        # Presence-only on Beta's recommendation and for their reason: `effective` being false on
+        # every bot is the CORRECT reading under `forceAllRoles = false`, so a checker that treated
+        # all-false as degenerate would fail the control arm of raid 2. The invariant is one line
+        # per bot per raid, not any particular value in it.
+        #
+        # Paired with `botSpawn` because the two now come from opposite ends of one lifecycle -
+        # `BotOwner.Create` and `BotStandBy.InitPoints`. Spawns without stand-by lines means bots
+        # were created and never activated, which is a real failure mode nothing else detects.
+        #
+        # This is the field the bot-level contrast rests on: it carries the per-bot ARM. If the
+        # emit is ever dropped in a refactor the reader finds no rows and reports a coverage gap,
+        # which reads identically to a raid where nothing activated. Hence a gate rather than a
+        # note.
+        if spawns and not standby:
+            fails.append("%s: %d botSpawn lines and ZERO botStandBy. Three causes look identical "
+                         "here and only the third is benign: the emit is broken; no bot ever "
+                         "activated; or the build predates bc90b76 and never had the field. This "
+                         "checker tests the CURRENT build's fields, so a pre-bc90b76 log is "
+                         "EXPECTED to fail this - check the header commit before treating it as a "
+                         "defect. On a fresh run it means the per-bot arm label for raid 2 is "
+                         "silently absent" % (path, spawns))
+        elif standby:
+            ratio = (100.0 * standby / spawns) if spawns else 0.0
+            if spawns and standby < 0.5 * spawns:
+                fails.append("%s: %d botStandBy against %d botSpawn (%.0f%%). One line per bot at "
+                             "activation is the invariant; under half means the emit is dropping "
+                             "bots, not that bots failed to activate" % (path, standby, spawns, ratio))
+            else:
+                print("    botStandBy %d line(s) against %d botSpawn (%.0f%%)"
+                      % (standby, spawns, ratio))
+        elif not spawns:
+            print("    botStandBy and botSpawn both absent - pre-era build, not a failure")
 
         # ---- header blocks: once per file --------------------------------------
         plat = header.get("platform")
