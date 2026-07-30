@@ -442,7 +442,20 @@ def main(argv):
     #
     # It is not theoretical. 23 of 401 in-raid windows disagree, 20 of them
     # past the warm-up cut, and the severe ones read awake=0 asleep=0 against
-    # agents.live of 20-25: the whole roster invisible to the census mid-raid.
+    # agents.live of 20-25.
+    #
+    # DIAGNOSED, and my first guess and Beta's were both wrong. Not corpses,
+    # and not "every bot held a null StandBy" - BotOwner.StandBy is assigned
+    # inside BotOwner.Create, so that state is unreachable. The census did not
+    # RUN: all 33 such windows in the corpus are the LAST in-raid window of
+    # their raid segment, 33 of 33, so the raid ended at the window boundary
+    # and Singleton<IBotGame> was gone when the census read at window close.
+    #
+    # `final` does not mark them - they are full-length windows, not truncated
+    # ones - so no existing population filter excludes them, and steady.py
+    # should NOT be changed to: their FRAME data is perfectly good. Only the
+    # bots.* fields are invalid, which is a per-field validity question rather
+    # than a population one.
     # Those windows were excluded from the ratio only because a zero census
     # makes it NaN, and from the contrast only because an empty paused bucket
     # drops them - incidental safety twice over, which is the pattern this file
@@ -464,10 +477,12 @@ def main(argv):
     if mismatch:
         print('  ! %d window(s) where agents.live disagrees with awake+asleep by >1.'
               % len(mismatch))
-        print('    CountBots dropped bots with a null StandBy, so the census-implied')
-        print('    denominator in section 3 is wrong for those windows - not noisy,')
-        print('    wrong. Worst: live %d against census %d.'
+        print('    The census did not run, so its zero is "could not look" and not')
+        print('    "looked and found none". The denominator in section 3 is wrong')
+        print('    for those windows rather than noisy. Worst: live %d, census %d.'
               % max(mismatch, key=lambda t: t[1] - t[2])[1:])
+        print('    Frame data in those windows is unaffected - this invalidates the')
+        print('    bots.* fields only.')
 
     zero_calls = [w for w in wins if not um(w).get('awakeCalls')]
     if zero_calls:
