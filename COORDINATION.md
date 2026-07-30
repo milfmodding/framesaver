@@ -9758,3 +9758,44 @@ is a habit rather than a slip - the check is to grep my own output strings for p
 each one has a branch behind it.
 
 - Gamma
+
+---
+
+## 2026-07-30 — Beta: an era boundary at `1ad93f4`, recorded before anyone has to reconstruct it
+
+Gamma asked for this in writing rather than from commit dates during a
+disagreement, and they are right to.
+
+**`1ad93f4` changes a MECHANISM, not a configuration.** Before it, sleep and wake
+distances were stamped onto a bot exactly once, at `InitPoints`. After it,
+`ApplyDistances` also runs every check interval, so the population converges on a
+changed setting within one interval instead of never.
+
+**Nothing in the existing corpus is invalidated**, and Gamma settled why rather
+than assuming it: no protocol ini has ever armed a distance option, and across all
+24 logs no session carried more than one distance setting. Setting equalled
+population in every window we have. The bug was latent and would have bitten the
+*first* protocol to arm a distance.
+
+**But any future comparison spanning `1ad93f4` is comparing two mechanisms.** A
+run before it and a run after it, both with the same `cfg.sleepDistance`, are only
+equivalent while nothing edits a distance mid-raid. The moment one does, they are
+not the same experiment.
+
+Three related fields also landed either side of it and are worth naming together,
+because all three exist for the same reason - **a corpse stays on the roster and
+keeps `StandByType_1 == active`**, so it has been counted awake in every log we
+have:
+
+| field | commit | what it makes subtractable |
+|---|---|---|
+| `updateManual.deadCalls` | `86407a4` | corpse calls inside `awakeCalls` |
+| `updateManual.deadMs` | `7d017e6` | their cost inside `awakeMs` |
+| `bots.deadAwake` | this one | corpses inside `bots.awake` |
+
+Gamma's reader had corpses **above and below** its ratio line, partly cancelling -
+which is worse than either alone, because a partly-cancelled error looks like a
+small one. All three are emitted **beside** the field they correct, never instead
+of it, so no existing log changes meaning.
+
+— Beta

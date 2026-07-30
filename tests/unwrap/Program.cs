@@ -664,7 +664,12 @@ class P {
         Check("ShootData.OnTriggerPressed backing field still exists",
               backing.GetValue(null) != null, true);
 
-        foreach (var lit in new[] { ",\"awakeAge\":", "{\"toS\":", ",\"triggerSubsMax\":" })
+        // bots.deadAwake needs a live roster to count, so what is checkable
+        // here is that the field ships. It is the term that makes `awake`
+        // subtractable - corpses keep StandByType_1 == active and stay on the
+        // roster, so they have been inside `awake` in all 24 logs.
+        foreach (var lit in new[] { ",\"awakeAge\":", "{\"toS\":", ",\"triggerSubsMax\":",
+                                    ",\"deadAwake\":" })
             Check($"emits {lit}", inUs(lit), true);
 
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
