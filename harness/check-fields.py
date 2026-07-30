@@ -150,6 +150,39 @@ def main():
             notes.append("%s: unrecognised line type(s) %s - not an error, but a field nobody "
                          "registered is a field nobody checks" % (path, ", ".join(map(str, extra))))
 
+        # ---- the census either ran or it did not, and zero cannot say which ------
+        #
+        # Beta found that `CountBots` has three early returns before its loop - not instantiated,
+        # null controller, null bots - and every one leaves `awake` and `asleep` at 0. So
+        # `bots.awake == 0` means either "nothing qualified" or "the census did not run", and the
+        # field alone cannot discriminate. Absent-is-not-zero, in the oldest field we have.
+        #
+        # It needs no new telemetry to DETECT, which is why this is here rather than waiting on a
+        # build: a bot must be either awake or paused, so `awake + asleep == 0` while `agents.live`
+        # is non-zero is not a reachable state. `agents.live` comes from a different source
+        # (AICoreControllerUpdatePatch.LiveAgents) that never touches Singleton<IBotGame>, so the
+        # two fail independently - which is what makes the pair an instrument and either one alone
+        # not.
+        #
+        # Those windows survived analysis only because a zero census makes a ratio NaN and an empty
+        # paused bucket drops the row. Two accidents, neither a check.
+        blind = [w for w in raid
+                 if (w.get("bots") or {}).get("awake") == 0
+                 and ((w.get("bots") or {}).get("asleep") or 0) == 0
+                 and ((w.get("agents") or {}).get("live") or 0) > 0]
+        if blind:
+            ex = blind[0]
+            fails.append("%s: %d of %d raid window(s) have bots.awake+asleep == 0 while "
+                         "agents.live > 0 - the roster census DID NOT RUN in them, it is not a "
+                         "roster of zero. First: map=%s window=%s elapsed=%ss live=%s. Exclude "
+                         "them; a zero here is unreadable, not small."
+                         % (path, len(blind), len(raid), ex.get("map"), ex.get("window"),
+                            round(ex.get("raidElapsed") or 0),
+                            (ex.get("agents") or {}).get("live")))
+        else:
+            print("    roster census ran in all %d raid windows (awake+asleep vs agents.live)"
+                  % len(raid))
+
         # ---- botStandBy: PRESENCE-ONLY, and paired with botSpawn -----------------
         #
         # Presence-only on Beta's recommendation and for their reason: `effective` being false on
