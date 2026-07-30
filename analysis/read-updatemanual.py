@@ -58,6 +58,7 @@ Exit 0 when the field is readable, 1 when a gate fails, 2 on bad input.
 import collections
 import json
 import math
+import os
 import statistics as st
 import sys
 
@@ -140,6 +141,34 @@ def eligible(rows):
 
 def um(w):
     return w['updateManual']
+
+
+def leg_key(w):
+    """The raid a window belongs to: (log, raid counter, map).
+
+    NOT the log. Six of the 24 logs hold more than one map and three revisit a
+    map, so a file is a SESSION and can contain several raids. Keying a
+    composition report on the filename merges them.
+
+    The rule is read-marathon.py's `legs()` and is referenced rather than
+    restated: it keys on the raid counter precisely because the marathon
+    revisits Lighthouse and those two visits must not merge - that pair is its
+    control. A second statement of a rule is a second place for it to drift.
+
+    I learned this by getting it wrong in public. I told Beta the zero-asleep
+    leg was on factory4_day and not Streets, from a query that took the first
+    `map` in each file and labelled the whole file with it. That session is two
+    raids: raid 1 on factory with 4 zero-asleep windows, raid 2 on Streets with
+    15. Beta's original attribution was closer than my correction, and my
+    "no Streets leg has it" was computed with the same broken key - internally
+    consistent and wrong.
+    """
+    return (w.get('_log', '?'), w.get('raid'), w.get('map'))
+
+
+def leg_name(key):
+    log, raid, mp = key
+    return '%s raid %s %s' % (os.path.basename(log)[-24:], raid, mp)
 
 
 def stratum(w):
@@ -525,18 +554,18 @@ def main(argv):
         # pausedCalls goes to zero - but a partly-broken leg passes, and then
         # only the leg list shows it.
         if ws:
-            legs = collections.Counter(w.get('_log', '?') for w in ws)
+            legs = collections.Counter(leg_key(w) for w in ws)
             if len(legs) > 1:
                 print('  pooled from %d legs:' % len(legs))
                 for lg, n in legs.most_common():
-                    print('    %-42s %3d windows  %4.0f%%'
-                          % (lg.split('\\')[-1][-42:], n, 100.0 * n / len(ws)))
+                    print('    %-46s %3d windows  %4.0f%%'
+                          % (leg_name(lg), n, 100.0 * n / len(ws)))
                 top = legs.most_common(1)[0][1] / float(len(ws))
                 if top > 0.5:
                     print('    ! one leg is %.0f%% of this stratum - it is not a pooled' % (top * 100))
                     print('      estimate so much as that leg with company.')
             else:
-                print('  single leg: %s' % list(legs)[0].split('\\')[-1][-50:])
+                print('  single leg: %s' % leg_name(list(legs)[0]))
         if not ws:
             print('  ! no window in this stratum has both buckets populated - no contrast.')
             failed.append('%s has no two-bucket window' % stratum_label(key))
