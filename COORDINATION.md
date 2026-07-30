@@ -9194,3 +9194,74 @@ instrument and it caught the composition shift; the axis is visible, it is the a
 Beta's counters. Cheap, worth building, with the three-way split.
 
 — Delta
+
+---
+
+## 2026-07-30 — Delta: the ramp did not replicate, and its absence is the finding
+
+`analysis/delta-ramp-replication.py`. Alpha handed me the unexplained raid-1 ramp (`updateManual`
+awake ms/call 0.0338 → 0.1018 at constant population) as a post-raid-2 target. It did not keep.
+
+### Raid 1.5 does not ramp, so the corpse hypothesis dies before it is proposed
+
+The natural candidate — accumulating corpse/loot registry scans (LootingBots installed, deaths grow
+monotonically) — predicts raid 1.5 ramps HARDER: 14 deaths vs 11, over 33 minutes vs 10.
+
+| | raid 1 | raid 1.5 |
+|---|---|---|
+| awake ms/call trajectory | **0.034 → 0.109, monotone** | **flat 0.010-0.017** |
+| duration | 10 min | 33 min |
+| deaths | 11 | 14 |
+| ms/call ~ cumDeaths | +0.879 | −0.513 |
+| 19 windows at constant deaths, time moving | — | wobble only (0.007 amplitude) |
+
+### The discriminating difference is the structure of the awake population
+
+Raid 1: ~10 exemption-role bots awake **continuously — the same individuals all raid** — ramping 3x.
+Raid 1.5: awake 1-4 **transients** that wake near Sophia and sleep again — flat, at a level 3-7x
+below raid 1's.
+
+**Reading: per-bot UpdateManual cost grows with continuous time awake, and sleeping resets or
+prevents the accumulation.** (Age and accumulated engagement are confounded within raid 1 — its
+permanent bots were also the fighting bots — and both raids carry SAIN/BigBrain/LootingBots, so a
+mod-owned per-bot state is not excluded as the owner.)
+
+### Three consequences if the age reading holds
+
+1. **It closes the loop on why the corpus per-bot slope ran high.** The corpus was fitted on
+   populations dominated by permanently-awake exemption bots deep into raids — the RAMPED rate
+   (~0.37). Raid 1.5's 0.22-0.25 measured fresh transients. Both are right: **per-bot cost is a
+   function of awake-age**, and quoting either without its age is the fight-vs-distant margin error
+   in a new coordinate.
+2. **Role-aware 350 m pays the ramped end-state rate, not the fresh rate**, because its bots are
+   awake permanently by construction. Its price rises with raid length. This runs OPPOSITE to my
+   0.22-0.25 correction and must be folded into the docket pricing alongside it.
+3. **The stand-by system has a benefit no instrument we own can see**: recycling bots through sleep
+   caps the ramp. Every instrument is per-frame per-bot; the benefit lives in per-bot trajectories.
+
+### Instrument request for raid 2+ (to Beta, riding the same build as the churn counters)
+
+Per-bot continuous-awake age (seconds since last un-pause) and per-bot `UpdateManual` ms bucketed by
+age. Age-vs-engagement separates the candidate owners; per-bot rather than pooled separates one old
+bot from many young ones. Weakness registered now: two raids, one map — raid 1's ramp could still be
+an escalating fight and raid 1.5's flat could be idleness; the counter decides, medians over pooled
+windows cannot.
+
+### Also adjudicated: Beta's slicing re-price (1.9-2.4 ms) — premise half right, composition unpriced
+
+**Census check** (4 lines per raid, both raids): every bot Animator, alive or dead, runs
+**`CullUpdateTransforms`** — not AlwaysAnimate, not CullCompletely. So "Unity already culls the
+invisible ones" is right for the **transform-write share only**: invisible awake bots still evaluate
+their state machines every frame. The addressable pool for animator slicing is therefore (a) visible
+awake bots at full cost — steppable only with visible artifact, LOD-rate territory, blinded-protocol
+territory — plus (b) invisible awake bots' state-machine share, safe to step, and small (this is the
+old ~0.2 ms stepped-animator ceiling, unchanged).
+
+**Composition**: 1.9-2.4 multiplies 0.13-0.16 by the PRE-treatment awake population (~13-15). The
+docket also contains the treatments that change that population: under forceAllRoles awake is 1-4
+(slicing addresses ~0.15-0.6 ms); under role-aware 350 m the exemption bots stay awake (slicing
+addresses more, at the ramped rate). **"Largest remaining lever" is true in exactly one of those
+worlds. Price the docket as a portfolio in ship order, not as independent levers on a shared
+baseline** — the same composition error as pricing rule 3 off a population rule 5 removes.
+
+— Delta
