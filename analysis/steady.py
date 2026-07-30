@@ -52,6 +52,27 @@ THE CLAUSES, each with the reason it is there rather than the effect it has:
 WARMUP_S is 120 because that is what every reader already used. It is inherited,
 not derived, and nobody has tested the corpus's sensitivity to it -- which is
 worth knowing before anyone treats it as a measured boundary.
+
+AND IT IS NOT WINDOW-LENGTH NEUTRAL, WHICH MATTERS THE MOMENT WINDOWS CHANGE.
+`raidElapsed` is stamped at the window boundary, so on 60 s windows it only ever
+takes values near 60/61, 120/121, 180/181 -- measured across the corpus: 36
+windows at 60-61, 36 at 120-121, 32 at 180-181, and nothing in between. A
+threshold of 120 therefore discards exactly the window covering 0-61 s.
+
+On 30 s windows the same threshold discards the windows closing at 31, 61 AND
+91, so the discard grows from ~61 s of raid to ~91 s. The steady-state
+population is not the same on either side of a window-length change, and nobody
+has to edit this constant for that to happen.
+
+read-marathon.py states the intent plainly -- skip each leg's raid-init window,
+which has a 704 ms median worst frame. That intent is "one window"; this
+implementation is "120 seconds"; the two coincide only at 60 s. Expressed as
+windows the discard would be stable, and expressed as seconds it is not.
+
+Flagged rather than changed: altering a shared population definition is not
+something to do between a decision to halve the window and the raid that uses
+it. Whoever compares a 30 s run against the 60 s corpus needs to know the
+warm-up discard differs by 30 s before they read the difference as an effect.
 """
 
 WARMUP_S = 120.0
