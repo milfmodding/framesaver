@@ -8928,3 +8928,94 @@ been silent), and the Zryachiy group. Three long-range families on this map, non
 `marksman`, none currently covered.
 
 - Alpha
+
+---
+
+## 2026-07-29 - Alpha: the post-raid-1.5 docket, and a corroboration that was two errors cancelling
+
+### THE PROBLEM WITH THE NUMBER EVERYTHING IS PRICED OFF
+
+I told Sophia two independent routes agreed on the size of the Lighthouse saving:
+
+    population route   11.0 exemption-role bots/raid x 0.35 ms/bot  =  3.85 ms/frame
+    frame route        15.747 - 12.252 level shift                  =  3.50 ms/frame
+
+Ten percent apart, which reads as corroboration. Decomposed, the components do not agree at all.
+The 0.35 ms/bot is a sum of four per-bot terms including the CORPUS animator slope of 0.1357:
+
+    predicted animator      11 x 0.1357 = 1.49      observed 2.199    UNDER by 1.5x
+    predicted non-animator  3.85 - 1.49 = 2.36      observed 1.30     OVER  by 1.8x
+    predicted total                      3.85       observed 3.50     agrees
+
+**The aggregate agreement is two errors of opposite sign cancelling** - build-per-row-aggregate-last
+wearing a corroboration costume, and the second time in one day I have offered Delta two "agreeing"
+numbers that were not what I claimed. Sent to Delta to break before Beta builds against it. My own
+read, for the record and for them to attack: the animator term is solid (counted change, measured
+level, no regression), the other three are corpus slopes fitted against a nearly-constant awake
+count, so they are probably the wrong side of the cancellation - which would mean 0.35 ms/bot is too
+HIGH and every exemption cost I quoted is overstated.
+
+### WHAT RAID 1.5 ESTABLISHED THAT DOES NOT DEPEND ON THAT
+
+    p75, in-raid PresentMon frames
+      Lighthouse corpus  17.40 ms / 57.5 fps      raid 1  15.23 / 65.7      raid 1.5  13.35 / 74.9
+
+Mechanism: paused UpdateManual calls outnumber awake 15:1, against roughly 1:1 in raid 1.
+Animator: `animCulled` 17 -> 26 while `DirectorUpdateAnimationBegin` fell 2.199 ms, so **0.244 ms of
+animator per bot** from a counted change and a measured level. The corpus slope of 0.1357 understated
+it 1.8x because it was fitted against an awake count pinned by the very floor the raid removed.
+
+p99 went the WRONG way, 22.78 -> 24.55 ms, on 41 spawns against 31. My story is that spikes are
+spawn-completion hitches so the treatment touches p75 and not p99. It is a story that fits, which is
+why Delta has it - and it matters because the gate is moving to p75, where a degraded tail would be
+invisible.
+
+### THE ANIMATOR CULL: I RE-PROPOSED A CLOSED IDEA AND SOPHIA CAUGHT IT FROM MEMORY
+
+I proposed decoupling the animator cull from stand-by - cull off-screen bots whether awake or asleep -
+and presented it as behaviour-neutral by construction. **It is the proposal Beta closed at
+COORDINATION:5464 and the record names me as having made the same assumption then.** Two reasons it
+fails, and the second is the one I had backwards:
+
+`CullCompletely` stops state-machine EVALUATION, so every read-back freezes -
+`CurrentAnimatorStateIndex`, `IsAnimatorInTransitionState`, `PlayerAnimatorGetIsVaulting`,
+`PlayerAnimatorIsJumpSetted` - and the mid-vault bot never finishes vaulting because the code that
+ends the vault polls the animator for it. Also weapon handling, reload completion, grenade release and
+melee (:5602).
+
+**Unity ALREADY gates `CullCompletely` on visibility.** The shipped patch adds no is-it-seen test and
+needs none, so there is no off-screen detection to decouple. The entire delta of my version over what
+ships is removing the `paused` precondition - precisely the part that breaks. Withdrawn to Sophia.
+
+What survives per the record is Sophia's own instinct, slice rather than cull: `animator.enabled =
+false` then `animator.Update(accumulatedDt)` every Nth frame, converting a correctness failure into
+N-1 frames of latency. Falsification order already written, item 1 being the expensive one - whether
+EFT's animator survives a manual step at all, given `MovementContext` consumes
+`PlayerAnimatorDeltaPosition` as displacement and a silent drift would put bots somewhere other than
+where the game thinks they are. That is now Beta's question, replacing my collider question, which the
+recorded analysis had already superseded with a bigger problem.
+
+### THE DOCKET AS APPROVED
+
+**Boss/follower group wake** - approved outright, independent of everything above. If a boss is awake,
+keep its followers awake. Sophia's case was the Goons: Birdeye engaged at ~130 m, exactly the wake
+boundary, so extending his range alone desyncs him from Knight and BigPipe. Generalising to the
+boss/follower relationship fixes cohesion for every garrison rather than hand-listing three roles, and
+it delivers the automatic group-wake she had assumed was out of scope.
+
+**Role-aware sleep distance, ~350 m**, extending `LongRangeExemption.IsLongRange`, which today matches
+`marksman` and nothing else. Verified against the enum and the database. Cheap on nine maps, all under
+2 ms. **A near no-op on Lighthouse, because its exemption set costs 4.72 ms expected against a 3.50 ms
+measured saving - the same bots.** So distances help everywhere except the one map that fails the gate.
+
+**Two corrections from Sophia's domain knowledge, both of which cost me a claim.**
+`followerGluharSnipe` is NOT DECLARED ANYWHERE in the 4.0.13 database - she said she had never seen
+it, and the database agrees, so it is inert. And there is no `followerBoarClose`: it is
+`followerBoarClose1` and `followerBoarClose2`, Gus and Basmach, named close-quarters guards at amount 1
+each. My enum grep used `[A-Za-z]*` and silently dropped the trailing digits; I then reasoned from the
+mangled name to "`followerBoar` must be the ranged one". **Second truncation-induced fabrication in one
+day** - the first was a duplicate death id from 12-character profile ids. Delta's rule covers both: a
+finding read out of truncated output must be re-checked at full width, because truncation is lossy in
+one direction only.
+
+- Alpha
