@@ -297,30 +297,58 @@ def main():
                     print("            | %s" % ln.strip())
 
     if REAL and not NEUTER:
-        # The synthetic baseline cannot catch a checker and an emitter that are wrong
-        # in the same direction. A real log can, and the newest one predates these
-        # fields - so strict must FAIL on it and tolerant must not. Anything else
-        # means absent-is-a-failure is not working.
+        # The synthetic baseline cannot catch a checker and an emitter that are wrong in
+        # the same direction. A real log can.
+        #
+        # THE EXPECTATION IS DERIVED FROM THE LOG, NOT FROM ITS POSITION IN A SORT. The
+        # first version asserted that the newest log predates these fields, which was true
+        # when written and false the moment raid 1 landed - so a correct pass read as a
+        # MISMATCH. An expectation about the state of the world goes stale; an expectation
+        # read out of the input does not. Both directions are exercised when both kinds of
+        # log exist, which is strictly more coverage than the version that broke.
         logs = sorted(glob.glob(os.path.join(LOGDIR, "*.ndjson")))
         if not logs:
             print("\n  REFUSED  --real asked for, no logs found in %s" % LOGDIR)
             failed += 1
         else:
-            newest = logs[-1]
-            print("\n  real-input control on %s" % os.path.basename(newest))
-            sc, _ = run(CHECKER, newest, [])
-            tc, tout = run(CHECKER, newest, ["--tolerant"])
-            print("            strict exit %d (expect 1: predates the fields)" % sc)
-            print("            tolerant exit %d" % tc)
-            if sc == 0:
-                print("            MISMATCH a pre-field log passed STRICT - "
-                      "absent-is-a-failure is not working")
-                failed += 1
-            else:
-                passed += 1
-            if tc == 2:
-                print("            note tolerant REFUSED - %s"
-                      % next((l.strip() for l in tout.splitlines() if "REFUSED" in l), ""))
+            def has_new_fields(path):
+                """Does this log's header carry the blocks that shipped in 646c45d?"""
+                for ln in open(path, encoding="utf-8-sig", errors="replace"):
+                    try:
+                        o = json.loads(ln)
+                    except ValueError:
+                        continue
+                    if o.get("type") == "header":
+                        return "display" in o and "platform" in o
+                return None
+
+            post = [p for p in logs if has_new_fields(p) is True]
+            pre = [p for p in logs if has_new_fields(p) is False]
+            print("\n  real-input control: %d post-field log(s), %d pre-field"
+                  % (len(post), len(pre)))
+
+            for kind, cands, want in (("post-field", post, 0), ("pre-field", pre, 1)):
+                if not cands:
+                    print("            %-10s none on disk - this direction is UNTESTED"
+                          % kind)
+                    continue
+                p = cands[-1]
+                sc, _ = run(CHECKER, p, [])
+                tc, _ = run(CHECKER, p, ["--tolerant"])
+                ok = sc == want
+                print("            %-10s %s: strict exit %d (want %d), tolerant %d  %s"
+                      % (kind, os.path.basename(p), sc, want, tc,
+                         "ok" if ok else "MISMATCH"))
+                if ok:
+                    passed += 1
+                else:
+                    failed += 1
+                    if want == 1:
+                        print("                       a pre-field log passed STRICT - "
+                              "absent-is-a-failure is not working")
+                    else:
+                        print("                       a post-field log FAILED strict - "
+                              "the checker and the emitter disagree on a live build")
 
     shutil.rmtree(tmp, ignore_errors=True)
     print("\n%d behaved, %d did not." % (passed, failed))

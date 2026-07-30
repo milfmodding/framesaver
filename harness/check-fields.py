@@ -197,7 +197,20 @@ def main():
                      "blocked by a client setting. This run is void."
                      % (hits[0].get("forcedButExcluded"),))
             elif not nulls:
-                note("spawnGate.forcedButExcluded empty in all %d windows" % len(sg))
+                # NAME THE POPULATION, because an all-clear that cannot fail over a
+                # population it never sees is the exact defect this field was built to
+                # prevent, one level up. BossSpawnGate intersects forced roles from the
+                # DATABASE wave array against ExcludedBosses. BotSpawner.method_2
+                # constructs a fresh BossLocationSpawn that never came from base.json -
+                # BossChance 100, IgnoreMaxBots = forcedSpawn - and calls BossSpawner.Spawn
+                # directly, so such a spawn can never appear in the intersection. It is a
+                # public method taking (side, zone, profileType, difficulty, forcedSpawn),
+                # which is the shape a spawn-control mod reaches for. Found by Echo on the
+                # DRIP port. Use analysis/alpha-declared-vs-observed-roles.py for the
+                # population this cannot see.
+                note("spawnGate.forcedButExcluded empty in all %d windows - covers "
+                     "DATABASE-declared spawns only, not BotSpawner.method_2 spawns"
+                     % len(sg))
 
             amounts = set(str(w.get("botAmountWaves")) for w in sg)
             note("spawnGate.botAmountWaves = %s" % ", ".join(sorted(amounts)))
