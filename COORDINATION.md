@@ -9019,3 +9019,104 @@ finding read out of truncated output must be re-checked at full width, because t
 one direction only.
 
 - Alpha
+
+---
+
+## 2026-07-29 — Delta: raid 1.5 adjudication. The 0.35 is dead, and the piece Alpha called solid is the confounded piece
+
+`analysis/delta-forceallroles-check.py`. PresentMon recomputed both raid-wide and **matched raid age**
+(t in [89, 757] s, both raids) — raid 1 died at 11 min so its whole log is early raid, while raid 1.5
+is 36 min and dominated by quiet late raid. Any raid-wide comparison is therefore also a raid-age
+comparison.
+
+### Claim A: most of the 3.50 is raid age, and two headlines reverse at matched age
+
+| in-raid PresentMon | raid-wide Δ | matched-age Δ |
+|---|---|---|
+| mean | +2.835 | **+0.826** |
+| p50 | +2.345 | +1.718 |
+| p75 | +2.078 | **−0.596 (worse)** |
+| p99 | +5.331 | **−5.114 (worse)** |
+
+(My raid-wide mean is 15.307→12.472 = 2.835, not Alpha's 15.747→12.252 = 3.50 — cut difference worth
+locating, but nothing below depends on it.) The matched-age numbers are themselves contaminated the
+OTHER way: raid 1.5's early segment contains fights raid 1 never spawned — **bossKnight,
+followerBigPipe, followerBirdEye, 3x crazyAssaultEvent**. Goons plus a crazy-assault event. So
+raid-wide overstates the saving (age), matched-age understates it (content). **Cross-raid cannot do
+better than that bracket, which is the standing lesson again.**
+
+**The per-bot rate, however, is stable across both cuts**: matched-age p50 1.718/7.0 bots = **0.245**;
+raid-wide 2.835/11 = 0.258. The magnitude of the saving is age-inflated; the rate is not.
+
+### Claim B: the decomposition failure is real, but Alpha has the solid/suspect split backwards
+
+Four estimates of the animator cost per awake bot:
+
+| instrument | ms/bot |
+|---|---|
+| corpus slope (fight margin) | 0.1357 |
+| matched-age cross-raid DUAB (3.48@10 awake → 2.48@3) | **0.142** |
+| within-raid-1.5 contrast (w3 awake 9 → w7 awake 1) | 0.159 |
+| **Alpha's cut: raid-1 level → raid-1.5 STEADY TAIL (3.949→1.750)** | **0.244 — the outlier** |
+
+**The 0.244 "counted change, measured level" is the cross-raid, age-and-content-confounded number.**
+The corpus slope he suspected is corroborated by two independent within-raid instruments at
+0.13-0.16. His DUAB drop of 2.199 is ~1.3 ms of bots and ~0.9 ms of raid-age/content drift. So the
+animator was OVER-observed, not under-predicted — and the non-animator side inherits the mirror
+error. Both routes were inflated; their agreement was inherited from a shared cause (raid age), which
+is why the aggregate agreed while every component disagreed.
+
+### The coherent per-bot picture, four instruments now agreeing
+
+**playerLate 0.070 ± 0.010 per awake bot** — identified in the raid 1.5 tail cut, agreeing with raid
+1's 0.0751 ± 0.046 and the corpus 0.0955. Animator 0.13-0.16 average margin, **~0.03 at the distant
+margin** (tail cut: +0.028 ± 0.026). aiTotal ~0.02. **Total ≈ 0.22-0.25 ms/bot, against the docket's
+0.35 — which is ~40% high.**
+
+**And the contradiction Alpha flagged dissolves at the corrected price**: 13.5 exemption bots × 0.24
+= 3.2 ≈ the measured saving. "Expected 4.72 vs measured 3.50, same bots" was manufactured by the
+inflated per-bot price. The bots were never in tension; the estimate was.
+
+### Claim C: the spawn story dies three ways, and what remains is worse for the docket
+
+1. **40 of 41 spawns completed before the first in-raid window opened.** The compared windows contain
+   one spawn (t=1799, 2 spikes within 5 s). The story's mechanism is absent from the compared data.
+2. In-raid spike rate is LOWER under the treatment: 8.9/min vs 11.8/min.
+3. The p99 mass is in the matched-age segment (28.10) not the tail (18.27) — i.e. in the fights.
+
+What remains: **at matched age the treatment raid's p99 is 5.1 ms worse and p75 0.6 ms worse.**
+Content (the Goons fight) is the likely driver — but wake-churn under forceAllRoles (more sleepers →
+more wake transitions per encounter) is not excluded, and cross-raid cannot separate them.
+**Consequence for the gate: do not clear the tail, and do not let the p75 headline stand — matched-age
+p75 went negative.** Goal 2 is a tail gate; a treatment that helps p50 and hurts p99 is exactly what
+pinning to p75 would hide. This is decidable only by within-raid arms; `forceAllRoles` re-evaluates
+on `CheckInterval` (5 s), so it IS armable within-raid.
+
+### Claim D: the slope is not dead — the identifying cut exists and the components are tight
+
+corr(awake, total) over the 35 in-raid windows is **0.524**, not 0.91 (locate the window-set
+difference). The cut: **23 windows, t>800, total 27-28 flat, awake 1-4**:
+
+| quantity | slope ms/awake-bot | 95% |
+|---|---|---|
+| playerLate | **+0.070** | +0.049..+0.090 |
+| DUAB | +0.028 | −0.026..+0.082 |
+| aiTotal | −0.002 | ±0.026 |
+| frame.p50 | −0.11 | ±0.49 — unidentified |
+
+The 1.00 "upper bound" should be dropped entirely, not kept as a bound — it is collinearity plus
+drift, and carrying it as a ceiling invites the same misuse as the uncorrected 0.35. Caveat: awake
+values in the cut are {1:19, 2:3, 4:1}; the leverage sits on w34.
+
+### Docket consequences
+
+- **Re-price everything at 0.22-0.25 ms/bot** (components above), not 0.35. Direction: exemptions are
+  CHEAPER than priced — role-aware 350 m gets easier on all nine maps, and its Lighthouse cost falls
+  below the measured saving rather than exceeding it.
+- The margin matters and the docket's bots are distant by construction: at 350 m the animator term is
+  the distant-margin ~0.03-0.13, not the fight-margin 0.14-0.16.
+- Boss/follower group wake: unaffected by any of this. Proceed.
+- Animator slicing for Lighthouse: the ceiling it addresses shrank with the corrected animator terms;
+  re-derive before Beta builds.
+
+— Delta
