@@ -808,3 +808,91 @@ I predicted leg 4 would show ~15 clean windows, and warned that 30 was the dange
 **3 clean and 15 armed**, because she pressed at 252 s into a ~1000 s leg. **The leg scored 3 windows
 instead of being voided whole — which is exactly what the per-window granularity fix existed for.**
 Reading that as a failed assertion would have been the wrong lesson entirely.
+
+## The instrument layer, addendum — six rules learned on `animCulled`, the distance buckets and `updateManual`
+
+These arrived after the marathon, from two of Beta's codebase reads and one field they added to `Telemetry.cs`
+(`4a51dd5`). They are recorded as rules because each one was found by nearly shipping its opposite.
+
+### Never change what a field counts. Add a field beside it.
+
+`animCulled` does not count culled bots. It is `Sleeping.Count` gated on the toggle
+(`SleepingBotAnimatorPatch.cs:112-115`) — bots we *marked* sleeping. Unity honours `CullCompletely` only while
+no camera sees the renderers, and we never learn whether they were visible, so **every saving attributed to
+animator culling is an upper bound and the real one has never been measured.**
+
+Worse than imprecise: `Sleeping` is filled from the stand-by state-change hook and `asleep` is
+`StandByType_1 == paused`, so the two are **the same population** modulo a null `GetPlayer` and the toggle. The
+field's own comment records it equalling `asleep` in every window of raid 1. It costs a field and carries no
+information `asleep` does not.
+
+The fix is `animCulledVisible` **beside** it, not a redefinition of it. Redefine and every pre-change window
+becomes a different instrument and the corpus for that field is gone — the same loss as the `AiTiming.TotalMs`
+change. Added as a second number the ratio is computable *within* a window, history stays comparable, and the
+misleading name becomes a docs fix rather than a data fix.
+
+*A census-time visibility read is a valid estimator of the population culled fraction, not a broken one.*
+Census fires on a timer, uncorrelated with where she is looking, so each bot-window is an unbiased Bernoulli
+draw; ~30 bots × ~60 windows is n≈1800 and ±1%. What it cannot do is per-bot duty cycle, or catch visibility
+that is bursty *on the census period*. State that limit and the field is honest.
+
+### Counts must travel beside sums, and that is the staleness discriminator
+
+`updateManual` emits `awakeMs`/`awakeCalls` and `pausedMs`/`pausedCalls` rather than means, so
+**`awakeCalls == 0` distinguishes "no data" from "zero cost".** This is exactly the test `aiTotal` lacked, and
+lacking it is why 40 of 98 loading windows shipped a stale `min == max == avg` that no field could expose.
+Any new sum gets its divisor emitted beside it. A derived mean in the log can also go stale against the inputs
+next to it, which is the second reason not to compute it at write time.
+
+### Bucket the population that can change, not the whole roster
+
+Alpha and Beta both wanted distance buckets, correctly, and a 4-bucket histogram over a single 150 m threshold
+so the instrument does not bake in the guess it is meant to test. **But bucketing the whole roster would have
+endorsed the design regardless of its value.** Asleep-and-far bots already cost nothing; a pooled histogram
+fills its far bucket with bots that are *already free* and reports an opportunity that cannot be realised. The
+far bucket is only a saving over **awake**-and-far. Bucket awake and asleep separately, never pooled.
+
+This is the same defect as a synthetic that inherits the assumption under test, in population form. Reader
+precondition: **bucket sum == awake**.
+
+And the limit that outlives the field: **count-of-far is not cost-of-far.** Buckets say how many, never that
+they are expensive. Pairing needs per-bot or per-frame AI cost, so the bucket numbers are not quotable as a
+saving before `aiMs` lands.
+
+### Two disjoint buckets are not a paired contrast, whatever the docstring says
+
+`updateManual`'s premise is that `awakeMs/awakeCalls − pausedMs/pausedCalls` is the marginal cost of one awake
+bot, "measured on the same bots in the same frames." **The buckets hold disjoint bots.** A bot is awake or
+paused, never both, and selection into awake is by proximity to her. It is a between-group contrast with
+non-random assignment, and it is biased in both directions at once:
+
+- Awake bots are near, engaged, questing. Part of their per-tick cost is *why they are awake* rather than
+  *that the 22 ticks exist* — inflates the difference.
+- `awake` here means **not paused**, not **ticking**. A NonActive-but-unpaused bot runs the vanilla body, fails
+  the `BotState == Active` guard, does nothing, and is counted as an awake call at ~0 ms — deflates it.
+
+Neither is bounded, so **the difference is a contrast, not a price, and must not be quoted with a decimal
+point.** The second bias is measurable today with no new field: `awakeCalls / frames` against `bots.awake`
+sizes the dilution, and knowing both numbers lets the mean be *corrected* rather than merely doubted (the
+excess calls cost ~0, so dividing by the census-implied call count recovers the per-ticking-bot mean). The
+first bias is what awake-population distance buckets are for — awake-and-far is the control group this
+contrast does not have.
+
+### A guard that watches the branch you prevented reads zero forever
+
+`unstampedCalls` exists to catch our prefix being skipped by another prefix returning false. It is registered
+`HarmonyPriority.First` *specifically so that cannot happen*, so the counter will read 0 for the life of the
+field and prove nothing. Meanwhile the interaction that fires every frame is uncounted:
+`SleepingBotStandByPumpPatch` returns false for a NonActive-and-paused bot **after** our prefix has stamped, so
+the postfix times a call whose body never ran.
+
+Benign here — both paths execute only `StandBy.Update()` — but the shape is general. **Write the guard against
+the branch that can occur, not the one the design forbids.**
+
+### A config flag that reshapes a population is a stratification variable
+
+Which of those two paused paths a bot takes is decided by `DeactivateSleepingBotState`. So the paused baseline,
+and therefore the contrast, is **not comparable across runs that disagree on that flag**. `deactivateSleeping`
+is already on every sample line in `cfg`, so this is a reader rule, not a missing field — and the general form
+is: any toggle that changes *which bots land in a bucket* has to gate the comparison, the way `brainPeriod`
+already gates the slicing arms.
