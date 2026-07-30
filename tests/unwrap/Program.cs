@@ -502,6 +502,65 @@ class P {
         foreach (var lit in new[] { ",\"stepSeconds\":", "unknown directive '@" })
             Check($"emits {lit}", inUs(lit), true);
 
+        // ---- Awake-age bucketing -------------------------------------
+        //
+        // Record() needs a live BotOwner, so the seam tested here is the one
+        // that decides everything downstream: which bucket an age falls in.
+        // An off-by-one at a boundary would move a whole population between
+        // buckets and invent, or erase, exactly the ramp under test.
+        Console.WriteLine("\nAwakeAge buckets");
+        var aa = asm.GetType("Framesaver.Patches.AwakeAge");
+        var bucket = aa.GetMethod("Bucket", BindingFlags.NonPublic | BindingFlags.Static);
+        foreach (var c in new (float age, int want)[] {
+            (0f, 0), (59.9f, 0), (60f, 1), (149.9f, 1), (150f, 2),
+            (299.9f, 2), (300f, 3), (599.9f, 3), (600f, 4), (1199.9f, 4),
+            (1200f, 5), (100000f, 5),
+        })
+            Check($"age {c.age}s -> bucket {c.want}", bucket.Invoke(null, new object[] { c.age }), c.want);
+
+        // Drive the sums through the private arrays rather than adding a seam
+        // to production for the test's benefit. readonly is on the reference,
+        // not the contents.
+        var ticksF = aa.GetField("Ticks", BindingFlags.NonPublic | BindingFlags.Static);
+        var callsF = aa.GetField("Calls", BindingFlags.NonPublic | BindingFlags.Static);
+        var aaAppend = aa.GetMethod("Append", BindingFlags.Public | BindingFlags.Static);
+        var aaReset = aa.GetMethod("ResetWindow", BindingFlags.Public | BindingFlags.Static);
+
+        aaReset.Invoke(null, null);
+        ((long[])ticksF.GetValue(null))[0] = freq / 1000;   // 1.0 ms in the youngest
+        ((int[])callsF.GetValue(null))[0] = 4;
+        ((long[])ticksF.GetValue(null))[5] = freq / 250;    // 4.0 ms in the tail
+        ((int[])callsF.GetValue(null))[5] = 2;
+        var aaSb = new System.Text.StringBuilder();
+        aaAppend.Invoke(null, new object[] { aaSb });
+        string aj = aaSb.ToString();
+        Check("youngest bucket edge is 60", aj.Contains("{\"toS\":60,\"ms\":1,\"n\":4}"), true);
+        Check("tail edge is null, not 0", aj.Contains("{\"toS\":null,\"ms\":4,\"n\":2}"), true);
+        Check("six buckets emitted", aj.Split(new[] { "{\"toS\":" }, StringSplitOptions.None).Length - 1, 6);
+
+        aaReset.Invoke(null, null);
+        var aaSb2 = new System.Text.StringBuilder();
+        aaAppend.Invoke(null, new object[] { aaSb2 });
+        Check("ResetWindow zeroes the sums", aaSb2.ToString().Contains("\"ms\":0,\"n\":0}"), true);
+
+        // ---- Trigger-subscriber count --------------------------------
+        //
+        // The whole value of this number is telling unbounded from bounded, so
+        // "cannot tell" must never read as 0. Outside a game it returns -1; the
+        // separate check is that the event's backing field still exists in THIS
+        // build of the game, because a rename would also return -1 and the two
+        // would be indistinguishable from the log alone.
+        Console.WriteLine("\nTriggerSubscribers");
+        var ts = asm.GetType("Framesaver.Patches.TriggerSubscribers");
+        var tsMax = ts.GetMethod("Max", BindingFlags.Public | BindingFlags.Static);
+        Check("no game reads -1, not 0", tsMax.Invoke(null, null), -1);
+        var backing = ts.GetField("_backing", BindingFlags.NonPublic | BindingFlags.Static);
+        Check("ShootData.OnTriggerPressed backing field still exists",
+              backing.GetValue(null) != null, true);
+
+        foreach (var lit in new[] { ",\"awakeAge\":", "{\"toS\":", ",\"triggerSubsMax\":" })
+            Check($"emits {lit}", inUs(lit), true);
+
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
         return bad == 0 ? 0 : 1;
     }
