@@ -231,33 +231,71 @@ def main(argv):
 
     print()
     print('=' * 78)
-    print('4. THE CONTRAST   ms per call, by assigned arm')
+    print('4. THE CONTRAST   WITHIN ROLE, never pooled')
     print('=' * 78)
-    per_arm = collections.defaultdict(list)
+    # Alpha's mandatory condition, and the confound is worse than the timing one
+    # I registered. Under [A] 900s -> [B] 900s the bots assigned in A are the
+    # GARRISON - they activated during warm-up and A - while the bots assigned
+    # in B are transients and replacements. Their fresh-call costs differ by
+    # ~0.034 against ~0.014, a level gap of 0.020 that is about 30% of the
+    # entire ramp. So a pooled bot-level contrast compares garrison against
+    # transients with a treatment label on it: the population error wearing the
+    # fix's clothes.
+    #
+    # A marksman in A against a marksman in B differ by arm and awake-age
+    # rather than by what they are. So: within role, and the cell counts come
+    # BEFORE any estimate, because a 2x2 with an empty cell IS the result and a
+    # more honest one than a pooled number rescued from it.
+    cost, cells = {}, collections.Counter()
     for k in matched:
-        ms = sum(float(r.get('ms') or 0.0) for r in rows[k])
         n = sum(r.get('n') or 0 for r in rows[k])
-        if n >= MIN_CALLS:
-            per_arm[bool(arms[k].get('forced'))].append(ms / n)
-    for arm in (True, False):
-        xs = per_arm.get(arm) or []
-        if len(xs) < MIN_BOTS_PER_ARM:
-            print('  forced=%-5s only %d bot(s) over %d calls - too few to score'
-                  % (arm, len(xs), MIN_CALLS))
+        if n < MIN_CALLS:
+            continue
+        ms = sum(float(r.get('ms') or 0.0) for r in rows[k])
+        role = (arms[k].get('role') or '?')
+        arm = bool(arms[k].get('forced'))
+        cost.setdefault((role, arm), []).append(ms / n)
+        cells[(role, arm)] += 1
+
+    roles = sorted(set(r for r, _ in cells))
+    print('  role x arm cell counts (bots over %d calls):' % MIN_CALLS)
+    print('    %-22s %8s %8s' % ('role', 'forced', 'default'))
+    both = []
+    for role in roles:
+        a, b = cells[(role, True)], cells[(role, False)]
+        mark = ''
+        if not a or not b:
+            mark = '   <-- empty cell, void'
+        elif min(a, b) < MIN_BOTS_PER_ARM:
+            mark = '   <-- under %d, not scored' % MIN_BOTS_PER_ARM
         else:
-            print('  forced=%-5s n=%-4d median %.5f ms/call  IQR %.5f'
-                  % (arm, len(xs), st.median(xs),
-                     st.quantiles(xs, n=4)[2] - st.quantiles(xs, n=4)[0]))
-    if min(len(per_arm.get(True) or []), len(per_arm.get(False) or [])) < MIN_BOTS_PER_ARM:
-        print('\nGATE FAILED - underpowered. Reporting a difference here would invite')
-        print('a conclusion the data cannot carry.')
+            both.append(role)
+        print('    %-22s %8d %8d%s' % (role, a, b, mark))
+
+    if not both:
+        print()
+        print('  ! NO ROLE HAS SCORABLE MEMBERS IN BOTH ARMS. The contrast is void.')
+        print('    A role that only spawns at raid start has no B members and one')
+        print('    that only spawns late has no A members - so the arms are not')
+        print('    comparable populations on this roster, and pooling across roles')
+        print('    to rescue a number would reinstate exactly the confound the')
+        print('    stratification exists to remove.')
+        print('')
+        print('GATE FAILED - void, which is the result rather than a failure to')
+        print('produce one.')
         return 1
-    d = st.median(per_arm[True]) - st.median(per_arm[False])
-    print('  contrast (forced - default)   %+.5f ms/call' % d)
+
     print()
-    print('  A DIFFERENCE OF MEDIANS IS NOT A MEDIAN. These are disjoint bot sets')
-    print('  so no pairing exists and the unpaired form is correct here - unlike a')
-    print('  per-window remainder, where it was not.')
+    for role in both:
+        xs_t, xs_f = cost[(role, True)], cost[(role, False)]
+        d = st.median(xs_t) - st.median(xs_f)
+        print('  %-20s forced %.5f (n=%d)  default %.5f (n=%d)  contrast %+.5f'
+              % (role, st.median(xs_t), len(xs_t), st.median(xs_f), len(xs_f), d))
+    print()
+    print('  NOT POOLED ACROSS ROLES, and no combined figure is printed. Each row')
+    print('  is its own contrast on its own population. A difference of medians is')
+    print('  correct here because the bot sets are disjoint and no pairing exists -')
+    print('  unlike a per-window remainder, where it was not.')
 
     print()
     print('=' * 78)
