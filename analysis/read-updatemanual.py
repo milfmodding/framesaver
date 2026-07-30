@@ -217,6 +217,52 @@ def stratum_sort(key):
 CLEARING_MODS = ('QuestingBots', 'ORBIT')
 
 
+def force_all_roles_arm_took_effect(groups):
+    """Did flipping `forceAllRoles` actually move the population? OBSERVED.
+
+    Returns (verdict, detail) where verdict is True (the arm moved bots), False
+    (it did not - the flag changed and the population did not), or None (no
+    observed counterpart, so the question is unanswerable from this input).
+
+    THIS REPLACED A MOD-LIST INFERENCE, AND THE REPLACEMENT IS THE POINT. The
+    first version concluded "latched" from the ABSENCE of QuestingBots or ORBIT,
+    on the reasoning that only a clearing mod makes the flag revocable. Beta
+    then found that QuestingBots clears `CanDoStandBy` once per bot at
+    activation rather than continuously, so the flag is one-way WITH a clearing
+    mod as well as without - which would have made the old check go silent on
+    raid 2 precisely when the latch was real.
+
+    I cannot verify that frequency here: QuestingBots is not installed on this
+    machine, so Beta's premise is unverifiable from my side and the conclusion
+    is only as good as it. What I can verify is our half - TryReclaimStandBy is
+    gated on `!CanDoStandBy` at BotStandByUpdatePatch:125, so once the grant is
+    in place nothing we run revisits it.
+
+    So stop inferring from which mod is installed and read the outcome instead.
+    `bots.standByBlocked` counts the bots the pump actually refused. If the flag
+    varies across windows and that count does not follow it, the arm did not
+    take effect - true regardless of which mods are present, and it does not
+    depend on anyone's reading of a third party's source.
+    """
+    per_arm = {}
+    for key, ws in groups.items():
+        far = key[2]
+        if far is None:
+            continue
+        vals = [(w.get('bots') or {}).get('standByBlocked') for w in ws]
+        vals = [v for v in vals if v is not None]
+        if vals:
+            per_arm.setdefault(bool(far), []).extend(vals)
+    if len(per_arm) < 2:
+        return None, per_arm
+    on = st.median(per_arm[True])
+    off = st.median(per_arm[False])
+    # `forceAllRoles` on should drive standByBlocked toward zero; off should let
+    # it rise to the exempt-role population. Indistinguishable medians mean the
+    # flip did not reach the bots.
+    return (abs(on - off) > 0.5), {'on': on, 'off': off}
+
+
 def force_all_roles_is_latched(ws):
     """True when `cfg.forceAllRoles` records a wish the population may not obey.
 
@@ -416,28 +462,28 @@ def main(argv):
     # counterpart instead of trusting either alone.
     far_vals = set(k[2] for k in groups)
     if len(far_vals - {None}) > 1:
-        latched, mods = force_all_roles_is_latched(wins)
-        if latched is None:
-            print()
-            print('  ! forceAllRoles varies but no mod list is present, so whether the')
-            print('    flag was revocable cannot be determined. Treat the split as a')
-            print('    lower bound on contamination, not as a clean gate.')
-        elif latched:
-            blocked = [(w.get('bots') or {}).get('standByBlocked') for w in wins]
-            blocked = [b for b in blocked if b is not None]
-            print()
-            print('  ! forceAllRoles varies WITHIN this input and no clearing mod is')
-            print('    present (%s), so the flag is a ONE-WAY LATCH:' % ', '.join(sorted(mods)))
-            print('    it grants at bot activation and nothing takes the grant back. A')
-            print('    window marked False still holds every bot activated while it was')
-            print('    True, so these strata are NOT clean arms.')
-            if blocked:
-                print('    bots.standByBlocked median %.1f - the observed counterpart; near'
-                      % st.median(blocked))
-                print('    zero across a False stratum is the latch, not compliance.')
-            else:
-                print('    bots.standByBlocked absent, so the latch cannot be confirmed')
-                print('    from the outcome side either. Do not quote across these strata.')
+        took, detail = force_all_roles_arm_took_effect(groups)
+        _latched, mods = force_all_roles_is_latched(wins)
+        print()
+        if took is None:
+            print('  ! forceAllRoles varies but bots.standByBlocked is absent, so whether')
+            print('    the flip reached the bots CANNOT be determined. The strata are')
+            print('    labelled arms, not demonstrated ones.')
+        elif not took:
+            print('  ! forceAllRoles varies and bots.standByBlocked DOES NOT FOLLOW IT')
+            print('    (median %.1f on, %.1f off). The flag changed and the population'
+                  % (detail['on'], detail['off']))
+            print('    did not: the grant is applied once per bot at activation and')
+            print('    nothing revokes it, so a later window inherits the earlier arm.')
+            print('    THESE ARE NOT ALTERNATING ARMS. Do not difference across them.')
+        else:
+            print('  forceAllRoles arm took effect: standByBlocked median %.1f on,'
+                  % detail['on'])
+            print('    %.1f off - the flip reached the population.' % detail['off'])
+        if mods:
+            print('    mods present: %s (context only - the verdict above is from the'
+                  % ', '.join(sorted(mods)))
+            print('    observed counterpart, not from which mods are installed)')
 
     if len(groups) > 1:
         print()
