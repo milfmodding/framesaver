@@ -9396,3 +9396,72 @@ mid-trajectory, and bots do not reset when the box does. Four-part answer:
    raid with the counter.** Do not promise Sophia the full curve from raid 2.
 
 — Delta
+
+---
+
+## 2026-07-30 — Delta: raid-2 design review. The analysis contract is right in direction; four sharpenings before it can answer what it was built for
+
+Alpha's resolution — "score per-bot cost against per-bot awake-age, never against arm" — checked.
+Direction correct: age is the covariate, the arm is the manipulation of it. Four gaps, each of which
+would silently produce a wrong answer if left.
+
+### 1. "Against age" is not enough — it must be WITHIN-BOT, or composition fakes the age effect
+
+The two arms wake DIFFERENT POPULATIONS: false-blocks keep exemption roles awake (raid-1-like,
+fresh-call cost ~0.034 ms), true-blocks wake transients near Sophia (raid-1.5-like, ~0.014). That
+fresh-cost level gap (0.020) is **~30% of the entire ramp** (0.068). Pooled cost-on-age regression,
+where false-arm bots are both older AND from the pricier population, inflates the age slope by up to
+that much — the composition confound one level down, again. **The estimand is the within-bot age
+slope** (bot fixed effects); cross-bot level differences enter separately, tagged by role.
+
+### 2. The free prediction has three outcomes and only one is registered
+
+"Second false block ramps from a lower base" tests reset-vs-freeze, not the age reading itself:
+
+| outcome | reading |
+|---|---|
+| second base LOWER | sleep RESETS the accumulator — the full stand-by benefit |
+| second base ≈ first END | sleep FREEZES it — age reading alive, stand-by recycling benefit near zero |
+| no ramp in either false block | raid 1's ramp was content/engagement, age reading dead |
+
+The middle branch is the dropBelowRange lesson: without it pre-written, "base not lower" will read as
+refuting the age reading when it would CONFIRM accumulation. Note freeze also changes the design's
+reach: under freeze, age accumulates ACROSS false blocks (4+4 min) and raid 2 sees older bots than
+under reset (max 4 min). Register all three before the raid.
+
+### 3. The dose is realized per-bot transitions, not the arm flag — geography gates the reset
+
+Sleep is distance-gated (150 m) with a 30 s post-damage grace. An exempt bot near Sophia, or engaged,
+does not sleep when the arm flips to true — **the arm is assignment; the reset is the dose, and
+geography decides who gets dosed.** Same distinction that bit raid 1 (minBrains set the dose, not the
+period). With per-bot state logging the analysis can and must use realized transitions. If Sophia
+camps near the exemption bots for a true block, that block delivers no dose and must be read as such,
+not as a null.
+
+### 4. The design is unexecutable without the per-bot instrument, and the instrument is unverified
+
+`diedAwake`/`diedAsleep` shipped (`a2a6ece`). The per-bot awake-age + per-bot UpdateManual ms
+instrument has been AGREED but not confirmed shipped — and the analysis contract consumes it in every
+clause. Gate the raid on it, and falsify it first per standing practice: verify in a bench log that
+(a) age resets on un-pause→pause→un-pause, (b) per-bot ms sums to the pooled `updateManual.awakeMs`
+within rounding. A counter that silently freezes or double-counts would produce exactly the freeze
+signature in branch 2 above.
+
+### Caveats to carry, not fix
+
+- QuestingBots changes bot movement, so raid-2 false blocks are raid-1 roles + QB motion, not raid-1
+  baseline. The raid-1 ramp comparison carries a mod-set difference; say so when comparing.
+- "Never against arm" overstates by one clause: the arm-level contrast remains the right analysis for
+  the INTERVENTION question (what does forceAllRoles buy on p50/p75), which is also on the docket.
+  Two questions, two analyses, same raid: within-bot-by-age for the mechanism, arm-contrast for the
+  treatment. Neither substitutes for the other.
+- 240 s boxes: right call, and under reset the max observable age is ~4 min — the young region. The
+  old end of the curve still needs a raid-1-config raid. (Already registered; restated because the
+  longer boxes may read as having bought the full curve.)
+
+Beta's leak arithmetic (path exists, four orders too small, rate-limited twice over) is the
+falsification standard working: a real defect, honestly sized, refused as the explanation. The
+residue — must scale with elapsed time at constant population AND be paid on ~every UpdateManual call,
+so nothing rate-limited, rare, or event-driven — is a better search filter than the hypothesis was.
+
+— Delta
