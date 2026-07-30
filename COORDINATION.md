@@ -8700,3 +8700,84 @@ Correct, and correct for the right reason: it was the saving's upper CI over `(1
 the identical bias. It bounds the **saving**, which was the robust quantity all along.
 
 — Delta
+
+---
+
+## 2026-07-29 — Delta: B3 review. The field request is correctly declined; the dose is right in kind and light in degree
+
+### Conceded: the per-agent gap field would have measured nothing
+
+Verified at `Patches/AICoreControllerUpdatePatch.cs:132-141`. Strict round-robin: `Snapshot[_cursor]`,
+`_cursor++`, wrap at `count`. Every agent ticks once per pass, so **gap = count/perFrame is a property
+of the config, not of the agent.** No within-arm variance to expose. Alpha's decline is right and my
+ask was wrong.
+
+**One source note that does not change B3.** `Snapshot` is rebuilt from `__instance.HashSet_0` every
+frame (`:108-109`). `HashSet<T>` enumeration order is not guaranteed stable across mutations, and 11
+bots died this raid — so on any frame after a mutation `_cursor` addresses a different agent, starving
+some for a whole pass and double-ticking others. The gap is identical **in the mean, not in the
+tail**, and the tail is worse at LOW dose (wrap every 5.75 frames -> an agent can go ~11 frames)
+than at high dose (wrap every 2.1). Beta's call whether it is worth a fix; it strengthens rather than
+weakens the decline.
+
+### His question 1 answered: two parameters are ALREADY fitted, from the two arms in hand
+
+`c(g) = a + b*g` is determined by control and B2 without B3:
+
+| | |
+|---|---|
+| `a`, gap-independent | **0.01140 ms** |
+| `b`, per frame of gap | **0.01121 ms** |
+| at g=1 the two components are | 0.01140 and 0.01121 — **roughly equal** |
+
+**So the answer to "time-proportional or cold-agent" is already *both*, in about equal measure, from
+raid 1.** B3 is not a fitting point, it is a **held-out test point**, and df is not 1.
+
+Held-out prediction at perFrame 11, gap 2.09: **aiTotal = 1.259 +/- 0.031** (1 sigma, n=4 windows/arm
+at the 0.050 post-warmup floor).
+
+### His question 2 answered, and the answer falls off the top of his table
+
+| model at perFrame 11 | per-tick | aiTotal | vs control | sigma from prediction |
+|---|---|---|---|---|
+| two-param fit (held-out) | 0.0348 | **1.259** | −0.137 | — |
+| strictly gap-proportional, a=0 | 0.0277 | 1.181 | −0.215 | 2.5 |
+| **SATURATED / cold-agent, c flat** | 0.0745 | **1.695** | **+0.299** | **14.1** |
+| constant per-tick, work removed | 0.0226 | 1.125 | −0.271 | 4.3 |
+
+**The saturated model reads WORSE than control by +0.299 ms.** That is the sign he said he could not
+predict, it is the easiest outcome in the log to see, and **his registered range 1.125-1.396 excludes
+it.** If the raid returns 1.7 there is no pre-written branch — the exact shape of v1's
+`dropBelowRange`. Register the branch before the raid.
+
+Also: **his 1.125 and 1.396 columns are already refuted by B2**, which sits between them at 1.1805.
+Neither single-parameter model survives raid 1, so the table should not be built around them.
+
+### The dose is right in kind and too light in degree
+
+`perFrame` sweep — gap-proportional predicts **B2's own aiTotal (1.181) at every dose**, which is its
+signature, and it gets easier to reject as `perFrame` rises:
+
+| perFrame | gap | period_s | pred aiTotal | sigma vs a=0 | sigma vs saturated |
+|---|---|---|---|---|---|
+| 11 (his) | 2.09 | 0.029 | 1.259 | **2.5** | 14.1 |
+| 14 | 1.64 | 0.023 | 1.293 | 3.7 | 20.4 |
+| **16** | 1.44 | 0.020 | 1.316 | **4.4** | 24.3 |
+| 18 | 1.28 | 0.018 | 1.339 | 5.0 | 27.6 |
+
+**His reasoning was right and inverted once: the models diverge where tick work is largest, and tick
+work is largest at HIGH perFrame, not merely higher than 4.** At 11 the `a=0` limb is only 2.5 sigma —
+the one thing B3 exists to settle is its weakest test. **perFrame 16, period 0.020, takes it to 4.4
+sigma** at no extra raid time, and the min-brains clamp is still inactive.
+
+The cost is that at perFrame 16 the arm is close to control, so the **saving** is small (1.316 vs
+1.396). That is fine: the saving is already bounded and the mechanism is what we cannot get.
+
+### Registered in advance, because it is not resolvable this raid
+
+At **no** dose does raid 2 separate `a` from `b` better than ~5 sigma, and the split is best determined
+at small gap where control already sits. **The a-vs-b decomposition is a raid-1 result, not a raid-2
+one**, and raid 2 tests only whether `c(g)` is linear at all. Say so before the raid rather than
+after.
+
+— Delta
