@@ -472,17 +472,43 @@ def main(argv):
         # want, and the form most likely to be quoted past its warrant.
         # The corrected contrast when there was one, because this is the line
         # that gets quoted and the uncorrected version understates it.
-        live_census = []
+        # PAIRED PER-WINDOW, not a product of aggregates. This line used to be
+        # `pooled contrast x median awake bots`: two aggregates multiplied,
+        # which is the same defect class as a difference of medians and needs
+        # no window to have produced the value. On raid 1.5 it read 0.0131
+        # against 0.0137 here, 4.6% low.
+        #
+        # Found because Alpha swept their own readers by SHAPE and found four
+        # instances, one reporting a negative unaccounted time. My own audit
+        # grepped for the literal `median(a) - median(b)` and missed this,
+        # because a product does not match that pattern. Their caveat was the
+        # useful part: finding none is consistent with having none AND with
+        # one's instances sitting in the small cells. Mine was in a small cell.
+        #
+        # The dilution correction is a pooled quantity and does NOT propagate
+        # into this route, so it is labelled uncorrected rather than silently
+        # carrying `best`.
+        per_frame, live_census = [], []
         for w in ws:
             c = float((w.get('bots') or {}).get('awake') or 0)
             corpses, _route = census_corpses(w)
             if census_known and corpses is not None:
                 c -= corpses
-            live_census.append(max(c, 0.0))
+            c = max(c, 0.0)
+            live_census.append(c)
+            l_ms, l_calls = live(w, dead_known)
+            a = mean_or_none(l_ms, l_calls)
+            p = mean_or_none(float(um(w).get('pausedMs') or 0.0),
+                             um(w).get('pausedCalls') or 0)
+            if a is not None and p is not None:
+                per_frame.append((a - p) * c)
         med_awake = st.median(live_census)
-        print('  x median %.1f %s awake bots  =  %.4f ms/frame'
-              % (med_awake, 'live' if census_known else 'census (corpses in)',
-                 best * med_awake))
+        med_pf = st.median(per_frame) if per_frame else None
+        if med_pf is not None:
+            print('  median per-window contrast x that window\'s %s awake bots'
+                  % ('live' if census_known else 'census (corpses in)'))
+            print('    =  %.4f ms/frame   (median awake %.1f; uncorrected for dilution)'
+                  % (med_pf, med_awake))
 
         # Second route to a frame-level number, needing no bot count at all.
         # It answers a DIFFERENT question from the line above - what awake bots
@@ -505,16 +531,16 @@ def main(argv):
             # carrying most of the calls - which is a fact about the raid,
             # not a defect in either number. It is also the only signal here
             # that a single median bot count does not describe the run.
-            ref = best * med_awake
+            ref = med_pf
             if ref and direct and abs(direct - ref) / max(abs(ref), 1e-9) > 0.25:
                 mean_awake = sum(live_census) / len(live_census)
-                print('  ! the two disagree by %.0f%%. Not an error: the first uses the MEDIAN'
+                print('  ! the two disagree by %.0f%%. Not an error: the first takes a'
                       % (100.0 * abs(direct - ref) / abs(ref)))
-                print('    awake count (%.1f) and the second pools all frames; mean awake is'
-                      % med_awake)
-                print('    %.1f. A skewed awake population across windows is the cause, and'
-                      % mean_awake)
-                print('    no single per-frame figure describes this run. Quote neither alone.')
+                print('    MEDIAN over windows, the second pools every frame. Median awake')
+                print('    %.1f against mean awake %.1f - a skewed awake population across'
+                      % (med_awake, mean_awake))
+                print('    windows is the cause, so no single per-frame figure describes')
+                print('    this run and neither number should be quoted alone.')
         print()
         print('  THIS IS A CONTRAST, NOT A PRICE. Disjoint buckets, non-random assignment,')
         print('  biased both ways and neither bound. Quote it as an order of magnitude.')
