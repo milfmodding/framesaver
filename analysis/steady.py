@@ -77,8 +77,70 @@ warm-up discard differs by 30 s before they read the difference as an effect.
 
 WARMUP_S = 120.0
 
+# Alpha measured how long warm-up actually lasts, rather than inheriting a
+# threshold: each early window against its own leg's later baseline, over ALL
+# in-raid windows including the ones warm-up would exclude - because the
+# excluded population is the subject and cannot be filtered by the thing under
+# test. Window 1 carries a worst-frame ratio of 4.38x; windows 2-4 sit at 0.97
+# to 0.99. The damage is one window and it is entirely in the tail.
+#
+# Window 1's MEAN ratio is 1.008, the LOWEST of the four, because early raid has
+# fewer bots awake - so a mean-based warm-up check would have concluded there is
+# no warm-up at all. A mean can look settled while the tail has not.
+WARMUP_DURATION_S = 60.0
 
-def is_steady(w, warmup_s=WARMUP_S, require_population=False):
+
+def window_length(w):
+    """Seconds this window covers, or None if it cannot be resolved.
+
+    None is a REFUSAL, never a zero. Treating an unknown length as 0 would make
+    every window look like it began at its own stamp and keep everything - the
+    absent-is-not-zero trap arriving in a length rather than a count.
+
+    `windowSec` is absent on 210 of the 418 in-raid windows in the corpus, not
+    present-as-zero, so the header fallback is doing half the work rather than
+    covering an edge case. Callers that strip headers must stamp
+    `_windowSeconds` onto each row, as read-updatemanual's load() does.
+    """
+    v = w.get('windowSec')
+    if v:
+        return float(v)
+    v = (w.get('cfg') or {}).get('windowSeconds')
+    if v:
+        return float(v)
+    v = w.get('_windowSeconds')
+    return float(v) if v else None
+
+
+def past_warmup(w, warmup_s=WARMUP_S, by_start=False):
+    """Whether this window is past warm-up, by either rule.
+
+    `by_start` is Alpha's: keep a window only if it BEGINS after warm-up ends.
+    A window stamped `e` of length `l` covers [e-l, e], so the test is
+    `e - l >= WARMUP_DURATION_S`.
+
+    PROVEN EQUIVALENT ON THE EXISTING CORPUS, not assumed: 418 of 418 in-raid
+    windows agree with the legacy `raidElapsed >= 120`, zero disagreements, zero
+    with an unresolvable length. At 60 s windows `e - 60 >= 60` IS `e >= 120`.
+    At 30 s it becomes `e >= 90`, which excludes the first 60 s rather than the
+    first 90 - so a 30 s leg matches a 60 s leg instead of diverging from it.
+
+    Off by default only because it needs a resolvable window length, and a
+    reader that strips headers without stamping `_windowSeconds` would have its
+    windows refused rather than measured. Opt in once the loader carries it.
+    """
+    e = w.get('raidElapsed') or 0.0
+    if not by_start:
+        return e >= warmup_s
+    length = window_length(w)
+    if length is None:
+        return False
+    return (e - length) >= WARMUP_DURATION_S
+
+
+
+def is_steady(w, warmup_s=WARMUP_S, require_population=False,
+              by_start=False):
     """True when this sample window is in-raid, whole, and past warm-up.
 
     `w` is a parsed `type == 'sample'` line. Callers still apply their own
@@ -89,7 +151,7 @@ def is_steady(w, warmup_s=WARMUP_S, require_population=False):
         return False
     if w.get('final'):
         return False
-    if (w.get('raidElapsed') or 0.0) < warmup_s:
+    if not past_warmup(w, warmup_s, by_start):
         return False
     if require_population and not ((w.get('bots') or {}).get('total') or 0):
         return False
@@ -97,14 +159,18 @@ def is_steady(w, warmup_s=WARMUP_S, require_population=False):
 
 
 def describe(warmup_s=WARMUP_S, require_population=False,
-             drop_teardown=False):
+             drop_teardown=False, by_start=False):
     """One line naming the population, for a reader to print above its results.
 
     Printed rather than assumed, because two readers quoting the same field over
     different populations is exactly what this file exists to stop, and the only
     way a human catches it is seeing both definitions side by side.
     """
-    base = 'in-raid, not final, raidElapsed >= %.0fs' % warmup_s
+    if by_start:
+        base = ('in-raid, not final, window begins >= %.0fs into the raid'
+                % WARMUP_DURATION_S)
+    else:
+        base = 'in-raid, not final, raidElapsed >= %.0fs' % warmup_s
     if require_population:
         base += ', bots.total > 0'
     if drop_teardown:
@@ -139,7 +205,7 @@ def is_teardown(rows):
 
 
 def partition(rows, warmup_s=WARMUP_S, require_population=False,
-              drop_teardown=False):
+              drop_teardown=False, by_start=False):
     """(kept, dropped_by_clause) so a reader can show its own attrition.
 
     A count of what a filter removed is worth more than the filter passing
@@ -158,7 +224,7 @@ def partition(rows, warmup_s=WARMUP_S, require_population=False,
             dropped['not raid'] += 1
         elif w.get('final'):
             dropped['final'] += 1
-        elif (w.get('raidElapsed') or 0.0) < warmup_s:
+        elif not past_warmup(w, warmup_s, by_start):
             dropped['warm-up'] += 1
         elif require_population and not ((w.get('bots') or {}).get('total') or 0):
             dropped['empty roster'] += 1

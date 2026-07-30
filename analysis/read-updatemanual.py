@@ -91,6 +91,7 @@ def load(paths):
             print('cannot open %s: %s' % (path, exc))
             sys.exit(2)
         leg_far = None
+        leg_win = None
         with fh:
             for line in fh:
                 line = line.strip()
@@ -102,11 +103,17 @@ def load(paths):
                     continue
                 if obj.get('type') == 'header':
                     leg_far = ((obj.get('config') or {}).get('forceAllRoles'))
+                    # `windowSec` is absent on half the corpus, so the header is
+                    # the only resolution for those rows. Stamped here because
+                    # this loader drops headers and steady.window_length() would
+                    # otherwise have to refuse them.
+                    leg_win = obj.get('windowSeconds')
                     continue
                 if obj.get('type') != 'sample':
                     continue
                 obj['_log'] = path
                 obj['_legFar'] = leg_far
+                obj['_windowSeconds'] = leg_win
                 rows.append(obj)
     return rows
 
@@ -134,7 +141,7 @@ def eligible(rows):
     # is good, 2772-7019 frames, and excluding them would throw away real
     # observations. Same shape as require_population - correct for one quantity
     # and wrong for another, so steady.py offers it rather than deciding it.
-    kept, dropped = steady.partition(rows, drop_teardown=True)
+    kept, dropped = steady.partition(rows, drop_teardown=True, by_start=True)
     out = []
     for w in kept:
         if w.get('updateManual') is None:
@@ -422,7 +429,8 @@ def main(argv):
     print('=' * 78)
     print('  sample windows           %d' % len(rows))
     print('  carrying updateManual    %d' % sum(1 for w in rows if w.get('updateManual') is not None))
-    print('  population               %s' % steady.describe(drop_teardown=True))
+    print('  population               %s'
+          % steady.describe(drop_teardown=True, by_start=True))
     lost = ', '.join('%s %d' % (k, v) for k, v in dropped.items() if v)
     print('  eligible                 %d%s'
           % (len(wins), ('   (dropped: %s)' % lost) if lost else ''))
