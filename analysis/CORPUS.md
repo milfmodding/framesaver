@@ -119,9 +119,21 @@ stamped `e` of length `w` covers `[e−w, e]`, so `raidElapsed − windowSec >= 
 disagreements** (`alpha-warmup-rule-equivalence.py`). So adopting it is not an era change — 60 s legs
 keep exactly what they kept, and only 30 s legs move, toward matching them.
 
-**A rule that cannot resolve the window length must REFUSE.** Era A/B/C sample lines carry
-`windowSec: 0`; resolution order is `windowSec` → `cfg.windowSeconds` → `header.windowSeconds`. An
-unresolved length treated as zero keeps every window — absent-is-not-zero, in a new place.
+**A rule that cannot resolve the window length must REFUSE.** Resolution order is `windowSec` →
+`cfg.windowSeconds` → `header.windowSeconds`. An unresolved length treated as zero makes every window
+look like it began at its own stamp and **keeps everything** — absent-is-not-zero arriving in a
+*length* rather than a count, and it fails open.
+
+**And the header fallback carries HALF THE CORPUS, not an edge case.** Measured: of 418 in-raid
+windows, **`windowSec` is absent on 210 and present-as-zero on 0** — the key does not exist at all,
+across `20260726` (90), `20260727` (66) and `20260728` (54). This note previously said those lines
+"carry `windowSec: 0`", which was wrong, and the error is worth keeping because of where it came from:
+**my own diagnostic printed `windowSec=0` because I had written `round(o.get("windowSec") or 0, 1)` in
+the format string.** The `or 0` was a display default, and I then reported it as a property of the
+data. Gamma caught it because the distinction changes the resolution code.
+
+*A formatting default is not a measurement.* Same family as absent-is-not-zero, one layer up: the
+instrument that renders a value can manufacture the value it renders.
 
 **And the near-miss, recorded because it is the useful part.** The first rule proposed for this was
 `raidElapsed > 60`. Window 1 is stamped **60.2**, not 60.0, so that predicate *keeps* the one window
