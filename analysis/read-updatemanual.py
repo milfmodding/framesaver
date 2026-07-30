@@ -126,7 +126,14 @@ def eligible(rows):
     read-marathon's per-bot quantities and wrong for this file's per-frame ones,
     where a window with no bots is a legitimate observation rather than a gap.
     """
-    kept, dropped = steady.partition(rows)
+    # drop_teardown=TRUE here. Every quantity this file reports divides by a bot
+    # count, and a teardown window's census is dead or stale - so the denominator
+    # is wrong rather than noisy. A per-FRAME reader should leave it False: the
+    # frame data in those windows is good (2772-7019 frames), and excluding them
+    # would throw away real observations. Same shape as require_population:
+    # correct for one quantity, wrong for another, so steady.py offers it rather
+    # than deciding it.
+    kept, dropped = steady.partition(rows, drop_teardown=True)
     out = []
     for w in kept:
         if w.get('updateManual') is None:
@@ -414,7 +421,7 @@ def main(argv):
     print('=' * 78)
     print('  sample windows           %d' % len(rows))
     print('  carrying updateManual    %d' % sum(1 for w in rows if w.get('updateManual') is not None))
-    print('  population               %s' % steady.describe())
+    print('  population               %s' % steady.describe(drop_teardown=True))
     lost = ', '.join('%s %d' % (k, v) for k, v in dropped.items() if v)
     print('  eligible                 %d%s'
           % (len(wins), ('   (dropped: %s)' % lost) if lost else ''))

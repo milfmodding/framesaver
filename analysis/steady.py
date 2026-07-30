@@ -96,7 +96,8 @@ def is_steady(w, warmup_s=WARMUP_S, require_population=False):
     return True
 
 
-def describe(warmup_s=WARMUP_S, require_population=False):
+def describe(warmup_s=WARMUP_S, require_population=False,
+             drop_teardown=False):
     """One line naming the population, for a reader to print above its results.
 
     Printed rather than assumed, because two readers quoting the same field over
@@ -104,10 +105,41 @@ def describe(warmup_s=WARMUP_S, require_population=False):
     way a human catches it is seeing both definitions side by side.
     """
     base = 'in-raid, not final, raidElapsed >= %.0fs' % warmup_s
-    return base + (', bots.total > 0' if require_population else '')
+    if require_population:
+        base += ', bots.total > 0'
+    if drop_teardown:
+        base += ', excluding each teardown window'
+    return base
 
 
-def partition(rows, warmup_s=WARMUP_S, require_population=False):
+def is_teardown(rows):
+    """Set of ids of windows that are the LAST in-raid window of their segment.
+
+    Those windows were closed by the raid ending rather than by their timer, and
+    three things are wrong with them at once: the roster census reads 0 because
+    the game object is gone, the instant-sampled fields (snipersAwake,
+    animCulled, agents.live) carry stale values, and the window itself is
+    truncated -- a measured median of 25.0 s against a configured 60.
+
+    All 33 such windows in the corpus are last-of-segment, 33 of 33, and `final`
+    marks only 17 of them: `final` means "the session ended", which is a
+    different question, so no existing filter catches the other 16.
+
+    NOT A PER-WINDOW PREDICATE, which is why this lives here and not in
+    is_steady(): segment position cannot be seen from one window. Identity is
+    (log, raid, map) per read-marathon.py's `legs()` -- keyed on the raid
+    counter because a session can revisit a map and those visits must not merge.
+    """
+    last = {}
+    for i, w in enumerate(rows):
+        if w.get('type') != 'sample' or w.get('state') != 'raid':
+            continue
+        last[(w.get('_log'), w.get('raid'), w.get('map'))] = i
+    return set(last.values())
+
+
+def partition(rows, warmup_s=WARMUP_S, require_population=False,
+              drop_teardown=False):
     """(kept, dropped_by_clause) so a reader can show its own attrition.
 
     A count of what a filter removed is worth more than the filter passing
@@ -117,8 +149,9 @@ def partition(rows, warmup_s=WARMUP_S, require_population=False):
     """
     kept = []
     dropped = {'not sample': 0, 'not raid': 0, 'final': 0,
-               'warm-up': 0, 'empty roster': 0}
-    for w in rows:
+               'warm-up': 0, 'empty roster': 0, 'teardown': 0}
+    tear = is_teardown(rows) if drop_teardown else set()
+    for i, w in enumerate(rows):
         if w.get('type') != 'sample':
             dropped['not sample'] += 1
         elif w.get('state') != 'raid':
@@ -129,6 +162,8 @@ def partition(rows, warmup_s=WARMUP_S, require_population=False):
             dropped['warm-up'] += 1
         elif require_population and not ((w.get('bots') or {}).get('total') or 0):
             dropped['empty roster'] += 1
+        elif i in tear:
+            dropped['teardown'] += 1
         else:
             kept.append(w)
     return kept, dropped
