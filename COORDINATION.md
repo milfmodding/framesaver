@@ -8167,3 +8167,182 @@ Its companion, from the same day: **ask what a read costs, not only what it retu
   asserting a literal the code does not emit is NOT found.**
 
 — Beta
+
+---
+
+## 2026-07-29 — Delta handover at the fifth compaction
+
+**Written for a raid session, not for the archive.** Sophia is about to run test raids, so this is ordered by
+what changes a raid plan. Design-review day, no raids; everything below is from the existing corpus.
+Read with the [fourth handover](#2026-07-29--delta-handover-at-the-fourth-compaction).
+
+### 1. The one thing that must survive: between-leg comparisons cannot adjudicate anything
+
+The Lighthouse gap that was about to become load-bearing, standardised on position **and** bot count, with a
+moving-block bootstrap:
+
+| | ms |
+|---|---|
+| raw | 2.915 |
+| after position | 1.887 |
+| **after position and bot count** | **1.409** |
+| **95% interval, optimistic slope model** | **-1.695 .. 3.991** |
+| 95% interval, map-specific slope model | -5.850 .. 6.061 |
+
+**It contains zero.** And the component table is worse: **2 of 9 families clear zero and they are the two
+smallest** (`particles` +0.067, `unaccounted` +0.063), while the frame itself spans -1.497 .. 4.138.
+
+**Consequence for the raids: any plan whose answer comes from comparing two raids is wasted.** The width is
+driven by the bot-count slope, which is badly conditioned within every leg on every map (donors span **-0.765
+to +1.535 ms/bot**) because `bots.total` barely moves inside a leg while `p50` moves a lot for other reasons.
+More careful analysis of more legs does not fix it. **Units where the covariates do not differ do** —
+alternating arms inside one raid, via the protocol ini, with **"uniform, as today" as arm A from day one.**
+
+**Three independent routes reached this today** — component signature, uncertainty propagation, enumeration.
+It is the only conclusion of the day I would stake anything on.
+
+**Measured price of the alternative:** between-leg noise on `FinishFrameRendering` is **~0.68-0.74 ms** (a
+median of two — only two maps have repeat legs, so quote it as a **lower bound with the n attached**). A
+between-raid A/B on a rendering quantity needs **~28 raids**.
+
+### 2. Every gate is a CPU gate, and this is now measured
+
+PresentMon joined to the ndjson on `qpc`, 126k frames across the two Lighthouse legs:
+
+| | leg1 | leg4 | |
+|---|---|---|---|
+| **CPUBusy** | 14.937 | 16.779 | **+12%** |
+| **GPUBusy** | **6.388** | **6.523** | **+2%** |
+| GPUWait | 8.678 | 10.178 | +17% |
+
+**`GPUBusy` is 6.4 ms of a 15.0 ms frame — the GPU is busy 39% of the time and idle the rest, ~2.3x
+headroom.** No graphics setting can move any release gate. Independently corroborated inside the ndjson:
+`WaitForLastPresentationAndUpdateTime` **fell** 0.059 ms, which is what becoming more CPU-bound looks like
+from a third instrument — **one of very few claims today confirmed by an unrelated measurement rather than
+argued.**
+
+**The join is a standing instrument, not a one-off** (`analysis/delta-render-cpu-or-gpu.py`). Any component
+claim sorts CPU-side from GPU-side in one command against captures already held. **Try it before proposing a
+new telemetry field.** It ruled out the garment/texture class on its GPU limb in one run.
+
+### 3. Both AI levers are sub-millisecond, and my own inversion is retracted
+
+**Retracted:** "animation is 6.4x AI, so rule 5 is the bigger lever." The slope ratio was right; **the
+addressable populations are inverted and I published without checking them.**
+
+| | population reached | level |
+|---|---|---|
+| brain slicing | **all ~25 agents** — the brain ticks for sleeping bots too | `aiTotal` **0.570 ms** |
+| animator culling | **the ~5 awake** — the other ~18 already culled via `paused` | **0.679 ms** |
+
+**A per-marginal-bot ratio says nothing about a lever's size until multiplied by the population that lever can
+reach.** Steady-state medians are **awake 5, asleep 18, total 25**.
+
+**Population headroom to p50 >= 60 fps**, at `frame~total` 0.146 ms/bot — **treat the magnitudes as
+bracketed** ([0.146 total / 0.278 components / 0.370 frame~awake], because what a bot costs depends on
+whether it is awake), **and the ordering as the durable part:**
+
+| map | p50 fps | bots to gate |
+|---|---|---|
+| **Lighthouse** | **61.2** | **+2** |
+| RezervBase | 65.2 | +9 |
+| TarkovStreets | 67.0 | +12 |
+| Woods / bigmap | 88.5 / 88.8 | +37 |
+| Shoreline | 106.2 | +50 |
+
+**Lighthouse binds at +2 bots and carries the largest roster.** Recovering both levers perfectly (~0.42 ms
+realistic, not the 1.25 ms of summed levels) takes its headroom to roughly +9. **That is the whole honest case
+for the bucketing proposal.**
+
+### 4. Two shipped features have never had their benefit measured
+
+**This is the highest-value thing a raid can fix**, and it outranks every unbuilt mechanism.
+
+- **`animCulled` counts marks, not culls** — it is `Sleeping.Count`, and Unity applies `CullCompletely` only
+  while renderers are unseen. Add `animCulledVisible` **beside** it, never mutate what it counts. **Unity's
+  "visible" includes casting a shadow into the frustum**, and EFT bots cast shadows, so the shipped cull may
+  fire far less often than assumed. Its true effect is somewhere in **[0, 0.68] ms** — an interval wider than
+  any design difference argued today.
+- **`awake - paused` on `UpdateManual`** prices the stand-by system, the mod's largest shipped lever, never
+  measured. Deploy it.
+
+### 5. What a raid should and should not try to answer
+
+**Should:**
+- **Within-raid alternating arms**, arm A uniform. Nothing else is quotable.
+- **The blinded behaviour raid.** Period 0.5 / min-brains 1 (`ceil(20 x 0.016 / 0.5)` = 1, so the floor does
+  not bind and the dose is real). Preconditions that make it worth the raid: **symptom list written before**
+  (stopping / delayed reaction to fire / re-pathing), ini alternating 0.5 and 0 **without her knowing which is
+  live**, and the null named in advance — *if she reports nothing, does the exemption get deleted?* If no, do
+  not spend the raid. Run it with **SAIN active and Defer off** and one raid answers both the behaviour
+  question and whether slicing is safe with BigBrain — which matters because
+  `SuppressSlicing = Defer && (Orbit || BigBrain)` with Defer defaulting true means **the slicing path is off
+  for most users today.**
+- **Distance histogram** over the **awake** population only (4 buckets, sum == awake). Pooling in the asleep
+  bots fills the far bucket with bots that are already free.
+
+**Should not:** any cross-raid A/B; any test scored on Sophia's unblinded impression; anything priced against
+the residual in section 1.
+
+### 6. The animator predicate: (c), and the reason is unvalidatability
+
+Nothing licenses culling an **awake** bot's animator state machine. Not "impossible" — **unvalidatable.** The
+intervention applies only off screen, so any defect exists only while it cannot be observed and **self-erases
+within a frame or two of becoming observable. Play-testing has near-zero power against it by construction.**
+
+`paused` is not safe because Framesaver set a flag; it is safe because **the bot had nothing to do.** There is
+no awake-and-nothing-to-do. **You cannot establish an invariant over an agent still making decisions.**
+
+Alpha's stepped animator (`enabled = false` + `Update(accumulatedDt)`) is the best mechanism proposed and
+still should not be built: it needs **its own visibility gate, which `CullCompletely` gets free from Unity**,
+which collapses its population to the same one — so it buys correctness (bounded latency instead of never) and
+**no size.** Realistic ceiling **~0.2 ms**, worth **+1 bot** on the binding map.
+
+**The cheaper move on the same quantity is `DIST_TO_SLEEP`.** Sleep more bots: invariants established,
+already shipped, already config. Which is also why **rules 3 and 5 of the proposal fight each other** —
+waking distant bots to quest is what makes their animators cost anything.
+
+### 7. The error patterns, which are the most reusable thing here
+
+**Four instances today, across both Alpha and me, of one error: a fitted quantity gets a point estimate and
+the point estimate ranks other work.** Vigilance is not the counter — we each caught it in the other twice
+and still produced two more. **The rule: a number that ranks other work carries an interval, or it does not
+get to rank anything.** Checkable when written, rather than depending on the reader.
+
+**Aggregation order, three instances.** `sum of medians` != `median of sums` — eight components do not peak in
+the same window. **Build per window first, aggregate last.** This turned a reported +0.571 ms into +0.054.
+
+**Wrong unit / wrong population, the standing one.** Roles vs roster. Awake vs total. Marginal ratio vs
+addressable population. And **the leg key: I reintroduced the exact file-merge defect Alpha had caught in my
+own script four hours earlier.** Fixing a defect in one script does not fix the habit that produced it.
+
+**Match on the full path, never the leaf.** Two phases are named `ScriptRunDelayedDynamicFrameRate` — `Update/`
+at 0.60 ms and `PostLateUpdate/` at 0.004. I nearly reported Alpha's correct row as unreproducible.
+
+**Instruments that return their own success value when the mechanism is absent — three now.** `animCulled ==
+asleep`; `tickedSum/liveSum == 1.0000` in control; a culled `PlayerAnimatorDeltaPosition` reads zero and zero
+reads as safe-to-keep-culling. **We keep building this shape.**
+
+**And one that cuts the other way:** on this corpus **significance selects for small stable quantities, not
+important ones.** `particles` clears zero because 0.153 ms barely moves; `rendering` fails because 4.4 ms
+moves for reasons we cannot control. **A significance filter on the component table returns exactly the rows
+that do not matter.**
+
+### 8. Closed, so nobody reopens them
+
+- **`playerLate`** — explained in kind: a live-bot cost, `0.0751 +/- 0.0461` ms/bot within-leg. **Corpses
+  refuted outright**: 0 of 11 legs show it rising with time-in-raid, 5 show it falling — it falls *as bots
+  die*. Magnitude only 30-45% attributed (Alpha's correct catch: I used the high leg's own slope), and its
+  enclosing phase is not established as having moved at all. **Explained in kind, partly unattributed.**
+- **Garment/texture variety** — GPU limb dead on `GPUBusy` +2%. CPU limb (material state changes) untouched by
+  that test and still open in principle, but the between-raid noise floor **exceeds the gap being explained**,
+  so the free gradient test cannot be powered. Collinearity with behaviour *is* breakable — variety is a
+  **draw from a pool**, so realised distinct count varies within a fixed composition — but that collapses the
+  dose from 9x to ~15%. **Declined.**
+- **Off-thread AI** — an `ObservedPlayer` **keeps the expensive half**: animator 0.136 and `playerLate` 0.096
+  per bot are body-rendering costs and you still see the body. Of the 0.257 ms/bot decomposed, ~all stays;
+  only `aiTotal` 0.021 plus the unmeasured `UpdateManual` leaves. **And "you cannot thread Unity" is true and
+  is not why it fails** — the main thread is the bottleneck and cores are idle, so the architecture is sound;
+  the size of what moves is the flaw, and the added per-bot replication lands on the same main thread.
+
+— Delta
