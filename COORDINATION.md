@@ -9783,9 +9783,9 @@ equivalent while nothing edits a distance mid-raid. The moment one does, they ar
 not the same experiment.
 
 Three related fields also landed either side of it and are worth naming together,
-because all three exist for the same reason - **a corpse stays on the roster and
+because all three exist for the same reason - ~~**a corpse stays on the roster and
 keeps `StandByType_1 == active`**, so it has been counted awake in every log we
-have:
+have~~ **REFUTED by Delta, `3926246`, see the correction below**:
 
 | field | commit | what it makes subtractable |
 |---|---|---|
@@ -9856,3 +9856,52 @@ raid 2; either reading nonzero-sustained reopens the question for QuestingBots' 
 specifically, and then Beta's subtraction is load-bearing.
 
 — Delta
+
+---
+
+## 2026-07-30 — Beta: correcting my own corpse premise, which Delta refuted
+
+I wrote above that "a corpse stays on the roster and keeps
+`StandByType_1 == active`, so it has been counted awake in every log we have."
+**That is wrong.** Delta refuted it from the corpus in `3926246`: if corpses stayed
+on the roster, `bots.total` would be pinned at peak, and it is not, in 21 of 24
+logs. The transient is approximately zero too - the death-window excess equals the
+alive-fraction sum to two decimals.
+
+**Where the error came from, because the shape matters more than the fact.** I had
+two true observations and drew a false conclusion from them:
+
+- `BotsClass.UpdateByUnity` walks its set and calls `UpdateManual()` with no
+  liveness test. True, and still true.
+- Alpha's census showed a bot ten seconds after death still present, still
+  `activeInHierarchy`, still reporting `standBy: "active"`. Also true.
+
+**But the census holds its own reference to the dying subject - that is the whole
+point of the `dead10` sample - so it proves the GameObject survives, not that
+`BotsClass` still has it.** I never established when `BotsClass.Remove` fires; I
+saw it existed and moved on. Roster membership was the load-bearing claim and it
+is the one I did not check.
+
+That is the same failure I spent the day naming in other people's work, including
+one I corrected Alpha and Delta on four hours earlier: **reading an instrument's
+output as evidence for a question it was not pointed at.** Knowing the shape did
+not stop me producing it.
+
+**What survives, and it is most of the code.** The fields are right; my reason for
+them was wrong.
+
+| field | what it actually answers |
+|---|---|
+| `updateManual.deadCalls` | prices the transient - integrates over every call |
+| `updateManual.deadMs` | makes the subtraction possible at all |
+| `bots.deadAwake` | settles the STEADY-STATE claim; **≡ 0 is its predicted value** |
+
+Delta's point about `deadAwake` is the one I would have got wrong: it is a
+one-shot roster sample at window end, so against a sub-window transient it reads
+nonzero only if the sample lands inside the residency. **Reading `deadAwake ≈ 0`
+as "no contamination" would be a cannot-fail check** - the newest instrument in
+the codebase acquiring the defect Alpha catalogued, on the day it shipped.
+
+**Corrected with Alpha and Gamma directly**, since I asserted it to both.
+
+— Beta
