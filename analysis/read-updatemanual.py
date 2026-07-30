@@ -168,6 +168,46 @@ def stratum_sort(key):
     return (bool(sb), bool(ds), -1 if far is None else int(bool(far)))
 
 
+# Mods that clear CanDoStandBy on every bot, per ModCompat.ClearsStandByFlag.
+# Only with one of these present does `forceAllRoles` become REVOCABLE.
+CLEARING_MODS = ('QuestingBots', 'ORBIT')
+
+
+def force_all_roles_is_latched(ws):
+    """True when `cfg.forceAllRoles` records a wish the population may not obey.
+
+    `forceAllRoles` has two write paths and only one of them can ever take the
+    grant back:
+
+      BotStandByInitPointsPatch   once per bot at activation. GRANTS ONLY.
+      TryReclaimStandBy           per check interval, but it returns early
+                                  unless ReclaimStandBy AND one of the clearing
+                                  mods is present.
+
+    So without QuestingBots or ORBIT the flag is a ONE-WAY LATCH: turning it off
+    mid-raid leaves every already-active bot holding its grant, and only bots
+    activating afterwards see the change. `cfg.forceAllRoles == False` on such a
+    window does NOT mean the bots in it were exempt.
+
+    Detected from `agents.mods` rather than assumed, and it is not hypothetical:
+    every log in the corpus as of 2026-07-30 reads ["BigBrain", "SAIN",
+    "LootingBots"] -- no clearing mod -- so the flag has been one-way in every
+    run we hold. Raid 2 is the QuestingBots protocol, where it becomes genuinely
+    revocable, which is why the within-raid arm exists there and nowhere else.
+
+    This is the properties-versus-outcomes rule landing on a field I added
+    tonight: `cfg.forceAllRoles` is what was ASKED FOR. `bots.standByBlocked` is
+    the observed consequence, and it is the field to check against it.
+    """
+    mods = set()
+    for w in ws:
+        for m in (w.get('agents') or {}).get('mods') or []:
+            mods.add(m)
+    if not mods:
+        return None, mods          # no mod list: cannot tell, so do not claim
+    return not (mods & set(CLEARING_MODS)), mods
+
+
 def mean_or_none(total, calls):
     return (total / calls) if calls else None
 
@@ -311,6 +351,34 @@ def main(argv):
         groups.setdefault(stratum(w), []).append(w)
     for key, ws in sorted(groups.items(), key=lambda kv: stratum_sort(kv[0])):
         print('  %s  %d windows' % (stratum_label(key), len(ws)))
+    # A stratification is only as good as the flag it strata on. Warn when the
+    # flag records a wish rather than a state, and check it against the observed
+    # counterpart instead of trusting either alone.
+    far_vals = set(k[2] for k in groups)
+    if len(far_vals - {None}) > 1:
+        latched, mods = force_all_roles_is_latched(wins)
+        if latched is None:
+            print()
+            print('  ! forceAllRoles varies but no mod list is present, so whether the')
+            print('    flag was revocable cannot be determined. Treat the split as a')
+            print('    lower bound on contamination, not as a clean gate.')
+        elif latched:
+            blocked = [(w.get('bots') or {}).get('standByBlocked') for w in wins]
+            blocked = [b for b in blocked if b is not None]
+            print()
+            print('  ! forceAllRoles varies WITHIN this input and no clearing mod is')
+            print('    present (%s), so the flag is a ONE-WAY LATCH:' % ', '.join(sorted(mods)))
+            print('    it grants at bot activation and nothing takes the grant back. A')
+            print('    window marked False still holds every bot activated while it was')
+            print('    True, so these strata are NOT clean arms.')
+            if blocked:
+                print('    bots.standByBlocked median %.1f - the observed counterpart; near'
+                      % st.median(blocked))
+                print('    zero across a False stratum is the latch, not compliance.')
+            else:
+                print('    bots.standByBlocked absent, so the latch cannot be confirmed')
+                print('    from the outcome side either. Do not quote across these strata.')
+
     if len(groups) > 1:
         print()
         print('  Reported per stratum below and NEVER differenced across them.')
