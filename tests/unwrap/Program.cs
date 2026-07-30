@@ -304,6 +304,83 @@ class P {
         // nothing - every check so far would pass against a matcher that returns true.
         Check("the search can fail (control)", inUs("{\"type\":\"botDeath\""), false);
 
+        // ---- Posted-role sleep distance --------------------------------
+        //
+        // The table is read out of the shipped IL and compared against enum
+        // VALUES derived independently from EFT/WildSpawnType.cs, not against
+        // the names it was written from. A name that still compiles after the
+        // enum shifts between game versions is exactly the failure a name-only
+        // check cannot see, and it would silently give the wider distance to
+        // whichever role now holds that number.
+        Console.WriteLine("\nRoleSleepDistance table");
+        var rsd = asm.GetType("Framesaver.Patches.RoleSleepDistance");
+        var postedField = rsd.GetField("Posted", BindingFlags.NonPublic | BindingFlags.Static);
+        var wst = postedField.FieldType.GetGenericArguments()[0];
+        var haveRoles = new System.Collections.Generic.SortedDictionary<string, int>(StringComparer.Ordinal);
+        foreach (var role in (System.Collections.IEnumerable)postedField.GetValue(null))
+            haveRoles[role.ToString()] = Convert.ToInt32(role);
+
+        var wantRoles = new System.Collections.Generic.SortedDictionary<string, int>(StringComparer.Ordinal) {
+            { "bossKilla", 6 }, { "bossKojaniy", 7 }, { "followerKojaniy", 8 },
+            { "sectantWarrior", 20 }, { "sectantPriest", 21 }, { "exUsec", 24 },
+            { "bossZryachiy", 29 }, { "followerZryachiy", 30 }, { "bossBoarSniper", 36 },
+            { "sectantPredvestnik", 57 }, { "sectantPrizrak", 58 }, { "sectantOni", 59 },
+            { "bossKillaAgro", 66 },
+        };
+        Check("table size", haveRoles.Count, wantRoles.Count);
+        foreach (var kv in wantRoles)
+            Check($"{kv.Key} is still {kv.Value}", haveRoles.TryGetValue(kv.Key, out int found) ? found : -1, kv.Value);
+
+        var applies = rsd.GetMethod("Applies", BindingFlags.NonPublic | BindingFlags.Static);
+        Func<string, bool> covers = n => (bool)applies.Invoke(null, new[] { Enum.Parse(wst, n) });
+        // marksman is absent ON PURPOSE - LongRangeExemption already ranks
+        // it, and giving it a distance too would change an arm the corpus has
+        // measured. Asserted so a future reader cannot "fix" the omission
+        // without a test telling them it was a decision.
+        Check("marksman deliberately NOT covered", covers("marksman"), false);
+        Check("assault not covered (control)", covers("assault"), false);
+        Check("exUsec covered", covers("exUsec"), true);
+
+        // The widen-only guard. A value at or below the global sleep
+        // distance disables the rule; it must never make the posted roles
+        // sleep CLOSER than everything else, which is the inversion nobody
+        // would think to look for.
+        var effFrom = rsd.GetMethod("EffectiveFrom", BindingFlags.NonPublic | BindingFlags.Static);
+        var wakeFrom = rsd.GetMethod("WakeFrom", BindingFlags.NonPublic | BindingFlags.Static);
+        Check("350 over a 150 global widens", effFrom.Invoke(null, new object[] { 350f, 150f }), 350f);
+        Check("equal to global disables",      effFrom.Invoke(null, new object[] { 150f, 150f }), 0f);
+        Check("below global disables",         effFrom.Invoke(null, new object[] { 100f, 150f }), 0f);
+        Check("wake keeps the 20m band", wakeFrom.Invoke(null, new object[] { 350f, 150f, 130f }), 330f);
+        Check("wake with no band",       wakeFrom.Invoke(null, new object[] { 350f, 150f, 150f }), 350f);
+
+        // ---- Boss group wake -------------------------------------------
+        //
+        // HoldsAwake needs a live BotOwner, so what is checkable here is the
+        // property the telemetry depends on: with no game instantiated the
+        // counts are 0 and nothing throws. Same shape as
+        // DistanceToNearestHuman returning 0 rather than mass-sleeping an
+        // uninitialised world.
+        Console.WriteLine("\nBossGroupWake");
+        var bgw = asm.GetType("Framesaver.Patches.BossGroupWake");
+        Check("BossGroupWake exists", bgw != null, true);
+        var counts = bgw.GetMethod("Counts", BindingFlags.NonPublic | BindingFlags.Static);
+        var countArgs = new object[] { 0, 0 };
+        counts.Invoke(null, countArgs);
+        Check("no world -> linked 0", countArgs[0], 0);
+        Check("no world -> heldAwake 0", countArgs[1], 0);
+
+        // The fields the analysis is written against, read out of the
+        // shipped IL for the same reason as the ledger's above.
+        foreach (var lit in new[] { ",\"bossGroups\":{\"linked\":", ",\"heldAwake\":",
+                                    ",\"roleSleep\":{\"roles\":[", ",\"roleSleepDist\":",
+                                    ",\"roleWakeDist\":", ",\"bossGroupWake\":" })
+            Check($"emits {lit}", inUs(lit), true);
+
+        // Named for what it is not: the count that would have conflated
+        // "rule off" with "linkage broken" was never emitted, and must not
+        // quietly appear later.
+        Check("no bare groupHeldAwake field (control)", inUs(",\"groupHeldAwake\":"), false);
+
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
         return bad == 0 ? 0 : 1;
     }

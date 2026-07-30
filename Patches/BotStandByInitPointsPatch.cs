@@ -34,6 +34,17 @@ namespace Framesaver.Patches
             __instance.DIST_TO_SLEEP = Plugin.SleepDistance.Value;
             __instance.DIST_TO_ACTIVATE = Plugin.WakeDistance.Value;
 
+            // Roles that engage from a fixed post sleep through their own
+            // fight at the global distance. Widening it here rather than
+            // exempting the role is what keeps the cost bounded - a bot past
+            // the wider distance still sleeps. See RoleSleepDistance.
+            float roleSleep = RoleSleepDistance.For(__instance.BotOwner_0);
+            if (roleSleep > 0f)
+            {
+                __instance.DIST_TO_SLEEP = roleSleep;
+                __instance.DIST_TO_ACTIVATE = RoleSleepDistance.WakeFor(roleSleep);
+            }
+
             // InitPoints clears CanDoStandBy when the role's Mind.CAN_STAND_BY is
             // false, or when either distance is under 5m. Re-enabling it here is
             // what lets those roles sleep - roughly half of them, and every PMC

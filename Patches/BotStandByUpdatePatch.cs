@@ -134,6 +134,15 @@ namespace Framesaver.Patches
                 return false;
             }
 
+            // A garrison is one unit, and a per-bot distance rule splits it:
+            // the boss engages at the wake boundary while his escorts, thirty
+            // metres further out, stay asleep and arrive one at a time.
+            if (BossGroupWake.HoldsAwake(bot))
+            {
+                Wake(__instance, bot);
+                return false;
+            }
+
             float distance = DistanceToNearestHuman(bot.Position);
 
             if (__instance.StandByType_1 == BotStandByType.active)

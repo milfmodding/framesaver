@@ -78,6 +78,8 @@ namespace Framesaver
         public static ConfigEntry<bool> KeepFightingBotsAwake;
         public static ConfigEntry<bool> IncludeAllHumanPlayers;
         public static ConfigEntry<int> KeepNearestSnipersAwake;
+        public static ConfigEntry<float> PostedRoleSleepDistance;
+        public static ConfigEntry<bool> KeepBossGroupsAwake;
 
         // ---- 2. AI brain scheduler (AICoreControllerClass) ----------------------------------
         public static ConfigEntry<bool> FixAgentLeak;
@@ -200,6 +202,24 @@ namespace Framesaver
                     + "by nearest rather than exempting the role caps the cost at exactly this many bots no "
                     + "matter how many the map has. 0 disables.",
                     new AcceptableValueRange<int>(0, 8)));
+
+            PostedRoleSleepDistance = Config.Bind(
+                "1. Bot stand-by", "Posted role sleep distance", 350f,
+                new ConfigDescription(
+                    "Sleep distance (metres) for roles that engage from a fixed post - Rogues, Zryachiy's "
+                    + "guards, the Boar snipers, the Cultists, Kojaniy, Killa. The global Sleep distance has "
+                    + "them asleep through the fight they exist for. This WIDENS the radius rather than "
+                    + "exempting the role, so a bot past it still sleeps and the cost stays bounded by "
+                    + "distance instead of by how many the map has. Set at or below Sleep distance to "
+                    + "disable.",
+                    new AcceptableValueRange<float>(20f, 1000f)));
+
+            KeepBossGroupsAwake = Config.Bind(
+                "1. Bot stand-by", "Keep boss groups together", true,
+                "While a boss is awake, keep its followers awake too. A per-bot distance rule splits a "
+                + "garrison: the boss engages at the wake boundary while his escorts, standing further "
+                + "out, are still asleep, so they arrive one at a time. Costs at most the size of the "
+                + "group, which the game declares and which is about a dozen at the largest.");
 
             FixAgentLeak = Config.Bind(
                 "2. AI brain scheduler", "Fix dead-agent leak", true,
