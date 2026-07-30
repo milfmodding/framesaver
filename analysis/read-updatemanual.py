@@ -55,6 +55,7 @@ Usage:  python read-updatemanual.py <log.ndjson> [more.ndjson ...]
 Exit 0 when the field is readable, 1 when a gate fails, 2 on bad input.
 """
 
+import collections
 import json
 import math
 import statistics as st
@@ -73,7 +74,14 @@ DILUTION_TOL = 0.15
 
 
 def load(paths):
-    """Sample windows only, warm-up discarded, tagged with their source file."""
+    """Sample windows, tagged with their source file AND that log's header arm.
+
+    The header's `config.forceAllRoles` is present in every log we hold - 24 of
+    24 - so a log predating the per-window `cfg` key can still say which arm the
+    LEG ran. Discarding it and printing UNKNOWN throws away a field that exists,
+    which is what this reader did until Alpha caught it. `_legFar` carries it so
+    stratum() can fall back rather than give up.
+    """
     rows = []
     for path in paths:
         try:
@@ -81,6 +89,7 @@ def load(paths):
         except OSError as exc:
             print('cannot open %s: %s' % (path, exc))
             sys.exit(2)
+        leg_far = None
         with fh:
             for line in fh:
                 line = line.strip()
@@ -90,9 +99,13 @@ def load(paths):
                     obj = json.loads(line)
                 except ValueError:
                     continue
+                if obj.get('type') == 'header':
+                    leg_far = ((obj.get('config') or {}).get('forceAllRoles'))
+                    continue
                 if obj.get('type') != 'sample':
                     continue
                 obj['_log'] = path
+                obj['_legFar'] = leg_far
                 rows.append(obj)
     return rows
 
@@ -139,15 +152,46 @@ def stratum(w):
     `forceAllRoles` decides which ROLES may sleep, so it moves bots between the
     two buckets wholesale -- raid 1.5 ran it on and slept 26 of 27. It is the
     largest composition lever we have and it was missing from this tuple until
-    2026-07-30, because it was missing from the `cfg` block: emitted in the
-    header only, which is written once, so no reader could tell a treatment leg
-    from a baseline off the sample lines. `None` means the log predates that fix
-    and the stratum is UNKNOWN rather than false -- which is why it is kept as a
-    tri-state instead of coerced with bool().
+    2026-07-30.
+
+    TWO SOURCES, DIFFERENT GRANULARITIES, AND THE FALLBACK IS NOT A CONCESSION.
+    The per-window `cfg` key arrived in 1806101. The HEADER has carried
+    `config.forceAllRoles` all along -- 24 of 24 logs, 23 False and raid 1.5
+    True -- so a pre-1806101 leg can still say which arm it ran. I first had
+    this print UNKNOWN for those legs, which discarded a field that exists;
+    Alpha caught it, and it had already cost a gate verdict, because the
+    Lighthouse figure that read as a passing baseline was a pooling of a failing
+    default arm with a passing treatment one.
+
+    So: window value first, leg value second, `None` only when neither exists.
+    `None` still means UNKNOWN rather than False, because a future build
+    dropping the key must never read as the default arm -- but UNKNOWN is now
+    spent only on logs that genuinely cannot answer.
+
+    "Absent" and "absent at the granularity I need" diverge exactly when a
+    cheaper route exists, and here the cheaper route was free and a day old.
     """
     cfg = w.get('cfg') or {}
-    return (bool(cfg.get('standBy')), bool(cfg.get('deactivateSleeping')),
-            cfg.get('forceAllRoles'))
+    far = cfg.get('forceAllRoles')
+    if far is None:
+        far = w.get('_legFar')
+    return (bool(cfg.get('standBy')), bool(cfg.get('deactivateSleeping')), far)
+
+
+def far_source(w):
+    """Where this window's forceAllRoles came from: window, leg, or nowhere.
+
+    A LEG value is the header's, written once at session start. It labels the
+    whole leg correctly and cannot see a mid-session flip - which is exactly
+    what the per-window key was added to catch. So it is good enough to gate a
+    whole-leg contrast and NOT good enough to gate a within-leg one, and the
+    difference has to be visible rather than assumed.
+    """
+    if (w.get('cfg') or {}).get('forceAllRoles') is not None:
+        return 'window'
+    if w.get('_legFar') is not None:
+        return 'leg'
+    return 'none'
 
 
 def stratum_label(key):
@@ -351,6 +395,22 @@ def main(argv):
         groups.setdefault(stratum(w), []).append(w)
     for key, ws in sorted(groups.items(), key=lambda kv: stratum_sort(kv[0])):
         print('  %s  %d windows' % (stratum_label(key), len(ws)))
+    # Where the arm label came from, always printed. A leg-level value labels a
+    # whole leg correctly and CANNOT see a mid-session flip, which is the exact
+    # thing the per-window key was added to catch - so it gates a between-leg
+    # contrast and not a within-leg one. Silent provenance is how a leg-level
+    # label gets read as a window-level fact.
+    srcs = collections.Counter(far_source(w) for w in wins)
+    print('  forceAllRoles source       %s'
+          % ', '.join('%s %d' % (k, v) for k, v in sorted(srcs.items())))
+    if srcs.get('leg') and not srcs.get('window'):
+        print('    LEG-level only: the header is written once, so this labels the whole')
+        print('    leg and cannot see a mid-session flip. Fine for a between-leg')
+        print('    contrast; not sufficient to gate a within-leg one.')
+    elif srcs.get('leg') and srcs.get('window'):
+        print('    MIXED provenance across inputs - some legs window-attributed, some')
+        print('    leg-attributed. Do not treat these strata as uniformly window-level.')
+
     # A stratification is only as good as the flag it strata on. Warn when the
     # flag records a wish rather than a state, and check it against the observed
     # counterpart instead of trusting either alone.
