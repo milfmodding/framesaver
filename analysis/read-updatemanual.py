@@ -130,14 +130,42 @@ def um(w):
 
 
 def stratum(w):
-    """The two config flags that decide which bots land in which bucket.
+    """The config flags that decide which bots land in which bucket.
 
     `deactivateSleeping` routes a NonActive paused bot through the pump patch
     instead of the vanilla body, so it changes what `pausedMs` is measuring.
     `standBy` decides whether the paused bucket is populated at all.
+
+    `forceAllRoles` decides which ROLES may sleep, so it moves bots between the
+    two buckets wholesale -- raid 1.5 ran it on and slept 26 of 27. It is the
+    largest composition lever we have and it was missing from this tuple until
+    2026-07-30, because it was missing from the `cfg` block: emitted in the
+    header only, which is written once, so no reader could tell a treatment leg
+    from a baseline off the sample lines. `None` means the log predates that fix
+    and the stratum is UNKNOWN rather than false -- which is why it is kept as a
+    tri-state instead of coerced with bool().
     """
     cfg = w.get('cfg') or {}
-    return (bool(cfg.get('standBy')), bool(cfg.get('deactivateSleeping')))
+    return (bool(cfg.get('standBy')), bool(cfg.get('deactivateSleeping')),
+            cfg.get('forceAllRoles'))
+
+
+def stratum_label(key):
+    """Human-readable stratum, with UNKNOWN distinguished from False.
+
+    `forceAllRoles` is None on any log predating its arrival in `cfg`. That is
+    not the same as off, and printing it as `False` would assert the arm of a
+    run nobody recorded - the absent-is-not-zero rule applied to a label.
+    """
+    sb, ds, far = key
+    return ('standBy=%-5s deactivateSleeping=%-5s forceAllRoles=%s'
+            % (sb, ds, 'UNKNOWN' if far is None else far))
+
+
+def stratum_sort(key):
+    """Sortable form: None cannot be ordered against bool in Python 3."""
+    sb, ds, far = key
+    return (bool(sb), bool(ds), -1 if far is None else int(bool(far)))
 
 
 def mean_or_none(total, calls):
@@ -281,8 +309,8 @@ def main(argv):
     groups = {}
     for w in wins:
         groups.setdefault(stratum(w), []).append(w)
-    for (sb, ds), ws in sorted(groups.items()):
-        print('  standBy=%-5s deactivateSleeping=%-5s  %d windows' % (sb, ds, len(ws)))
+    for key, ws in sorted(groups.items(), key=lambda kv: stratum_sort(kv[0])):
+        print('  %s  %d windows' % (stratum_label(key), len(ws)))
     if len(groups) > 1:
         print()
         print('  Reported per stratum below and NEVER differenced across them.')
@@ -290,7 +318,7 @@ def main(argv):
         print('  what pausedMs measures; standBy decides whether paused is populated at all.')
 
     failed = []
-    for (sb, ds), all_ws in sorted(groups.items()):
+    for key, all_ws in sorted(groups.items(), key=lambda kv: stratum_sort(kv[0])):
         # A window with either bucket empty is dropped from the POOLED sums too,
         # not just from the per-window spread. Keeping it contributes awake ms
         # with no paused counterpart, which biases the contrast upward by
@@ -304,14 +332,14 @@ def main(argv):
 
         print()
         print('=' * 78)
-        print('3. DILUTION CHECK   standBy=%s deactivateSleeping=%s   (%d windows)' % (sb, ds, len(ws)))
+        print('3. DILUTION CHECK   %s   (%d windows)' % (stratum_label(key), len(ws)))
         print('=' * 78)
         if dropped:
             print('  %d window(s) dropped: one bucket empty. Excluded from the pooled sums as' % dropped)
             print('    well as the spread - an unpaired awake total inflates the contrast.')
         if not ws:
             print('  ! no window in this stratum has both buckets populated - no contrast.')
-            failed.append('standBy=%s deactivateSleeping=%s has no two-bucket window' % (sb, ds))
+            failed.append('%s has no two-bucket window' % stratum_label(key))
             continue
         # Corpse-free on BOTH sides or neither. Corpses tick once a frame
         # and the census counts them awake as well, so leaving them above
@@ -390,7 +418,7 @@ def main(argv):
 
         print()
         print('=' * 78)
-        print('4. THE CONTRAST   standBy=%s deactivateSleeping=%s' % (sb, ds))
+        print('4. THE CONTRAST   %s' % stratum_label(key))
         print('=' * 78)
         aw_ms, aw_n = 0.0, 0
         for w in ws:
@@ -412,8 +440,7 @@ def main(argv):
         # filter above only guarantees awakeCalls > 0, which corpses satisfy.
         if aw is None or pa is None:
             print('  ! no live awake calls remain after subtracting corpses - no contrast.')
-            failed.append('standBy=%s deactivateSleeping=%s is all-corpse after subtraction'
-                          % (sb, ds))
+            failed.append('%s is all-corpse after subtraction' % stratum_label(key))
             continue
 
         print('  contrast (awake - paused)   %.5f ms/call' % (aw - pa))
