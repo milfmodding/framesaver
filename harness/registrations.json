@@ -110,6 +110,23 @@
       },
       "ifItFails": "If asleep is non-zero without reclaim, raid 3 measured nothing and must not be scored - the p50 doubling Sophia saw would need another explanation entirely. Do not report the 4.5 ms figure to anyone, DanW included, unless the event criterion fires first: a magnitude is meaningless if the mechanism never engaged.",
       "note": "Raids 2 and 3 CANNOT be arms within one raid: TryReclaimStandBy sets the flag and nothing sets it back, so the treatment is sticky per bot. Between-raid is required here and is legitimate, because the effect is order 4 ms against a 0.68-0.74 ms between-leg noise floor - unlike the slicing contrast, which is not."
+    },
+    {
+      "id": "tick-cost-linear-in-gap",
+      "claim": "On protocol brain-slice-lighthouse-v3, arm B3 (period 0.020, perFrame 16 of ~23, gap ~1.4 frames) is a HELD-OUT test of c(gap) = a + b*gap fitted on raid 1 from control and B2 alone (a = 0.01140 ms gap-independent, b = 0.01121 ms per frame of gap). Predicted aiTotal.avg at B3 is 1.316 ms +- 0.031 at n=4 windows. Pure gap-proportional (a=0) sits 4.4 sigma away; saturated / cold-agent sits 24.3 sigma away and ABOVE control.",
+      "source": "Delta, 2026-07-29, analysis/delta-brain-tick-share-check.py and COORDINATION; two-parameter fit from raid 1 (framesaver-20260729-185430-raid1-lighthouse). Dose arithmetic verified against AICoreControllerUpdatePatch.cs:119-130 - framesPerPass = period/deltaTime, perFrame = ceil(count/framesPerPass) clamped up to MinBrainsPerFrame.",
+      "precondition": "resolved",
+      "preconditionWas": "Needed a dose where the min-brains clamp is INACTIVE, so the period rather than the floor sets the gap. In raid 1 ceil(23/(0.1/0.0139)) = 4 equalled the floor exactly and the two knobs were indistinguishable.",
+      "resolvedBy": "Alpha, 2026-07-29",
+      "resolvedNote": "At perFrame 16 the clamp's lower bound of 4 is inactive, so 0.020 is doing the work. AcceptableValueRange is 0-0.5 for the period and 1-64 for min-brains, and ProtocolRunner.TryParse handles int with InvariantCulture, so no assignment is clamped or refused - an unparseable value would refuse the WHOLE protocol at raid start, and pre-flight only counts section headers. Delta corrected my first choice of 0.03 (perFrame 11), where the one limb this arm exists to settle was tested at only 2.5 sigma.",
+      "outcomes": {
+        "nearPrediction": "c(gap) is linear out of sample. Roughly half the deferred brain work returns as gap-proportional cost and roughly half is a fixed per-tick penalty, so a better GROUPING could recover about half and no choice of period recovers the rest.",
+        "atGapProportional": "a is smaller than raid 1 fitted - the deferred work is essentially all time-proportional, no scheduling policy recovers it, and rule 3's real budget is near zero.",
+        "ABOVE_CONTROL": "THE BRANCH MY EARLIER RANGE EXCLUDED, written down because v1 produced a verdict neither Delta nor I had a slot for. A B3 above B1 means a per-slice overhead that does not scale with the work deferred, so slicing is a COST at high dose rather than a saving, and the feature has a dose ceiling above which it must not be shipped. Delta puts saturated at 1.695 against a 1.396 control at perFrame 11, worse as dose rises.",
+        "belowAllModels": "Something recovers MORE than the deferred work, which no model here predicts. Check agents.slicing and suppressSlicing before crediting it, then look for a second effect of the period that is not brain scheduling at all."
+      },
+      "ifItFails": "THIS RAID DOES NOT SEPARATE a FROM b AT ANY DOSE BETTER THAN ABOUT 5 SIGMA - that split is best determined at small gap and control already sits there, so the decomposition is a raid 1 result and this arm tests linearity ONLY. Do not report a 4.4 sigma outcome as having settled which mechanism dominates. And if the engagement checks fail - agents.slicing false, or suppressSlicing true - none of the above is scoreable, because the arm never applied.",
+      "note": "Two single-parameter models were already killed by raid 1 and must not be presented as live: constant-per-tick predicted 1.125, fully-conserved predicted 1.396, and B2 came in between at 1.1805. Also: Snapshot is rebuilt from HashSet_0 every frame and HashSet enumeration order is not guaranteed stable across mutations, so with 11 deaths in a raid the cursor can starve some agents and double-tick others. The gap is uniform in the MEAN, not in the tail, and the tail is worse at low dose - which is a further reason this arm sits at high dose."
     }
   ]
 }

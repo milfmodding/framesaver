@@ -189,12 +189,49 @@ function Get-Token {
 }
 
 function Test-AlreadyRunning {
-    # Refuse rather than adding a second server. Two servers on one port is a
-    # confusing state that looks like a working one.
+    <#
+      Refuse rather than adding a second server. Two servers on one port is a
+      confusing state that looks like a working one.
+
+      NOW REPORTS WHICH INSTALL, and that is not cosmetic. On 2026-07-29 a second
+      SPT install on this machine (F:\SPT\Base, SPT 4.0.11, used by the DRIP port)
+      turned out to carry the SAME backend port in its own http.json: 127.0.0.1:6969.
+      Both installs bind it, so only one server can hold it at a time.
+
+      The failure that makes this worth naming: launch our client while the OTHER
+      install's server owns the port and the client talks to THAT server - a
+      different SPT version, a different profile, another project's database
+      mutations. Our telemetry header reads sptAssembly from the CLIENT assembly, so
+      it would record 4.0.13 while the server answering was 4.0.11. The header would
+      look right and the run would be contaminated.
+
+      This check caught it by accident - it matches any process named SPT.Server,
+      not one scoped to our install - so it fired on a foreign server for a reason
+      it was not written for. Making it deliberate: report the path, and say
+      FOREIGN INSTALL explicitly, because the remedy differs. A second server from
+      OUR install means close the one you forgot about. A server from another
+      install means the machine is shared right now and -Force would cross-wire the
+      run rather than merely duplicating it.
+    #>
     $busy = @()
     foreach ($n in 'SPT.Server', 'EscapeFromTarkov', 'SPT.Launcher') {
-        $p = Get-Process -Name $n -ErrorAction SilentlyContinue
-        if ($p) { $busy += "$n (pid $($p.Id -join ','))" }
+        foreach ($p in @(Get-Process -Name $n -ErrorAction SilentlyContinue)) {
+            # .Path throws for processes we cannot open; unknown is reported as
+            # unknown rather than silently treated as ours.
+            $path = $null
+            try { $path = $p.Path } catch { $path = $null }
+
+            if (-not $path) {
+                $busy += "$n (pid $($p.Id)) - path unreadable, install UNKNOWN"
+            }
+            elseif ($path.StartsWith($InstallDir, [StringComparison]::OrdinalIgnoreCase)) {
+                $busy += "$n (pid $($p.Id)) from THIS install"
+            }
+            else {
+                $busy += ("$n (pid $($p.Id)) from a FOREIGN INSTALL: $path" +
+                          " - it may own backend port 6969, and -Force would point this run at it")
+            }
+        }
     }
     $busy
 }
