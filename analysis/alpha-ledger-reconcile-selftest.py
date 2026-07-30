@@ -15,29 +15,53 @@ purpose: each defect below exists because it is one the contract permits.
 Run:  python alpha-ledger-reconcile-selftest.py [source.ndjson]
 Exit 0 if every expectation held, 1 otherwise.
 
-"9 OF 9 PASSED" IS WORTH NOTHING WITHOUT THE CONTROL, so here is the control and how to
-re-run it. Neuter the reconciler's `fail()` so it records a note instead:
+"N OF N PASSED" IS WORTH NOTHING WITHOUT THE CONTROL, so pass `--neuter`: it copies the
+reconciler with `fail()` blanked and re-runs every case. Each case expecting exit 1 must
+then STOP failing. The survivors are the cases that never route through `fail()` - the
+expected-to-pass ones and the REFUSALS - and the run tells you the count instead of you
+remembering it.
 
-    def fail(m):
-        notes.append(m)
+It used to say "must drop to 3 of 9" and I had to hand-edit the reconciler to check. Two
+problems with that: a documented ritual gets skipped, and the number goes stale the moment
+a case is added - which it did, and a stale control number is worse than none, because the
+next person sees a different figure and concludes something broke.
 
-and this self-test must drop to 3 of 9. The three survivors are the two
-expected-to-pass cases and the no-events REFUSAL, none of which route through `fail()` -
-so 3 is the right number, and anything higher means an expectation is being satisfied by
-something other than the check it names. Verified on 2026-07-29: 9/9 sabotaged to 3/9,
-restored to 9/9. A suite that passes against a checker which cannot fail is the defect
-this whole file exists to rule out, and it is cheap to re-establish after any edit.
+THE CONTROL IS NOT DECORATION - IT IS WHY THE COUNT MEANS ANYTHING. Nine of nine passed
+here for a day while the reconciler's two `damageBy` branches had never executed on any
+input, because no case supplied the field. The reconciler then crashed on the first real
+log. A count is only evidence over the branches the cases actually reach.
 """
 import glob
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RECON = os.path.join(HERE, "alpha-ledger-reconcile.py")
 OUT = os.path.join(os.environ.get("TEMP", "."), "framesaver-selftest")
+NEUTER = "--neuter" in sys.argv
+
+
+def neutered_copy():
+    """A copy of the reconciler whose fail() records nothing.
+
+    Refuses rather than proceeding if the pattern does not match: a neutered run that
+    silently neutered nothing would report the suite as healthy on the strength of a
+    substitution that never happened."""
+    src = io.open(RECON, encoding="utf-8").read()
+    out = re.sub(r"def fail\(m\):\n    fails\.append\(m\)",
+                 "def fail(m):\n    pass  # NEUTERED", src, count=1)
+    if out == src:
+        print("REFUSED: could not neuter fail() - pattern did not match, so a")
+        print("         'suite collapsed' result would mean nothing.")
+        sys.exit(2)
+    os.makedirs(OUT, exist_ok=True)
+    dst = os.path.join(OUT, "reconcile-neutered.py")
+    io.open(dst, "w", encoding="utf-8").write(out)
+    return dst
 
 
 def real_samples(src):
@@ -58,14 +82,24 @@ def spawn(w, q, i, raid_tag, isai=True, role="exUsec", stand=True):
             "pos": [0, 0, 0], "canStandBy": stand}
 
 
-def death(w, q, i, raid_tag, isai=True, state="named", dmg="Bullet", killer_ai=True):
+def death(w, q, i, raid_tag, isai=True, state="named", dmg="Bullet", killer_ai=True,
+          damage_by="MISSING"):
+    """`damage_by` defaults to matching the killer id, which is the ordinary case.
+
+    It used to be omitted entirely, which meant the reconciler's two damageBy branches -
+    artillery attribution and killer/damageBy disagreement - never executed on any input,
+    synthetic or real. The reconciler then crashed on the first real log, because
+    damageBy is a bare profile-id STRING and I had compared it as an object. Nine of nine
+    passing said nothing about a field no case supplied."""
     k = None
     if state == "named":
         k = {"id": "k1", "role": "pmcUSEC" if killer_ai else "Usec", "isAI": killer_ai}
+    if damage_by == "MISSING":
+        damage_by = k["id"] if k else None
     return {"type": "death", "qpc": q, "window": w, "state": "raid", "raidElapsed": 60.0,
             "id": "p%s-%d" % (raid_tag, i), "role": "exUsec", "isAI": isai,
             "pos": [0, 0, 0], "damageType": dmg, "bodyPart": "Chest",
-            "killerState": state, "killer": k}
+            "killerState": state, "killer": k, "damageBy": damage_by}
 
 
 def write(name, samples, events):
@@ -79,13 +113,14 @@ def write(name, samples, events):
     return p
 
 
-def run(path):
-    r = subprocess.run([sys.executable, RECON, path], capture_output=True, text=True)
+def run(path, recon):
+    r = subprocess.run([sys.executable, recon, path], capture_output=True, text=True)
     return r.returncode, r.stdout + r.stderr
 
 
 def main():
-    src = (sys.argv[1:] or sorted(glob.glob(
+    # Flags filtered out of the positionals, or --neuter gets read as the source path.
+    src = ([a for a in sys.argv[1:] if not a.startswith("--")] or sorted(glob.glob(
         r"F:/SPT/SPT4.0.13/BepInEx/plugins/Framesaver-logs/framesaver-*marathon*.ndjson")))[-1]
     samples = real_samples(src)
     raids = {}
@@ -162,12 +197,59 @@ def main():
                    death(ows[-1]["window"], ows[-1]["qpc"] - 1000, 1, "a")]
             cases.append(("id-reuse.ndjson", ev, 0, ["more than one raid"]))
 
-    bad = 0
+    # 10-12. THE damageBy BRANCHES, which no case above ever reached. All three exist
+    #        because the reconciler crashed on real data where nine synthetic cases had
+    #        passed - the field was absent from every one of them.
+
+    # 10. Killer and damageBy name DIFFERENT sources. Must be reported, not silently
+    #     resolved by whichever field a reader opens first.
+    ev = [spawn(w0, q0, i, "h") for i in range(peak + 5)]
+    ev += [death(ws[-1]["window"], ws[-1]["qpc"] - 1000, 0, "h", damage_by="someone-else")]
+    cases.append(("damageby-disagree.ndjson", ev, 0, ["DIFFERENT sources"]))
+
+    # 11. ARTILLERY: the game declines to attribute, the blow names a source. Attributing
+    #     from damageBy here would overstate player involvement, which is the whole reason
+    #     both fields are carried.
+    ev = [spawn(w0, q0, i, "i") for i in range(peak + 5)]
+    ev += [death(ws[-1]["window"], ws[-1]["qpc"] - 1000, 0, "i", state="none",
+                 damage_by="a-player-id")]
+    cases.append(("artillery.ndjson", ev, 0, ["did NOT attribute"]))
+
+    # 12. WRONG TYPE. damageBy as an object is the exact mistake the reader made, so the
+    #     reader must REFUSE rather than compare a dict against a string and report every
+    #     death as a disagreement - a fabricated finding in the direction we most want to
+    #     avoid. This case is the reason the guard exists.
+    ev = [spawn(w0, q0, i, "j") for i in range(peak + 5)]
+    ev += [death(ws[-1]["window"], ws[-1]["qpc"] - 1000, 0, "j",
+                 damage_by={"id": "k1"})]
+    cases.append(("damageby-wrong-type.ndjson", ev, 2, ["not a string or null"]))
+
+    recon = neutered_copy() if NEUTER else RECON
+    if NEUTER:
+        print("NEUTERED RUN: fail() records nothing, so every case expecting exit 1 must")
+        print("now collapse. Cases expecting 0 or 2 must NOT - they do not route through")
+        print("fail(), and that independence is the point of a separate refusal path.\n")
+
+    bad, collapsed, survived = 0, 0, 0
     for name, events, want_code, want_text in cases:
         p = write(name, samples, events)
-        code, out = run(p)
+        code, out = run(p, recon)
         ok = code == want_code and all(t in out for t in want_text)
-        print("%-22s exit %d (want %d)  %s" % (name, code, want_code, "PASS" if ok else "**MISMATCH**"))
+
+        if NEUTER and want_code == 1:
+            # The expectation inverts: a fail-path case must no longer be satisfied.
+            if ok:
+                survived += 1
+                bad += 1
+                verdict = "**SURVIVED NEUTERING**"
+            else:
+                collapsed += 1
+                verdict = "collapsed"
+            print("%-26s exit %d  %s" % (name, code, verdict))
+            continue
+
+        print("%-26s exit %d (want %d)  %s"
+              % (name, code, want_code, "PASS" if ok else "**MISMATCH**"))
         if not ok:
             bad += 1
             missing = [t for t in want_text if t not in out]
@@ -177,7 +259,17 @@ def main():
             for l in out.splitlines():
                 print("    " + l)
 
-    print("\n%d of %d expectations held" % (len(cases) - bad, len(cases)))
+    if NEUTER:
+        print("\n%d of %d fail-path cases collapsed, %d survived."
+              % (collapsed, collapsed + survived, survived))
+        if survived:
+            print("A survivor was passing for a reason other than the check it names.")
+        else:
+            print("Every fail-path case depends on fail(), so the counts above mean "
+                  "what they say.")
+    else:
+        print("\n%d of %d expectations held" % (len(cases) - bad, len(cases)))
+        print("Re-run with --neuter to confirm the count is load-bearing.")
     return 1 if bad else 0
 
 

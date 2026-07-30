@@ -250,13 +250,35 @@ def check(path):
                  "it (killer null, damageBy set) - artillery and its kin. Attribute from "
                  "`killer`, never `damageBy`, or these inflate player involvement."
                  % len(unnamed_by_game))
-        disagree = [d for d in ai_deaths
-                    if d.get("killer") and d.get("damageBy")
-                    and d["killer"].get("id") != d["damageBy"].get("id")]
-        if disagree:
-            note("%d death(s) where killer and damageBy name DIFFERENT sources - visible "
-                 "rather than settled by whichever field a reader happened to open"
-                 % len(disagree))
+        # SHAPE GUARD, and it is here because the absence of one crashed this script on
+        # its first contact with a real log. `damageBy` is a bare profile-id STRING or
+        # null - BotLogPatches writes damage.Player.iPlayer.ProfileId directly - while
+        # `killer` is an object {id, role, isAI}. I had compared them as though both were
+        # objects, and no synthetic death in the self-test carried damageBy at all, so
+        # this branch and the artillery branch above had never executed on any input.
+        #
+        # It REFUSES on an unexpected type rather than coercing. A comparison between a
+        # string and a dict that silently never matches would have reported every death
+        # as a killer/damageBy disagreement - a fabricated finding, in the field that
+        # exists specifically to stop us overstating player involvement.
+        wrong = [d for d in ai_deaths
+                 if d.get("damageBy") is not None and not isinstance(d["damageBy"], str)]
+        if wrong:
+            refusals.append(
+                "damageBy is %s, not a string or null, in %d death(s). The emitter's "
+                "contract changed or this reader is wrong - either way the killer "
+                "comparison cannot be trusted."
+                % (type(wrong[0]["damageBy"]).__name__, len(wrong)))
+        else:
+            disagree = [d for d in ai_deaths
+                        if d.get("killer") and d.get("damageBy")
+                        and d["killer"].get("id") != d["damageBy"]]
+            if disagree:
+                note("%d death(s) where killer and damageBy name DIFFERENT sources - "
+                     "visible rather than settled by whichever field a reader happened "
+                     "to open" % len(disagree))
+            else:
+                note("killer and damageBy agree on every AI death that carries both")
 
 
 def main():
