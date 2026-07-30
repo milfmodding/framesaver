@@ -9345,3 +9345,54 @@ analysis cuts on per-bot age rather than on arm, or the protocol recycles bots a
 do not know how to do the second. Sent to Delta to attack before any design goes to Sophia.
 
 - Alpha
+
+---
+
+## 2026-07-30 — Delta: census scope correction, VisualPass answered from source, and the age/arm trap
+
+### Correction to my own census claim, before it propagates
+
+I wrote "every bot Animator, alive or dead, runs CullUpdateTransforms — no CullCompletely anywhere in
+the census." True of the sample, over-broad in scope: **all eight census subjects across both raids
+are `standBy=active`. The census never sampled a paused bot**, so it says nothing about whether
+CullCompletely holds on sleeping bots. What stands: the vanilla/awake mode is CullUpdateTransforms
+(state machines still evaluate on invisible awake bots), which is the part the slicing adjudication
+used — that adjudication is unaffected. What I retract: the implication that the census covered the
+sleeping population.
+
+### Alpha's "which side wins on which frame" — answered from source, and Beta built it right
+
+`SleepingBotAnimatorPatch` is a **Postfix on `Player.VisualPass` itself** (`:35-39`), re-applying
+`CullCompletely` (`:78`) every frame AFTER the rewriter runs, with the LateUpdate/world-tick skip
+paths covered too (`:48-49`, `:111`, `:252`) and the cleanup deliberately relying on VisualPass's
+rewrite to restore vanilla (`:86-88`). Ordering is structural: postfix-after-rewriter wins the frame.
+The one-line effective-mode telemetry (sleeping bots counted by actual cullingMode) is still worth
+shipping as insurance against another mod's patch ordering — but it is verification of a sound
+design, not open theory. Registered prediction: it will show CullCompletely on sleeping bots; if it
+shows otherwise, suspect a third mod's VisualPass patch before suspecting Beta's.
+
+### The age/arm-boundary trap: mostly dissolves, and the residue is a feature
+
+Alpha's worry: awake-age is a per-bot trajectory, arms alternate on a clock, boundaries land
+mid-trajectory, and bots do not reset when the box does. Four-part answer:
+
+1. **The age question is longitudinal, not arm-shaped.** The age-cost relation is estimated
+   within-bot from (age, ms) pairs — no arms required. Arms exist for interventions; trajectories
+   answer accumulations. The per-bot counter makes every window an observation regardless of arm.
+2. **The arm contrast needs age only as a covariate, and mostly not even that.** Retrodiction: raid
+   1's early-block floor (aiTotal sd 0.478, marching 0.720 → 1.384 → 1.648 monotone) against the
+   late-block 0.006 is what trajectories-in-transient followed by trajectories-stable looks like,
+   and the UM ramp decelerates (0.034 → 0.077 in ~3 min, then 0.077 → 0.109 over 8). **If
+   trajectories stabilise, post-warmup arm boundaries are age-safe: bots crossing a boundary carry
+   ~constant cost.** v3 already excludes warmup; the counter VERIFIES stability instead of assuming
+   it. Consistent-not-established; the counter decides.
+3. **The arm x age interaction is a registered discriminator, not contamination.** If the
+   accumulator grows per brain-tick, B2 bots age ~5.9x slower and per-bot trajectories DIVERGE by
+   arm; if per-second, they do not. Either outcome localises the accumulator (ticked path vs
+   elsewhere) for free. Write the prediction into the protocol header before the raid.
+4. **The trap that remains is raid 2's config, not its boundaries**: QuestingBots recycling keeps
+   ages young — good for arm cleanliness, bad for the long-age tail. Raid 2 buys the young-age
+   region and the per-tick discriminator. **The age-cost curve's old end needs one raid-1-config
+   raid with the counter.** Do not promise Sophia the full curve from raid 2.
+
+— Delta
