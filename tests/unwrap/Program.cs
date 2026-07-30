@@ -634,6 +634,8 @@ class P {
         drain.Invoke(null, new object[] { collect, 7 });
         Check("one row per bot, not per call", rows.Count, 2);
         Check("rows carry the window", rows.TrueForAll(r => r.Contains("\"window\":7")), true);
+        Check("rows carry the span start", rows.TrueForAll(r => r.Contains("\"spanS\":0")), true);
+
 
         double rowMs = 0d;
         foreach (var r in rows) {
@@ -648,6 +650,28 @@ class P {
         Check("draining clears the rows",
               ((System.Collections.ICollection)aa.GetField("Live",
                   BindingFlags.NonPublic | BindingFlags.Static).GetValue(null)).Count, 0);
+
+        // A re-wake is not a continuation, and a reader cannot always see the
+        // break from awakeS alone: a bot that sleeps and wakes EARLY in a long
+        // window ends it older than the previous row, so the reset is
+        // invisible and two spans would be regressed as one. spanS makes the
+        // identity exact - same id AND same spanS is the same span.
+        resetRaid.Invoke(null, null);
+        wokeAt.Invoke(null, new object[] { bot1, 0f });
+        recordAt.Invoke(null, new object[] { bot1, freq / 1000, 40f });   // awakeS 40
+        var w1 = new System.Collections.Generic.List<string>();
+        drain.Invoke(null, new object[] { (Action<string>)w1.Add, 1 });
+
+        endedM.Invoke(null, new object[] { bot1 });                       // slept
+        wokeAt.Invoke(null, new object[] { bot1, 45f });                  // and woke
+        recordAt.Invoke(null, new object[] { bot1, freq / 1000, 200f });  // awakeS 155
+        var w2 = new System.Collections.Generic.List<string>();
+        drain.Invoke(null, new object[] { (Action<string>)w2.Add, 2 });
+
+        Check("awakeS ROSE across the re-wake, hiding the break",
+              w1[0].Contains("\"awakeS\":40") && w2[0].Contains("\"awakeS\":155"), true);
+        Check("but spanS changed, so the break is detectable",
+              w1[0].Contains("\"spanS\":0") && w2[0].Contains("\"spanS\":45"), true);
 
         // ---- Trigger-subscriber count --------------------------------
         //
