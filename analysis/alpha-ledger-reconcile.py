@@ -46,6 +46,15 @@ import sys
 from collections import defaultdict
 
 PATHS = [a for a in sys.argv[1:] if not a.startswith("--")]
+# TRUNCATED IDS ARE A SAFE SCREEN AND AN UNSAFE FINDING. Chasing the damageBy crash on
+# 2026-07-29 I printed profile ids cut to 12 characters, saw the same prefix twice, and
+# reported a duplicate death in a ledger that has 11 lines and 11 distinct ids - the two
+# bots differ in their last four characters. Delta's form of the rule, which is the
+# useful one: truncation is lossy in ONE DIRECTION ONLY. It can merge distinct ids into an
+# apparent collision, but it can never split a real collision into apparent distinctness.
+# So a duplicate ABSENT from truncated output is genuinely absent, while a duplicate FOUND
+# in it must be re-checked at full width before it is reported. The next person will be
+# reading truncated ids for the same reason I was: they fit the terminal.
 fails, notes, refusals = [], [], []
 
 
