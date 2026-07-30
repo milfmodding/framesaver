@@ -8842,3 +8842,89 @@ trickle ceiling as well - a third preset effect, and one more reason `BotMax` wa
 called it.
 
 - Alpha
+
+---
+
+## 2026-07-29 - Alpha: raid 1.5 result. The exempt floor is worth 4 ms at p75, and it is not shippable as a blanket setting
+
+Scored against registration `exempt-roles-are-the-lighthouse-floor`, written before the raid. The
+registration is NOT edited here - a pre-registration you revise after the data is not one.
+
+### The gate moves, and it moves the map that was failing
+
+    p75, in-raid PresentMon frames only
+      Lighthouse corpus (awake pinned 10-11)   17.40 ms   57.5 fps   FAILS a 60 fps gate
+      raid 1        (same build, 1 flag off)   15.23 ms   65.7 fps
+      raid 1.5      (Force for all roles on)   13.35 ms   74.9 fps   clears it by 15
+
+Against raid 1 the p75 gain is 1.88 ms; against the wider corpus 4.05 ms. Position differs
+between all three legs, so that spread is the honest range rather than a point estimate.
+
+**p99 went the other way: 22.78 -> 24.55 ms.** Raid 1.5 carried 41 spawns against raid 1's 31, and
+spikes are spawn-completion hitches. Two gates, two mechanisms, and this treatment only touches
+one - which is the clearest confirmation yet that p75 and p99 need separate work.
+
+### The mechanism, in one line from post-flight
+
+`updateManual awake=285,670 paused=4,292,640` - paused calls outnumber awake **15 to 1**. Raid 1
+was roughly 1:1. The treatment fired unambiguously.
+
+### Cleanest per-bot number this project has produced
+
+    animCulled     17 -> 26 bots            (+9, a directly counted change)
+    animBegin   3.949 -> 1.750 ms           (-2.199, a directly measured level)
+    -> 0.244 ms of animator per bot
+
+No regression, no position term. **The corpus animator slope of 0.1357 understated it by about
+1.8x**, because that slope was fitted against an awake count pinned at 10-11 by the exempt floor -
+the badly-conditioned fit this project keeps warning about, caught this time by removing the pin.
+
+### THREE OF MY PREDICTIONS WERE WRONG AND ONE PIECE OF EVIDENCE IS WITHDRAWN
+
+**`bots.exempt` did not reach 0 - it read 6-9.** I registered 0. The field is a census of the ROLE
+PROPERTY `Mind.CAN_STAND_BY`, and `Force for all roles` overrides the CONSEQUENCE, not the
+property. So I nominated the one indicator that could not move. The mechanism is visible in
+`awake` 10 -> 1, `asleep` 26 of 27, and `animCulled` 17 -> 26. Fourth field-scope error in two
+days, and the first where I misread a field I had specified myself.
+
+**I underestimated the effect** - registered -1.09 ms animator and -2.8 ms frame, observed -2.20
+and -3.50 - for the same reason the slope was wrong.
+
+**The within-raid slope this raid was meant to create is NOT usable.** `corr(awake, bots.total) =
+0.91`: as Sophia moved away, bots both slept and despawned, so the two cannot be separated. It
+reads 1.00 ms per awake bot and that is an upper bound, not an estimate.
+
+**WITHDRAWN: the AGL was never manned.** Sophia found the confound herself by walking to the back
+rooftop and finding it empty. Only 5 exUsec spawned - comparable to raid 1's 6 - so with that few
+Rogues none was assigned there, and "never manned" has an innocent explanation. It was the most
+concrete-looking evidence we had and it does not survive.
+
+### What DOES survive, and it is enough
+
+**Observed and not confounded:** the same bots that later crewed the machine-gun nests had not
+crewed them at range and moved into position on wake - spawn count cannot explain that. A gunner
+on a second rooftop was watched taking position as she closed. Sleeping PRESERVES posted position
+and pose: still mounted, no default-pose reset, no snap, just not tracking, because a culled
+animator holds its last frame. That last one rules out visible popping, which is the classic
+failure mode for this class of optimisation and generates bug reports rather than log lines.
+
+**Arithmetic, not observation:** a Rogue beyond the 150 m sleep distance sleeps. Sound reason to
+expect a problem; no longer demonstrated by this raid.
+
+### The feature this argues for, with Sophia's anchor
+
+`Force for all roles = false` stays the default - validated rather than assumed, and now priced at
+~4 ms of p75 on Lighthouse.
+
+The fix is a **role-aware sleep distance at ~350 m**, Sophia's number, chosen so the AGL stays a
+threat while the Rogues at the back of the plant sleep until she is close enough for them to
+matter. The machinery already exists: `LongRangeExemption` is rank-based, bounds its cost by rank
+rather than radius, and argues that trade in its own docstring. The only defect is that
+`IsLongRange` matches `WildSpawnType.marksman` and nothing else.
+
+**The role list comes from observation rather than guesswork:** `exUsec` (the Rogues),
+`followerBirdEye` (engaged at ~130 m, i.e. precisely on the wake boundary - at 200 m he would have
+been silent), and the Zryachiy group. Three long-range families on this map, none of them
+`marksman`, none currently covered.
+
+- Alpha
