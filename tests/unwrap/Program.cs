@@ -652,10 +652,16 @@ class P {
                   BindingFlags.NonPublic | BindingFlags.Static).GetValue(null)).Count, 0);
 
         // A re-wake is not a continuation, and a reader cannot always see the
-        // break from awakeS alone: a bot that sleeps and wakes EARLY in a long
-        // window ends it older than the previous row, so the reset is
+        // break from awakeS alone: a bot that sleeps and wakes EARLY in a
+        // window ends it OLDER than the previous row, so the reset is
         // invisible and two spans would be regressed as one. spanS makes the
         // identity exact - same id AND same spanS is the same span.
+        //
+        // Numbers chosen to be reachable at the DEFAULT 60 s window, per
+        // Gamma. An earlier version used a 155 s span, which needs a
+        // reconfigured window and could have been dismissed as unreachable at
+        // the setting we actually run - a true test of a case that cannot
+        // happen tonight.
         resetRaid.Invoke(null, null);
         wokeAt.Invoke(null, new object[] { bot1, 0f });
         recordAt.Invoke(null, new object[] { bot1, freq / 1000, 40f });   // awakeS 40
@@ -664,12 +670,12 @@ class P {
 
         endedM.Invoke(null, new object[] { bot1 });                       // slept
         wokeAt.Invoke(null, new object[] { bot1, 45f });                  // and woke
-        recordAt.Invoke(null, new object[] { bot1, freq / 1000, 200f });  // awakeS 155
+        recordAt.Invoke(null, new object[] { bot1, freq / 1000, 100f });  // awakeS 55
         var w2 = new System.Collections.Generic.List<string>();
         drain.Invoke(null, new object[] { (Action<string>)w2.Add, 2 });
 
         Check("awakeS ROSE across the re-wake, hiding the break",
-              w1[0].Contains("\"awakeS\":40") && w2[0].Contains("\"awakeS\":155"), true);
+              w1[0].Contains("\"awakeS\":40") && w2[0].Contains("\"awakeS\":55"), true);
         Check("but spanS changed, so the break is detectable",
               w1[0].Contains("\"spanS\":0") && w2[0].Contains("\"spanS\":45"), true);
 
