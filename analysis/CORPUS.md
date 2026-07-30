@@ -15,7 +15,9 @@ is in FINDINGS.md's methodology notes.
 ## Dating a log: read the `cfg` key count, not the filename
 
 Every `sample` line carries a `cfg` block. **Its key count is monotonic across the project's history and
-partitions the corpus into three eras**, which is the primary way to date a log:
+partitions the corpus into eras**, which is the primary way to date a log. (This sentence said "three
+eras" while the table listed five, and then six — a count in prose beside the table that contradicts it
+is the same defect as a docstring outliving its code, so the number is now not repeated here.)
 
 | era | `cfg` keys | gained | window |
 |---|---|---|---|
@@ -23,7 +25,50 @@ partitions the corpus into three eras**, which is the primary way to date a log:
 | **B** | 15 | `suspendGc`, `reclaimStandBy`, `deactivateSleeping`, `keepFighting` | `20260727-010740` → `20260727-201220` |
 | **C** | 20 | the two GC knobs, `drainInUpdateOnly`, `drainDiagnostics`, `gcSliceApplied` | `20260727-232217` → `20260728-125209` |
 | **D** | 21 | `windowSeconds` | `20260728-153030` → `20260729-215652` |
-| **E** | 23+ | `sleepDistance`, `wakeDistance` (1ad93f4) — count to be CONFIRMED from the first era-E log, not assumed | raid 2 onward |
+| **E** | 23+ | `sleepDistance`, `wakeDistance` (1ad93f4) — count to be CONFIRMED from the first era-E log, not assumed | superseded before any log existed |
+| **F** | 27+ | era E's two, plus `forceAllRoles`, `checkInterval`, `sleepImmediately`, `minBrainsPerFrame` (1806101) | raid 2 onward |
+
+**Era E never produced a log.** It was documented on 2026-07-30 as the next era and superseded the same
+day by `1806101`, which adds four more keys before raid 2 runs. Both rows are kept rather than merged:
+a reader holding a build between the two commits needs era E to exist, and collapsing them would make
+`23+` unfindable. **Third shift in two days** — the churn is the cost of the corpus being dated by field
+presence, and it is cheaper than the alternative it replaced.
+
+**Era F's four keys and why they were missing.** `forceAllRoles`, `checkInterval`, `sleepImmediately`
+and `minBrainsPerFrame` are all live-editable and read at runtime, and none was emitted on a sample
+line. `forceAllRoles` is the largest — it decides which *roles* may stand by at all, moving bots between
+the awake and paused populations wholesale (26 of 27 asleep in raid 1.5). Raid 2's whole purpose is an
+ABAB contrast on it, so without this the log would carry no per-window record of which arm each window
+was in.
+
+### `forceAllRoles` was NOT absent from the corpus — it was absent per WINDOW
+
+Worth stating precisely, because the imprecise version costs a real capability. `cfg.forceAllRoles` is
+null on every sample line in all 24 pre-`1806101` logs. **The `header.config` block carries it in 24 of
+24** — 23 `False` and `20260729-215652` `True`, which is correct.
+
+So **`UNKNOWN` is the wrong label for a pre-era-F leg.** The arm is knowable from the header, and any
+reader that prints `UNKNOWN` for these logs is discarding a field that is present. The rule:
+
+- **whole-leg attribution** — per-map percentiles, leg composition, arm labelling — read the **header**,
+  available today across the entire corpus, no build needed;
+- **within-window attribution** — an ABAB contrast, or any window-level stratification — needs the era-F
+  `cfg` key, and genuinely did not exist before `1806101`.
+
+`UNKNOWN` should be reserved for a header that actually lacks the key, which no log in the corpus does.
+Kept distinct from `False` all the same, so a future build that drops the key can never be read as having
+run the default arm.
+
+**What the imprecise version cost.** The per-map gate table stood for a day with 48% of Lighthouse's
+frames coming from the `forceAllRoles` arm, read as a baseline. Split by arm (`66ba688`): pooled p75
+**16.00 ms / 62.5 fps**, but `[default]` is **17.40 ms / 57.5 fps** and `[forceAll]` is 13.35 / 74.9. The
+number that read as a Lighthouse baseline passing the 60 fps gate was an average of a failing baseline
+and a passing treatment arm. **Nothing new had to be logged to find that** — only a field already in
+every header had to be read.
+
+**And the 17 fps gap is not what `forceAllRoles` buys.** It is a between-leg contrast across different
+sessions, durations and player behaviour, which is the instrument already established here as unable to
+carry effects this size. Raid 2 exists for that comparison.
 
 **Era D was undocumented until 2026-07-30 and six logs were already in it**, including both of the
 2026-07-29 Lighthouse raids that a day of analysis rested on. The table said "era C onward" while the
