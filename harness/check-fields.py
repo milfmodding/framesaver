@@ -103,6 +103,9 @@ def main():
             continue
 
         header, raid, spawns, deaths, standby = None, [], 0, 0, 0
+        # Every sample in file order, including `final` and non-raid, because segment position is
+        # what identifies a teardown window and that cannot be computed from the filtered list.
+        all_samples = []
         # Every `type` seen, counted. Beta found that this chain was an if/elif with no else, so an
         # unknown line type fell through in total silence - which is comfortable when a new build
         # adds one and dangerous when a build STOPS emitting one, because both look like nothing.
@@ -125,6 +128,8 @@ def main():
                 deaths += 1
             elif t == "botStandBy":
                 standby += 1
+            if t == "sample":
+                all_samples.append(o)
 
         if header is None:
             refusals.append("%s: no header line - refusing to report" % path)
@@ -166,20 +171,58 @@ def main():
         #
         # Those windows survived analysis only because a zero census makes a ratio NaN and an empty
         # paused bucket drops the row. Two accidents, neither a check.
-        blind = [w for w in raid
-                 if (w.get("bots") or {}).get("awake") == 0
-                 and ((w.get("bots") or {}).get("asleep") or 0) == 0
-                 and ((w.get("agents") or {}).get("live") or 0) > 0]
-        if blind:
-            ex = blind[0]
-            fails.append("%s: %d of %d raid window(s) have bots.awake+asleep == 0 while "
-                         "agents.live > 0 - the roster census DID NOT RUN in them, it is not a "
-                         "roster of zero. First: map=%s window=%s elapsed=%ss live=%s. Exclude "
-                         "them; a zero here is unreadable, not small."
-                         % (path, len(blind), len(raid), ex.get("map"), ex.get("window"),
+        # SPLIT BY SEGMENT POSITION, because the first version of this check would have fired once
+        # per map on every marathon log. Beta and Gamma traced the cause and I verified it: ALL 33
+        # zero-census windows in the corpus are the LAST in-raid window of their segment, 33 of 33,
+        # no exceptions. Raid teardown - Singleton<IBotGame> is gone when the census reads at window
+        # close. So a teardown zero is expected and a MID-SEGMENT zero is a real defect, and firing
+        # on both makes the check unreadable.
+        #
+        # `final` is NOT the flag for this and never was: it means "the session ended", so it marks
+        # 17 of the 33. A reader keying on it misses 16. (That 16 is exactly what I counted before
+        # knowing the cause - the non-final subset - which is how the three different counts we
+        # traded, 16/23/33, reconcile.)
+        #
+        # Segment = consecutive in-raid samples sharing (raid, map). Last-in-segment means the next
+        # sample is not an in-raid window of the same segment, or there is no next.
+        last_ids = set()
+        for i, o in enumerate(all_samples):
+            if o.get("state") != "raid":
+                continue
+            key = (o.get("raid"), str(o.get("map")))
+            nxt = all_samples[i + 1] if i + 1 < len(all_samples) else None
+            if (nxt is None or nxt.get("state") != "raid"
+                    or (nxt.get("raid"), str(nxt.get("map"))) != key):
+                last_ids.add(id(o))
+
+        def blind_p(w):
+            b, a = w.get("bots") or {}, w.get("agents") or {}
+            return (b.get("awake") == 0 and (b.get("asleep") or 0) == 0
+                    and (a.get("live") or 0) > 0)
+
+        teardown = [w for w in raid if blind_p(w) and id(w) in last_ids]
+        midraid = [w for w in raid if blind_p(w) and id(w) not in last_ids]
+
+        if midraid:
+            ex = midraid[0]
+            fails.append("%s: %d MID-SEGMENT window(s) have bots.awake+asleep == 0 while "
+                         "agents.live > 0 - the roster census did not run and it is NOT teardown, "
+                         "which is the only benign cause known. First: map=%s window=%s "
+                         "elapsed=%ss live=%s"
+                         % (path, len(midraid), ex.get("map"), ex.get("window"),
                             round(ex.get("raidElapsed") or 0),
                             (ex.get("agents") or {}).get("live")))
-        else:
+        if teardown:
+            marked = sum(1 for w in teardown if w.get("final"))
+            notes.append("%s: %d teardown window(s) - last of their segment, census did not run. "
+                         "EXCLUDE bots.* and the instant-sampled fields (snipersAwake, animCulled) "
+                         "from these; their FRAME data is fine. `final` marks only %d of %d, so do "
+                         "not key on it. They are also truncated, so any per-second rate in them "
+                         "has a denominator that means nothing."
+                         % (path, len(teardown), marked, len(teardown)))
+            print("    %d teardown window(s) identified by segment position (final marks %d)"
+                  % (len(teardown), marked))
+        if not midraid and not teardown:
             print("    roster census ran in all %d raid windows (awake+asleep vs agents.live)"
                   % len(raid))
 
