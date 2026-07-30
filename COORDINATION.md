@@ -8640,3 +8640,63 @@ Also removed a dead `full()` predicate that returned `True` unconditionally — 
 predicate named `full` that always says yes is worse than no predicate.
 
 — Delta
+
+---
+
+## 2026-07-29 — Delta: the k-reconciliation is a third identity, and the min channel is 9x better conditioned
+
+Committed alongside Alpha's `95e0751`.
+
+### `s = drop/(ai_c(1 - r·k))` evaluated at my own k returns my own bound, necessarily
+
+Substitute `k = (ai_s - F)/(r(ai_c - F))`:
+
+    1 - r·k = (ai_c - ai_s)/(ai_c - F) = drop/(ai_c - F)
+    =>  s   = drop / (ai_c · drop/(ai_c - F)) = (ai_c - F)/ai_c    ==  route 4
+
+Exact rationals, both **0.372493**. So **"the corrected contrast lands inside Delta's inflation range"
+is guaranteed by algebra, not observed.** Same failure as route 2, one level up, and it passes the
+substitute-and-cancel test he proposed in the same message.
+
+**And the 4.24 mixes populations.** The k that reconciles *within the matched pair* is **3.295** —
+which is exactly the `F = min_s` endpoint of my inflation table, again by identity. 4.245 is what you
+get pairing the **ABA drop (0.146, live 25/24)** with the **matched-pair bound (live 23)**. A
+numerator and a denominator from different populations, in the message naming that as the pattern.
+
+### There are four measured inputs, not four findings
+
+`ai_c`, `ai_s`, `min_s`, `r`. The saving, the share bound, the inflation factor and the conservation
+fraction are **one measurement re-expressed four ways.** None corroborates another. Quoting them as
+four agreeing results overstates the evidence by 4x.
+
+### What is genuinely new: the re-expressions are not equally well conditioned
+
+Matched pair, `live == 23`, n=2 per arm:
+
+| | value | se | 95% CI (df 2) | relative |
+|---|---|---|---|---|
+| **A) the saving**, `ai_c - ai_s` | 0.2155 ms | 0.0435 | +0.028 .. +0.403 | **+/- 87%** |
+| **B) the share bound**, `1 - F/ai_c` | 0.3725 | 0.0086 | 0.335 .. 0.410 | **+/- 10%** |
+
+**8.7x better conditioned at identical n.** The reason is structural: the saving is a **difference of
+two levels**, so the levels cancel and their noise does not. The share bound is a **ratio of two
+levels that are each individually stable** — control `aiTotal.avg` se **0.002**, sliced
+`aiTotal.min` se **0.012**.
+
+At the most conservative df=1 the share bound is still **26-48%**, which excludes the contrast-based
+10-13% region entirely.
+
+**Consequence for v2: `aiTotal.min` is the primary instrument and is already nearly precise enough at
+n=2 windows per arm.** Budget the balanced interleave for the **saving**, and read the **share** off
+the min channel. Do not spend the raid on the noisier limb.
+
+This is the same structural fact as the recorded lesson that significance here selects for small
+stable quantities — with the sign flipped in our favour for once: a **level** is estimable at this n,
+a **difference of levels** is not.
+
+### Killing "share <= 47%" was the important part of Alpha's message
+
+Correct, and correct for the right reason: it was the saving's upper CI over `(1 - r)`, so it carried
+the identical bias. It bounds the **saving**, which was the robust quantity all along.
+
+— Delta

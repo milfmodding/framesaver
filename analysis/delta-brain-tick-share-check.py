@@ -482,3 +482,53 @@ print()
 print("  Reading: the tick may well be the 38-78%% share I registered. What is")
 print("  wrong is the inference 'big share -> big saving'. Slicing defers the")
 print("  work and about half of it comes back as more expensive ticks.")
+
+# ------------------------------------------------------------------ route 5
+
+print()
+print("=" * 78)
+print("CONDITIONING: the share bound is a LEVEL RATIO, the saving is a DIFFERENCE.")
+print("=" * 78)
+print("""
+Alpha's bias-corrected contrast, s = drop/(ai_c*(1 - r*k)), is not an independent
+reconciliation of routes 1 and 4. Substituting k = (ai_s - F)/(r*(ai_c - F)):
+
+    1 - r*k = (ai_c - ai_s)/(ai_c - F) = drop/(ai_c - F)
+    =>  s   = drop / (ai_c * drop/(ai_c - F)) = (ai_c - F)/ai_c   ==  route 4
+
+So "the corrected contrast lands inside Delta's inflation range" is guaranteed by
+algebra, not observed. There are only FOUR measured inputs here -- ai_c, ai_s,
+min_s, r -- and the saving, the share bound, the inflation factor and the
+conservation fraction are all one measurement re-expressed. They must never be
+quoted as four findings.
+
+What IS new is that the four re-expressions are not equally well conditioned.
+""")
+sc = [o["aiTotal"]["avg"] for o in matched_c]
+ss = [o["aiTotal"]["avg"] for o in matched_s]
+sm = [o["aiTotal"]["min"] for o in matched_s]
+se_c = st.stdev(sc) / math.sqrt(len(sc))
+se_s = st.stdev(ss) / math.sqrt(len(ss))
+se_m = st.stdev(sm) / math.sqrt(len(sm))
+drop_m = ai_c - ai_s
+se_drop = math.sqrt(se_c ** 2 + se_s ** 2)
+sh = 1.0 - mn_s / ai_c
+se_sh = (mn_s / ai_c) * math.sqrt((se_m / mn_s) ** 2 + (se_c / ai_c) ** 2)
+print("  A) the SAVING, ai_c - ai_s     %.4f ms   se %.4f" % (drop_m, se_drop))
+print("  B) the SHARE BOUND, 1 - F/ai_c %.4f      se %.4f" % (sh, se_sh))
+for dfx, tx in ((1, 12.706), (2, 4.303)):
+    print("     df %d:  saving %+.4f .. %+.4f (+/- %3.0f%%)   share %.3f .. %.3f (+/- %2.0f%%)"
+          % (dfx, drop_m - tx * se_drop, drop_m + tx * se_drop, 100 * tx * se_drop / drop_m,
+             sh - tx * se_sh, sh + tx * se_sh, 100 * tx * se_sh / sh))
+print("  conditioning advantage of B over A: %.1fx at the same n"
+      % ((se_drop / drop_m) / (se_sh / sh)))
+print("""
+  The saving is a DIFFERENCE of two levels: the levels cancel and their noise
+  does not. The share bound is a RATIO of two levels that are each individually
+  stable (control aiTotal.avg se 0.002; sliced aiTotal.min se 0.012).
+
+  Consequence for the rerun: `aiTotal.min` is the PRIMARY instrument and it is
+  already nearly precise enough at n=2 windows per arm. The contrast needs the
+  windows. Budget the balanced interleave for the SAVING and read the SHARE off
+  the min channel, rather than spending the whole raid on the noisier limb.
+""")
