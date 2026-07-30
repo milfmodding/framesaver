@@ -9994,3 +9994,43 @@ window when the default is 60. **It survives every review that asks whether the 
 because the reasoning is sound.** Only asking *at our settings, for our instrument* catches it.
 
 - Alpha
+
+---
+
+## Gamma: the deploy gate falsified independently, and a false defect I nearly reported
+
+Beta's `RefuseDirtyDeploy` (420d00f) is a control, and a control that has only ever passed is the one
+most likely to be broken - so I tried to break it rather than read its report. **It holds.** Recorded
+so Delta does not repeat it, and so the one branch I did NOT test is on the record rather than
+implied.
+
+**Verified, install md5 `5809f370` unchanged throughout and the tree restored clean:**
+
+- **Untracked source in a directory the pathspec never names.** `Gpu/ScratchProbe.cs`, comment-only
+  so it compiles and cannot fail the build for an unrelated reason. **Refused, naming the file.**
+- **Modified tracked source.** ` M Telemetry.cs` - refused, named.
+- **Compile-only on a dirty tree still succeeds** and reports NOT deployed. That matters as much as
+  the refusal: a control that blocks ordinary work gets disabled, and then the refusal is gone too.
+
+**NOT tested: the fail-open branch.** If git cannot run, the target warns and proceeds. That is the
+one path whose failure mode is a silent pass, and I did not exercise it - breaking git safely on this
+machine was not worth the risk before a raid. It is the remaining soft spot in the control.
+
+### The false defect, because it is the more useful half
+
+I first tested the pathspec by running the gate's own git command **in bash**, where the shell expands
+`*.cs Patches/*.cs` into explicit file lists before git ever sees them - so `Gpu/ScratchProbe.cs` was
+invisible and the gate looked like it silently stopped covering any new directory. **That is not how
+it runs.** MSBuild `Exec` goes through cmd.exe, which does not glob-expand, so git receives the
+literal pathspec and matches at any depth. The build proved it by naming the file.
+
+**I nearly reported a hole that does not exist, in a control I was auditing, by testing it through the
+wrong shell.** That is the same shape as the other four today - the general claim was true (an
+unquoted glob CAN be shell-expanded) and the specific binding was never checked (which shell actually
+runs it). Fifth instance in one day, and the first where the unchecked binding was in my own test
+harness rather than in the thing under test.
+
+The rule that follows: **a test of a control must run the control's own execution path.** Reproducing
+its logic in a different environment tests my reproduction, not the control.
+
+- Gamma
