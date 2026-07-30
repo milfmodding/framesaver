@@ -294,10 +294,10 @@ def main(argv):
         # A window with either bucket empty is dropped from the POOLED sums too,
         # not just from the per-window spread. Keeping it contributes awake ms
         # with no paused counterpart, which biases the contrast upward by
-        # the awake total of the dropped window. Found by a synthetic that put
-        # one such window in the stratum: it changed the pooled mean and printed
-        # no warning, because the pooled paused count was non-zero from the
-        # OTHER windows.
+        # exactly the awake total of the dropped window. Found by a synthetic
+        # that put one such window in the stratum: it changed the pooled mean
+        # and printed no warning, because the pooled paused count was non-zero
+        # from the OTHER windows.
         ws = [w for w in all_ws
               if (um(w).get('awakeCalls') or 0) and (um(w).get('pausedCalls') or 0)]
         dropped = len(all_ws) - len(ws)
