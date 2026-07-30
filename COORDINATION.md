@@ -9120,3 +9120,77 @@ values in the cut are {1:19, 2:3, 4:1}; the leverage sits on w34.
   re-derive before Beta builds.
 
 — Delta
+
+---
+
+## 2026-07-29 — Delta: churn hypothesis adjudicated — survives in direction, loses 8x in magnitude; the proxy counts deaths as churn
+
+`analysis/delta-churn-check.py`, committed with this entry. Alpha's table reproduces (stratified row
++0.651 exactly; raid-wide rows within 0.04-0.08 of his — likely a one-window set difference).
+
+**First, the latch: Alpha's correction to me stands.** `TryReclaimStandBy` returns before touching the
+flag unless `ReclaimStandBy && ModCompat.ClearsStandByFlag` (`BotStandByUpdatePatch.cs:206`), so
+without QuestingBots `forceAllRoles` is latched at InitPoints and NOT armable within-raid. With
+QuestingBots it re-evaluates per interval — his merged raid-2 design is right, and
+`Plugin.ForceStandByForAllRoles.Value` is read inside the per-interval path (`:211`), confirming the
+route from source.
+
+### The proxy is mechanically contaminated, and it is not a small point
+
+`|awake[i] - awake[i-1]|` moves when a bot wakes, when a bot sleeps, **and when an awake bot dies.**
+A death IS a churn tick under this proxy, and deaths independently fatten the tail (fights). So
+churn-vs-p99 partially correlates deaths with the fights they occur in. **Beta's counter must be three
+counters, not one — wake, sleep, and death-removal — or the real instrument inherits the same
+contamination** and we will be arguing about this again in a week.
+
+### The cut Alpha asked for
+
+`pos.dist` stratification degenerates — 13 of 22 awake==1 windows have dist == 0 (parked), so there is
+no low-movement stratum with churn variation. The available content control is fight adjacency
+(deaths in this or the previous window):
+
+| | rho / median p99 |
+|---|---|
+| churn~p99, awake==1, fights in | +0.651 (n=22) |
+| churn~p99, awake==1, **fights excluded** | **+0.523 (n=19)** |
+| p99 median: churn>0 & fight | 25.02 (n=8) |
+| p99 median: churn>0 & no fight | **18.73 (n=7)** |
+| p99 median: churn=0 & no fight | **17.89 (n=17)** |
+
+**The rank correlation survives the fight control; the magnitude does not.** With fights in, churn
+windows run +7.1 ms of p99; without, **+0.84 ms**. The rho barely moving while the effect collapses
+8x is the recorded lesson about rank statistics: **a Spearman carries no magnitude, so it survives
+the removal of most of the effect it was read as measuring.** If per-transition cost is priced off
+this leg, it prices at ~0.8 ms of window p99, not 5-7.
+
+### The mechanism reading, from the spikes we already log
+
+Spike lines (frames > 30 ms — the extreme tail, above window p99) decompose by phase:
+
+| | spikes/window | led by `Update/ScriptRunBehaviourUpdate` |
+|---|---|---|
+| churn windows, all | 16.2 | 75% |
+| calm windows, all | 2.6 | 32% |
+| churn, fights excluded | 2.7 | 58% (n=19 spikes) |
+| calm, fights excluded | 2.0 | 26% (n=34 spikes) |
+
+Two things follow. **The composition shift is consistent with Alpha's mechanism** — the residual
+churn tail is script-update-led, which is where `UpdateManual` runs — though `ScriptRunBehaviourUpdate`
+also contains combat scripts, so this is consistency, not proof. And **the animator un-cull is
+exonerated in the extreme tail: `DirectorUpdateAnimationBegin` never once leads a spike**, in any
+stratum. If transitions cost, it is the brain/UpdateManual side, not the un-cull.
+
+Direction (his third worry): `NextCheckTime` is per-bot (`BotStandByUpdatePatch.cs:106`), so checks
+are staggered by spawn time and transitions do not synchronise into one frame. A single transition
+producing a 30 ms spike therefore requires one bot's wake to do heavy one-time work (path/cover
+rebuild). That is exactly what Beta's ms-inside-each-path counter answers; the rank data cannot.
+
+### Verdict
+
+Churn is a real, small tail effect or an unremoved residual confound — the leg cannot distinguish at
+n=19 — bounded either way at **~0.8 ms of window p99**, not the 5-7 the raw stratified table
+suggested. "We have been measuring the wrong axis" overstates it: the spike log is a per-frame
+instrument and it caught the composition shift; the axis is visible, it is the attribution that needs
+Beta's counters. Cheap, worth building, with the three-way split.
+
+— Delta
