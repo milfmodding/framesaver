@@ -415,8 +415,9 @@ def main(argv):
     print('  sample windows           %d' % len(rows))
     print('  carrying updateManual    %d' % sum(1 for w in rows if w.get('updateManual') is not None))
     print('  population               %s' % steady.describe())
-    print('  eligible                 %d   (dropped: %s)'
-          % (len(wins), ', '.join('%s %d' % (k, v) for k, v in dropped.items() if v)))
+    lost = ', '.join('%s %d' % (k, v) for k, v in dropped.items() if v)
+    print('  eligible                 %d%s'
+          % (len(wins), ('   (dropped: %s)' % lost) if lost else ''))
     if not wins:
         print('\nGATE FAILED - no eligible window carries updateManual.')
         return 1
@@ -540,6 +541,20 @@ def main(argv):
         if dropped:
             print('  %d window(s) dropped: one bucket empty. Excluded from the pooled sums as' % dropped)
             print('    well as the spread - an unpaired awake total inflates the contrast.')
+            # Name the maps, because "3 windows dropped" and "3 windows dropped,
+            # all factory4_day, where stand-by CANNOT fire by geometry" are
+            # different facts. factory's player span is ~46x72 m against a
+            # sleepDistance of 150, so nothing there is ever far enough to
+            # sleep: 19 in-raid windows across 4 raids, 0% with any bot asleep,
+            # against 86-100% on every other map. Those windows are a STRUCTURAL
+            # exclusion rather than a bad sample, and an anonymous drop count
+            # hides which. No factory window carries updateManual yet, so this
+            # path is unexercised on real data and will first matter the next
+            # time factory is run.
+            gone = collections.Counter((w.get('map') or '?')
+                                       for w in all_ws if w not in ws)
+            print('    by map: %s'
+                  % ', '.join('%s %d' % (m, n) for m, n in gone.most_common()))
 
         # WHICH LEGS THIS STRATUM POOLS. `_log` has been carried since this file
         # was written and never printed, so every contrast it has produced was a
