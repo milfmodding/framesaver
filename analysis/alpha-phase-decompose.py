@@ -39,17 +39,55 @@ parents = sorted(x for x in keys if "/" not in x)
 frame_a = st.median([o.get("frame", {}).get("avg") for o in by[a]])
 frame_b = st.median([o.get("frame", {}).get("avg") for o in by[b]])
 
+def per_window(k):
+    """(median summed-parents, median unaccounted, n) built PER WINDOW then aggregated.
+
+    FIXED 2026-07-30. This block previously accumulated `pa += med(a, p)` across groups and
+    reported `frame_a - pa` as time outside the player loop. That is the aggregation-order defect:
+    eight groups do not peak in the same window, so a sum of eight medians is larger than the
+    median of the sums, and the residual against the frame median is correspondingly inflated.
+    It is the exact error that produced a "20% of the frame gap sits outside the player loop"
+    claim which was 2% when built per window - already written into my notes on 2026-07-29 and
+    still standing in the file that generated it. Recording a rule is not applying it.
+
+    Windows missing a group are counted and reported rather than silently summed short: a partial
+    sum inflates `unaccounted` in exactly the direction that looks like a finding.
+    """
+    sums, unacc, partial = [], [], 0
+    for o in by[k]:
+        ph = o.get("phases") or {}
+        vals = [(ph.get(p) or {}).get("avg") for p in parents]
+        fr = (o.get("frame") or {}).get("avg")
+        if fr is None:
+            continue
+        if any(v is None for v in vals):
+            partial += 1
+            continue
+        s = sum(vals)
+        sums.append(s)
+        unacc.append(fr - s)
+    return (st.median(sums) if sums else float("nan"),
+            st.median(unacc) if unacc else float("nan"), len(sums), partial)
+
+
 print("PARENTS ONLY - do the player-loop groups account for the frame?\n")
 print("  %-18s %8s %8s %8s" % ("group", "L1", "L4", "delta"))
-pa = pb = 0.0
+pa_wrong = pb_wrong = 0.0
 for p in sorted(parents, key=lambda p: -(med(b, p) or 0)):
     x, y = med(a, p) or 0.0, med(b, p) or 0.0
-    pa += x; pb += y
+    pa_wrong += x; pb_wrong += y
     print("  %-18s %8.3f %8.3f %+8.3f" % (p, x, y, y - x))
-print("  %-18s %8.3f %8.3f %+8.3f" % ("SUM OF GROUPS", pa, pb, pb - pa))
+sa, ua, na, qa = per_window(a)
+sb, ub, nb, qb = per_window(b)
+print("  %-18s %8.3f %8.3f %+8.3f  <- median of per-window SUMS" % ("SUM OF GROUPS", sa, sb, sb - sa))
 print("  %-18s %8.3f %8.3f %+8.3f" % ("frame.avg", frame_a, frame_b, frame_b - frame_a))
-print("  %-18s %8.3f %8.3f %+8.3f  <- outside every group" %
-      ("unaccounted", frame_a - pa, frame_b - pb, (frame_b - pb) - (frame_a - pa)))
+print("  %-18s %8.3f %8.3f %+8.3f  <- outside every group, per window then aggregated" %
+      ("unaccounted", ua, ub, ub - ua))
+print("  (windows used %d and %d; dropped for a missing group %d and %d)" % (na, nb, qa, qb))
+print("  aggregation-order check, the WRONG form (sum of per-group medians), for size only:")
+print("    SUM OF GROUPS %8.3f %8.3f    unaccounted %8.3f %8.3f  <- inflated by %+.3f / %+.3f"
+      % (pa_wrong, pb_wrong, frame_a - pa_wrong, frame_b - pb_wrong,
+         (frame_a - pa_wrong) - ua, (frame_b - pb_wrong) - ub))
 
 print("\nINSIDE EACH GROUP: named leaves against the remainder\n")
 tot_named = 0.0

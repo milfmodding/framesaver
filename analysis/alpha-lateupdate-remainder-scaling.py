@@ -109,9 +109,13 @@ for label, tag in LEGS:
 
     print("=== %s   skipLate=%s   %d steady-state windows" % (label, skip_late, len(rows)))
     print("    median LateUpdate  %6.3f ms" % median([r["late"] for r in rows]))
-    print("    median playerLate  %6.3f ms  (%.0f%% of it)"
+    # Median of the per-window SHARE, not median(pl)/median(late). The two quantities are
+    # measured in the same window, so they are paired, and a ratio of two medians need not be
+    # attained in any window that happened. This line carried the wrong form while the file's
+    # own purpose was to correct that error elsewhere.
+    print("    median playerLate  %6.3f ms  (%.0f%% of it, per-window share)"
           % (median([r["pl"] for r in rows]),
-             100.0 * median([r["pl"] for r in rows]) / median([r["late"] for r in rows])))
+             100.0 * median([r["pl"] / r["late"] for r in rows if r["late"]])))
     print("    median REMAINDER   %6.3f ms  = %.2f%% of a %.3f ms frame"
           % (median([r["rem"] for r in rows]), median([r["share"] for r in rows]),
              median([r["fr"] for r in rows])))

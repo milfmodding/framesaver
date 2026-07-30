@@ -85,18 +85,25 @@ for r in rows:
     by[r["leg"]].append(r)
 
 acc = defaultdict(list)
+# Per-leg fits kept keyed as well as accumulated. The subtotal below is a SUM of three slopes
+# fitted on the SAME legs, so it is paired and must be summed per leg and aggregated last.
+# `acc[f]` drops None fits, so pairing its lists by index would align different legs.
+per_leg = {}
 for leg in by:
     v = by[leg]
     xs = [r["awake"] for r in v]
+    fits = {}
     for f in ("anim", "late", "tick", "ai"):
         res = ols(xs, [r[f] for r in v])
+        fits[f] = res
         if res:
             acc[f].append(res)
+    per_leg[leg] = fits
 
 print("cost of ONE MORE AWAKE BOT, by component (ms/bot, within leg, steady state)\n")
 print("%-34s %9s %6s %8s %10s" % ("component", "ms/bot", "legs", "med R2", "CI>0 legs"))
 print("-" * 72)
-paused_gated = 0.0
+paused_gated_wrong = 0.0
 LABEL = {
     "anim": "animator state machine  [paused]",
     "late": "Player.LateUpdate       [paused]",
@@ -112,12 +119,25 @@ for f in ("anim", "late", "tick", "ai"):
           % (LABEL[f], b, len(v), med([x["r2"] for x in v]),
              sum(1 for x in v if x["b"] - x["ci"] > 0)))
     if f != "ai":
-        paused_gated += b
+        paused_gated_wrong += b
 
-ai = med([x["b"] for x in acc["ai"]])
+# FIXED 2026-07-30. `paused_gated` was built by adding three medians taken across legs, which is
+# the aggregation-order defect: the three slopes come from the SAME legs and are paired, so a sum
+# of their medians need not be attained by any leg that happened. This is the number that priced
+# the role-distance proposal at 1.25 ms, so the wrong form left the file and reached Sophia.
+# Built per leg and aggregated last; the wrong form is retained beside it so the size is visible.
+PAUSED = ("anim", "late", "tick")
+per_leg_sums = [sum(per_leg[lg][f]["b"] for f in PAUSED)
+                for lg in per_leg if all(per_leg[lg].get(f) for f in PAUSED)]
+paused_gated = med(per_leg_sums) if per_leg_sums else float("nan")
+ai_vals = [per_leg[lg]["ai"]["b"] for lg in per_leg if per_leg[lg].get("ai")]
+ai = med(ai_vals)
 print("-" * 72)
-print("%-34s %9.4f   <- returns at 100%% when a bot is woken" % ("paused-gated subtotal", paused_gated))
+print("%-34s %9.4f   <- returns at 100%% when a bot is woken   (%d of %d legs carry all three)"
+      % ("paused-gated subtotal", paused_gated, len(per_leg_sums), len(per_leg)))
 print("%-34s %9.4f   <- the only term a 1-in-5 period discounts" % ("brain tick", ai))
+print("%-34s %9.4f   <- sum of medians, the WRONG form, for size only (%+.4f)"
+      % ("  [aggregation-order check]", paused_gated_wrong, paused_gated_wrong - paused_gated))
 print("\nnote: UpdateManual's 22 subsystem ticks are NOT in aiTotal (which times the brain")
 print("      scheduler) and have no phase of their own in the telemetry. The one term")
 print("      Sophia's 20%% actually applies to is therefore UNMEASURED - so this is a")
@@ -125,9 +145,18 @@ print("      lower bound on the wake cost, not an estimate of it.")
 
 print("\nwhat rule 3 costs, if it wakes N distant bots (paused-gated terms at 100%,")
 print("brain at 20%, subsystems unknown and additional)")
-base = med([r["anim"] + r["late"] + r["tick"] + r["ai"] for r in rows])
-print("  %-6s %12s %14s" % ("N", "added ms", "as % of p50 12.58ms"))
+# The denominator is an EXTERNAL constant, not measured here, and it is named so nobody reads
+# the percentages as self-contained. Found while auditing this file: it previously also computed
+# `base` as the median per-window SUM of the four components and then never used it, while the
+# percentages divided by this hardcoded 12.58 - an unused variable sitting one line above a magic
+# number is how a reader concludes the number was derived. `base` was a component subtotal
+# anyway, not a frame time, so using it would have been worse than dropping it.
+P50_MS_EXTERNAL = 12.58
+comp = med([r["anim"] + r["late"] + r["tick"] + r["ai"] for r in rows])
+print("  (denominator %.2f ms is an external p50, not from this file; the four components"
+      " here median %.2f ms per frame)" % (P50_MS_EXTERNAL, comp))
+print("  %-6s %12s %14s" % ("N", "added ms", "as %% of p50 %.2fms" % P50_MS_EXTERNAL))
 for n in (5, 10, 15, 20):
     add = n * (paused_gated - 0.8 * ai)
-    print("  %-6d %12.2f %13.0f%%" % (n, add, 100.0 * add / 12.58))
+    print("  %-6d %12.2f %13.0f%%" % (n, add, 100.0 * add / P50_MS_EXTERNAL))
 print("\n  for scale: the ENTIRE proposal, both levers perfect, is worth 1.25 ms")

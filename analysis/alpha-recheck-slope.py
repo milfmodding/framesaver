@@ -116,6 +116,10 @@ hdr = "%-30s %3s %8s %8s   %-21s %-21s %-21s"
 print(hdr % ("leg", "n", "awk rng", "tot rng", "ai ~ awake", "ai ~ total", "anim ~ awake"))
 print("-" * 122)
 acc = defaultdict(list)
+# Keyed by leg as well as accumulated, because anything PAIRED must be built per leg and
+# aggregated last. `acc[k]` drops None fits, so two of its lists can have different lengths and
+# pairing them by list index silently aligns different legs. See the C4/C5 note below.
+per_leg = {}
 for leg in sorted(by):
     v = by[leg]
     aw = [r["awake"] for r in v]
@@ -133,6 +137,7 @@ for leg in sorted(by):
         return "%7.4f +/- %-7.4f" % (f["b"], f["ci"]) if f else "%-21s" % "(x constant)"
     print(hdr % (leg, len(v), "%d-%d" % (min(aw), max(aw)), "%d-%d" % (min(to), max(to)),
                  cell(fits["ai_aw"]), cell(fits["ai_to"]), cell(fits["an_aw"])))
+    per_leg[leg] = fits
     for k, f in fits.items():
         if f:
             acc[k].append(f)
@@ -158,20 +163,71 @@ print("    within-leg corr(awake, asleep): median %.2f over %d legs" % (med(cs),
 print("    (strongly negative => awake and asleep are near-redundant given total, so a")
 print("     joint two-predictor fit is ill-conditioned and is NOT reported here)")
 
+def paired(k1, k2, op):
+    """op(fit1.b, fit2.b) per LEG, then the median. Never op on two medians.
+
+    FIXED 2026-07-30. This block previously summed and divided medians taken across legs -
+    med(an_aw) + med(ai_aw), and an/ai as a ratio of two medians. Both are the aggregation-order
+    defect: the two slopes are fitted on the SAME legs, so they are paired, and a sum or ratio of
+    two medians need not be attained by any leg that happened. It is also the exact error already
+    written into my own notes on 2026-07-29 (a +0.457 animation-family delta that was +0.394 built
+    per window) - the lesson was recorded and this instance was left standing in the file named
+    `recheck-slope`. Recording a rule is not applying it.
+
+    Pairing is by LEG NAME, not list index, because `acc[k]` omits None fits and two of its lists
+    can therefore be different lengths - which would align different legs and never complain.
+    """
+    vals, dropped = [], 0
+    for leg, f in per_leg.items():
+        a, b = f.get(k1), f.get(k2)
+        if not a or not b:
+            dropped += 1
+            continue
+        try:
+            vals.append(op(a["b"], b["b"]))
+        except ZeroDivisionError:
+            dropped += 1
+    return (med(vals) if vals else None), len(vals), dropped
+
+
 print("\nC4  THE +10 BOT CONSEQUENCE, UNDER EACH ESTIMATOR")
 base = med([r["frame"] for r in rows])
 print("    baseline median frame %.2f ms (%.1f fps)" % (base, 1000.0 / base))
-for label, slope in (("frame~awake (Delta disowns this one as confounded)",
-                      med([x["b"] for x in acc["fr_aw"]])),
-                     ("animBegin + aiTotal, both ~awake (the bot-driven phases)",
-                      med([x["b"] for x in acc["an_aw"]]) + med([x["b"] for x in acc["ai_aw"]])),
-                     ("animBegin + aiTotal, both ~total",
-                      med([x["b"] for x in acc["an_to"]]) + med([x["b"] for x in acc["ai_to"]]))):
+sum_aw, n_aw, d_aw = paired("an_aw", "ai_aw", lambda a, b: a + b)
+sum_to, n_to, d_to = paired("an_to", "ai_to", lambda a, b: a + b)
+rows_out = [("frame~awake (Delta disowns this one as confounded)",
+             med([x["b"] for x in acc["fr_aw"]]), len(acc["fr_aw"]), 0),
+            ("animBegin + aiTotal, both ~awake (the bot-driven phases)", sum_aw, n_aw, d_aw),
+            ("animBegin + aiTotal, both ~total", sum_to, n_to, d_to)]
+for label, slope, n, dropped in rows_out:
+    if slope is None:
+        print("      %-56s (no leg carries both fits)" % label)
+        continue
     new = base + 10.0 * slope
-    print("      %-56s %5.3f ms/bot -> %5.2f ms (%.1f fps)"
-          % (label, slope, new, 1000.0 / new))
+    print("      %-56s %5.3f ms/bot -> %5.2f ms (%.1f fps)   legs %d%s"
+          % (label, slope, new, 1000.0 / new, n,
+             ", %d dropped" % dropped if dropped else ""))
 
-ai, an = med([x["b"] for x in acc["ai_aw"]]), med([x["b"] for x in acc["an_aw"]])
-print("\n    animation : AI ratio on the awake predictor = %.1fx" % (an / ai) if ai else "")
-ai2, an2 = med([x["b"] for x in acc["ai_to"]]), med([x["b"] for x in acc["an_to"]])
-print("    animation : AI ratio on the total predictor = %.1fx" % (an2 / ai2) if ai2 else "")
+# What the old estimator said, kept visible so the size of the defect is on the record rather
+# than quietly corrected away. If these two lines ever agree, that is luck and not validation -
+# on one of our two legs an identical aggregation-order error agreed to 0.001 ms.
+old_aw = med([x["b"] for x in acc["an_aw"]]) + med([x["b"] for x in acc["ai_aw"]])
+old_to = med([x["b"] for x in acc["an_to"]]) + med([x["b"] for x in acc["ai_to"]])
+print("    aggregation-order check (sum of medians, the WRONG form, for size only):")
+print("      ~awake  wrong %.4f  vs paired %.4f  = %+.4f ms/bot (%+.2f ms at +10 bots)"
+      % (old_aw, sum_aw, old_aw - sum_aw, 10.0 * (old_aw - sum_aw)) if sum_aw else "")
+print("      ~total  wrong %.4f  vs paired %.4f  = %+.4f ms/bot (%+.2f ms at +10 bots)"
+      % (old_to, sum_to, old_to - sum_to, 10.0 * (old_to - sum_to)) if sum_to else "")
+
+print("\nC5  ANIMATION : AI RATIO, per leg then aggregated")
+for pred, k_an, k_ai in (("awake", "an_aw", "ai_aw"), ("total", "an_to", "ai_to")):
+    r, n, dropped = paired(k_an, k_ai, lambda a, b: a / b)
+    wrong = (med([x["b"] for x in acc[k_an]]) / med([x["b"] for x in acc[k_ai]])
+             if acc[k_ai] and med([x["b"] for x in acc[k_ai]]) else None)
+    if r is None:
+        print("    on the %-5s predictor: no leg carries both fits" % pred)
+        continue
+    print("    on the %-5s predictor: %.1fx   (legs %d%s)"
+          % (pred, r, n, ", %d dropped" % dropped if dropped else ""))
+    if wrong:
+        print("      ratio-of-medians, the wrong form, would say %.1fx" % wrong)
