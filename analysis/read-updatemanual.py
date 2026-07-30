@@ -127,8 +127,8 @@ def eligible(rows):
     where a window with no bots is a legitimate observation rather than a gap.
     """
     # drop_teardown=TRUE here. Every quantity this file reports divides by a bot
-    # count, and a teardown window's census is dead or stale - so the denominator
-    # is wrong rather than noisy. A per-FRAME reader should leave it False: the
+    # count, and a teardown window's census is dead or stale, so the
+    # denominator is wrong rather than noisy. A per-FRAME reader should leave it False: the
     # frame data in those windows is good (2772-7019 frames), and excluding them
     # would throw away real observations. Same shape as require_population:
     # correct for one quantity, wrong for another, so steady.py offers it rather
