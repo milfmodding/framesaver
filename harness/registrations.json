@@ -91,6 +91,25 @@
       "ifItFails": "Every assumption in the estimate pushes the same way, so it is safe to argue AGAINST the lever and unsafe to argue for it. If the drop lands above 0.65 ms the ceiling table is wrong and Delta's 1.6-4.9% AI share needs re-deriving before any release claim quotes it.",
       "note": "Delta-A-aiTotal > 0 is a NON-TAUTOLOGICAL engagement check, which tickedSum/liveSum cannot be: that ratio is 1.0000 by construction in the control arm. Keep both - agents.slicing false means the flag never set, delta-aiTotal zero means it set and did nothing.",
       "reductioNote": "Streets, Customs and Interchange are MISSPECIFICATION, not sampling error, and the distinction matters for whether the method could ever work there: their slopes exclude zero comfortably ([0.0524,0.0776], [0.0239,0.0466], [0.0174,0.0834]) and STILL imply shares of 98-675% with negative intercepts. Within a map live barely moves, so the fit extrapolates to live=0 from far outside its data. That is 'the method does not apply here', not 'we could not measure it here'."
+    },
+    {
+      "id": "standby-teardown-by-questingbots",
+      "claim": "Raid 3 (QuestingBots installed, reclaim OFF): bots.asleep = 0 and bots.animCulled = 0 in EVERY in-raid window, and mean frame time above raid 2 by at least 1.16 ms; point estimate 4.5 ms at 13 paused bots. Raid 2 (reclaim ON): bots.asleep > 0 and QuestingBots present in agents.mods.",
+      "source": "Alpha, 2026-07-29, from raid 1 (framesaver-20260729-185430-raid1-lighthouse): UpdateManual measured at 0.0895 ms per awake bot per frame with 13 paused / 10 awake. Mechanism from ModCompat.ClearsStandByFlag. Corpus slopes animator 0.1357, playerLate 0.0955, playerTick 0.0255 ms per awake bot per frame.",
+      "precondition": "resolved",
+      "preconditionWas": "The magnitude needs the four paused-gated terms to be DISJOINT, or the sum double-counts and the floor is fiction. Unverified until raid 1 produced a direct UpdateManual number.",
+      "resolvedBy": "Alpha, 2026-07-29",
+      "resolvedNote": "Disjointness established from the patches' own target methods rather than by argument. UpdateManualTimingPatches times BotOwner.UpdateManual and its docstring states outright that it is NOT inside aiTotal, which is BotsController.method_0; the animator cull is Unity's animation pass; playerLate and playerTick are LateUpdate-phase skips with their own config flags. Four terms in four phases. THE FALSIFIABLE PART IS THE EVENT CRITERION, NOT THE MAGNITUDE: asleep reaching 0 follows from ClearsStandByFlag being a boolean and needs no slope at all. The 4.5 ms point estimate inherits three corpus slopes whose CIs are not propagated here, so the assumption-free floor is the 1.16 ms from the ONE term measured inside raid 1 itself. A magnitude quoted tighter than its evidence manufactures confirmations - that is the correction Delta made to my last registration and it applies unchanged.",
+      "outcomes": {
+        "asleepZeroWithoutReclaim": "Mechanism confirmed. QuestingBots takes the whole stand-by system down - cull, both skips, sniper exemption - so reclaim is not an optimisation, it is what keeps Framesaver functional at all when QuestingBots is installed. Reclaim then has to ship TRUE, which REVERSES the default decided on cost-bearing grounds, and the config description has to say why.",
+        "asleepNonZeroWithoutReclaim": "ClearsStandByFlag's premise is wrong for this version of QuestingBots. The docstring would then describe behaviour nobody has observed in this install, and raid 3's entire rationale goes with it.",
+        "asleepZeroWITHReclaim": "Reclaim is broken rather than merely defaulted off. The most alarming branch, and it is invisible without the census: every other signal would report stand-by as enabled.",
+        "gapBelowFloor": "The floor came from a direct measurement at 13 paused bots, so a smaller gap means either the paused population differs or UpdateManual's awake cost does not transfer to woken-distant bots - which is the upper-bound caveat attached to it, arriving as data rather than as a hedge.",
+        "gapAboveFloorBelowPoint": "Expected. The point estimate prices woken bots at the awake population's rate, and awake bots are selected for exactly the expensive states.",
+        "gapAbovePoint": "Something outside the four named terms also keys off paused. Enumerate every read of the paused flag before crediting any of them."
+      },
+      "ifItFails": "If asleep is non-zero without reclaim, raid 3 measured nothing and must not be scored - the p50 doubling Sophia saw would need another explanation entirely. Do not report the 4.5 ms figure to anyone, DanW included, unless the event criterion fires first: a magnitude is meaningless if the mechanism never engaged.",
+      "note": "Raids 2 and 3 CANNOT be arms within one raid: TryReclaimStandBy sets the flag and nothing sets it back, so the treatment is sticky per bot. Between-raid is required here and is legitimate, because the effect is order 4 ms against a 0.68-0.74 ms between-leg noise floor - unlike the slicing contrast, which is not."
     }
   ]
 }
