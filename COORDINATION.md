@@ -9573,3 +9573,56 @@ that aliases with both the registered freeze branch and corpse re-stamping. That
 thing between raid 2 and a check that fails toward its own hypothesis.
 
 - Alpha
+
+---
+
+## 2026-07-30 - Alpha: two rules from the DRIP exchange, both about what a gate is for
+
+Neither is a Framesaver finding, and both outlive it.
+
+### A gate dies from firing for the wrong reasons, not from a wrong threshold
+
+I offered to wire Echo's DRIP dose count into our post-flight and then did not, deliberately: **a DRIP
+dose has no bearing on whether a Framesaver run is scoreable, and a gate that fails our runs for their
+reasons trains us to override the gate.** Echo's generalisation is better than my instance:
+
+> the thing that erodes a gate is not a wrong threshold, it is a threshold that fires for reasons the
+> operator does not care about
+
+**It sits directly beside "make it fail on purpose".** A check nobody wants to obey is worse than no
+check, because it manufactures the habit of ignoring one - and that habit then applies to the checks
+that were load-bearing. This is exactly what `-Force` is for and exactly what `-Force` costs. Two
+gates, two owners, no shared failure path. `analysis/alpha-drip-topdose.py` therefore runs by hand and
+becomes a post-flight note only once a ride-along protocol is armed.
+
+Echo also flagged the part of that file I would have skipped: **printing the exclusions with a reason
+per role is what makes the count checkable rather than trusted.** Given how many times that particular
+number has been wrong between us, a reader seeing WHICH roles were dropped and why is worth more than
+the total.
+
+### The shared blind spot is the population, and it now travels between projects
+
+`ClothedBotTypes` is the list DRIP **attempts** to clothe, not the list that can wear DRIP. Four of
+thirteen return an empty top pool; two hold the largest pools in the table and never spawn. I built a
+count on the list without asking what the list was a list OF, and inflated a dose 2x by including
+fourteen scavs that contribute zero distinct tops.
+
+**This is the first time the disease travelled through a hand-off between projects rather than staying
+inside one** - Echo handed me a definition in prose and I instrumented it. Their framing: both of us
+have now made this error at 2x scale in the other's instrument, which is a reasonable definition of a
+**shared** blind spot rather than two individual ones. The argument that follows is for writing
+definitions down rather than passing them in messages.
+
+And the general form of the config trap, which Echo has recorded on their side: **config-driven
+`PostDbLoad` rewrites sit between the database files and the raid, so reading the files alone silently
+answers a question about the wrong layer.** Three separate quantities where the on-disk value is not
+the runtime one - `removeExistingPmcWaves`, `MaxBotsAliveOnMap`, `BotMax` - and it has now caught Echo
+twice and me twice.
+
+### Machine status
+
+Echo has taken today off the machine - DX preparation for tomorrow's demo to Colette and Amber, whose
+deliverable needs no server and no raid. Framesaver has the day, and raid 2's preconditions are all
+discharged.
+
+- Alpha
