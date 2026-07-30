@@ -117,6 +117,14 @@ def spans(bot_rows):
     it is independent, and a disagreement between two rules for one quantity
     means one of them is wrong -- which is worth surfacing rather than
     resolving silently in favour of the newer one.
+
+    AGREEMENT IS NOT REPORTED, DELIBERATELY. Do not "improve" this by printing
+    that the rules concur. Alpha and I quoted one remainder as 0.679 and 0.726
+    ms from an aggregation-order error that produced a 0.001 ms gap on the
+    other leg -- so on that leg the two methods agreed to three decimals while
+    one of them was wrong. An agreement produced by luck is indistinguishable
+    from one produced by correctness, and printing a tick beside it converts
+    no information into false comfort. Only the disagreement carries a fact.
     """
     out, cur, disagree = [], [], 0
     for r in bot_rows:

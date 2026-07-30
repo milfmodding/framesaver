@@ -337,12 +337,19 @@ def main(argv):
             print('  corpse count, two routes: call-rate median %.2f (used), roster'
                   % med_rate)
             print('    sample median %.2f (cross-check)' % med_census)
-            # Asymmetric on purpose. Corpses are transient, so the one-shot
-            # roster sample reading 0 is its PREDICTED value and refutes
-            # nothing - only a NONZERO reading carries information, because it
-            # means the sample landed inside a residency. A symmetric
-            # disagreement test here would fire on every honest window and
-            # then be ignored, which is how a check stops being read.
+            # Asymmetric on purpose, for two independent reasons. Corpses are
+            # transient, so the one-shot roster sample reading 0 is its
+            # PREDICTED value and refutes nothing - only a NONZERO reading
+            # carries information, because it means the sample landed inside a
+            # residency. A symmetric disagreement test would fire on every
+            # honest window and then be ignored, which is how a check stops
+            # being read.
+            #
+            # And separately: agreement between two routes is weak evidence in
+            # general. Alpha and I quoted one remainder as 0.679 and 0.726 ms
+            # from an aggregation-order error that produced a 0.001 ms gap on
+            # the other leg - two methods agreeing to three decimals while one
+            # was wrong. Do not add a line saying the routes concur.
             if med_census > 0 and med_rate > 0:
                 gap = abs(med_census - med_rate) / max(med_census, med_rate)
                 if gap > DILUTION_TOL:
