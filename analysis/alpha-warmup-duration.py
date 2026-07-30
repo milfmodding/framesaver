@@ -64,6 +64,19 @@ for path in sorted(glob.glob(os.path.join(LOG, "framesaver-*.ndjson"))):
         legs[(stem, o.get("raid"), str(o.get("map")))].append(
             (o.get("raidElapsed") or 0.0, fr["avg"], fr.get("max"), bool(o.get("final"))))
 
+# TEARDOWN EXCLUSION, added after the first run rather than before it - which is the wrong order and
+# is why it is checked rather than assumed. The first version dropped `final`, and `final` marks only
+# 17 of the 33 teardown windows: it means "the session ended", not "this window was cut short". So 16
+# truncated windows were in the LATE BASELINE this whole measurement divides by, and Gamma's
+# positional option found three more that the census-failure symptom cannot see at all.
+#
+# A truncated window's frame mean is still a valid mean over fewer frames, so the contamination
+# should be small - but "should be small" is what the baseline being wrong always looks like, and the
+# headline 4.38x divides by it. Both populations are printed so the number can be compared to itself.
+for key in legs:
+    legs[key] = legs[key][:]  # copy; the last element of each segment is the teardown window
+
+
 print("WHERE raidElapsed ACTUALLY LANDS, to confirm the boundary-clustering claim")
 allel = sorted(e for v in legs.values() for e, _a, _m, _f in v)
 buckets = defaultdict(int)
@@ -76,29 +89,37 @@ print()
 # Within-leg ratio of each early window to that leg's own late baseline. Legs with fewer than 5
 # in-raid windows cannot supply a baseline and are skipped rather than pooled.
 print("EACH EARLY WINDOW vs ITS OWN LEG'S LATER BASELINE (median of windows past 180 s)")
-print("  ordinal  n legs   median frame ratio   median worst-frame ratio")
-by_ord = defaultdict(list)
-by_ord_worst = defaultdict(list)
-for key, rows in legs.items():
-    rows = [r for r in rows if not r[3]]           # drop `final`; it is truncated
-    if len(rows) < 5:
-        continue
-    late = [a for e, a, _m, _f in rows if e >= 180.0]
-    late_w = [m for e, _a, m, _f in rows if e >= 180.0 and m]
-    if len(late) < 2:
-        continue
-    base, base_w = median(late), (median(late_w) if late_w else None)
-    if not base:
-        continue
-    for i, (e, a, m, _f) in enumerate(rows[:4]):
-        by_ord[i].append(a / base)
-        if m and base_w:
-            by_ord_worst[i].append(m / base_w)
-for i in sorted(by_ord):
-    w = by_ord_worst.get(i) or []
-    print("  window %d  %4d      %6.3f x            %s"
-          % (i + 1, len(by_ord[i]), median(by_ord[i]),
-             ("%6.2f x" % median(w)) if w else "n/a"))
+for drop_teardown in (False, True):
+    label = ("drop `final` only - the ORIGINAL run, 17 of 33 teardown windows still in the baseline"
+             if not drop_teardown else
+             "drop the LAST window of every segment - all 33, positionally")
+    print("\n  [%s]" % label)
+    print("  ordinal  n legs   median frame ratio   median worst-frame ratio")
+    by_ord = defaultdict(list)
+    by_ord_worst = defaultdict(list)
+    for key, rows in legs.items():
+        if drop_teardown:
+            rows = rows[:-1]                       # positional: the segment's last window
+        else:
+            rows = [r for r in rows if not r[3]]   # `final` only, which misses 16 of 33
+        if len(rows) < 5:
+            continue
+        late = [a for e, a, _m, _f in rows if e >= 180.0]
+        late_w = [m for e, _a, m, _f in rows if e >= 180.0 and m]
+        if len(late) < 2:
+            continue
+        base, base_w = median(late), (median(late_w) if late_w else None)
+        if not base:
+            continue
+        for i, (e, a, m, _f) in enumerate(rows[:4]):
+            by_ord[i].append(a / base)
+            if m and base_w:
+                by_ord_worst[i].append(m / base_w)
+    for i in sorted(by_ord):
+        w = by_ord_worst.get(i) or []
+        print("  window %d  %4d      %6.3f x            %s"
+              % (i + 1, len(by_ord[i]), median(by_ord[i]),
+                 ("%6.2f x" % median(w)) if w else "n/a"))
 
 print()
 print("READ IT AS: a ratio near 1.000 means that window was already at the leg's own steady level,")
