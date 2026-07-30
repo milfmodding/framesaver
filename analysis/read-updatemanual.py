@@ -511,6 +511,32 @@ def main(argv):
         if dropped:
             print('  %d window(s) dropped: one bucket empty. Excluded from the pooled sums as' % dropped)
             print('    well as the spread - an unpaired awake total inflates the contrast.')
+
+        # WHICH LEGS THIS STRATUM POOLS. `_log` has been carried since this file
+        # was written and never printed, so every contrast it has produced was a
+        # pooling of unnamed legs. A stratification that does not disclose its
+        # composition just moves the assumption one level down - Alpha's phrase,
+        # after their per-map split turned out to be 75% one leg.
+        #
+        # Not theoretical: factory4_day pools a leg with `asleep` 0 across 19
+        # windows at 21.91 ms p50 beside two healthy legs at 9.34 and 8.44, on
+        # identical standBy/cullSleeping/skipLate/skipTick. No config splits it.
+        # The empty-bucket filter above catches a leg where NOTHING slept, since
+        # pausedCalls goes to zero - but a partly-broken leg passes, and then
+        # only the leg list shows it.
+        if ws:
+            legs = collections.Counter(w.get('_log', '?') for w in ws)
+            if len(legs) > 1:
+                print('  pooled from %d legs:' % len(legs))
+                for lg, n in legs.most_common():
+                    print('    %-42s %3d windows  %4.0f%%'
+                          % (lg.split('\\')[-1][-42:], n, 100.0 * n / len(ws)))
+                top = legs.most_common(1)[0][1] / float(len(ws))
+                if top > 0.5:
+                    print('    ! one leg is %.0f%% of this stratum - it is not a pooled' % (top * 100))
+                    print('      estimate so much as that leg with company.')
+            else:
+                print('  single leg: %s' % list(legs)[0].split('\\')[-1][-50:])
         if not ws:
             print('  ! no window in this stratum has both buckets populated - no contrast.')
             failed.append('%s has no two-bucket window' % stratum_label(key))
