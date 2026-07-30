@@ -407,11 +407,27 @@ class P {
         Check("sleep count", tj.Contains("\"slept\":1"), true);
         Check("sleep ms does not land in wokenMs", tj.Contains("\"sleptMs\":0.25"), true);
 
+        // A death is neither a wake nor a sleep, and the proxy this replaces
+        // could not tell it from either - which is what put deaths, and the
+        // fights that contain them, inside the churn correlation.
+        var died = sbt.GetMethod("Died", BindingFlags.NonPublic | BindingFlags.Static);
+        died.Invoke(null, new object[] { true });
+        died.Invoke(null, new object[] { false });
+        died.Invoke(null, new object[] { true });
+        var sbt3 = new System.Text.StringBuilder();
+        sbtAppend.Invoke(null, new object[] { sbt3 });
+        string dj = sbt3.ToString();
+        Check("deaths while awake counted", dj.Contains("\"diedAwake\":2"), true);
+        Check("deaths while asleep kept separate", dj.Contains("\"diedAsleep\":1"), true);
+        Check("a death is not a wake", dj.Contains("\"woken\":2"), true);
+        Check("a death is not a sleep", dj.Contains("\"slept\":1"), true);
+
         sbtReset.Invoke(null, null);
         var sbt2 = new System.Text.StringBuilder();
         sbtAppend.Invoke(null, new object[] { sbt2 });
-        Check("ResetWindow zeroes both directions",
-              sbt2.ToString(), "{\"woken\":0,\"wokenMs\":0,\"slept\":0,\"sleptMs\":0}");
+        Check("ResetWindow zeroes every field",
+              sbt2.ToString(),
+              "{\"woken\":0,\"wokenMs\":0,\"slept\":0,\"sleptMs\":0,\"diedAwake\":0,\"diedAsleep\":0}");
 
         // A comma-decimal locale turns "wokenMs":2.5 into "wokenMs":2,5 and
         // every window in the file stops parsing. Both timers pass
@@ -441,6 +457,49 @@ class P {
         }
 
         foreach (var lit in new[] { ",\"standByTransitions\":", "{\"woken\":", ",\"sleptMs\":" })
+            Check($"emits {lit}", inUs(lit), true);
+
+        // ---- Protocol @directives -------------------------------------------
+        //
+        // Load() needs BepInEx's config to resolve setting names and Due reads
+        // a Unity clock, so neither runs here. Directive() is the half that can
+        // and the half that carries the parsing hazards.
+        Console.WriteLine("\nProtocolRunner @directives");
+        var prType = asm.GetType("Framesaver.ProtocolRunner");
+        var stepType = prType.GetNestedType("Step");
+        var directive = prType.GetMethod("Directive", BindingFlags.NonPublic | BindingFlags.Static);
+        var defSecs = prType.GetField("_defaultSeconds", BindingFlags.NonPublic | BindingFlags.Static);
+        var secsField = stepType.GetField("Seconds");
+
+        object step = Activator.CreateInstance(stepType);
+        Check("@seconds on a step",
+              directive.Invoke(null, new object[] { "seconds", "120", step, 1 }), true);
+        Check("step box parsed", secsField.GetValue(step), 120f);
+
+        Check("@seconds before any step is the file default",
+              directive.Invoke(null, new object[] { "seconds", "90", null, 1 }), true);
+        Check("file default parsed", defSecs.GetValue(null), 90f);
+
+        Check("@name still works as a directive",
+              directive.Invoke(null, new object[] { "name", "someone-elses-experiment", null, 1 }), true);
+        Check("name captured", prType.GetProperty("Name").GetValue(null), "someone-elses-experiment");
+
+        // The decimal separator again, in the one place a foreign operator is
+        // most likely to hit it. Parsed with the current culture, "0.5" reads
+        // as 5 under de-DE - a box eight times too long, silently, in someone
+        // else's experiment rather than ours.
+        var prev2 = System.Threading.Thread.CurrentThread.CurrentCulture;
+        try {
+            System.Threading.Thread.CurrentThread.CurrentCulture =
+                new System.Globalization.CultureInfo("de-DE");
+            object step2 = Activator.CreateInstance(stepType);
+            directive.Invoke(null, new object[] { "seconds", "0.5", step2, 1 });
+            Check("@seconds survives de-DE", secsField.GetValue(step2), 0.5f);
+        } finally {
+            System.Threading.Thread.CurrentThread.CurrentCulture = prev2;
+        }
+
+        foreach (var lit in new[] { ",\"stepSeconds\":", "unknown directive '@" })
             Check($"emits {lit}", inUs(lit), true);
 
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
