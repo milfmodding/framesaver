@@ -80,6 +80,70 @@ era stale is how it happens. `windowSeconds` is the single key gained.
 gained and I can name two of them; guessing the third and writing `23` would put a fabricated count in
 the primary dating instrument. Confirm it from the first raid-2 log and replace this row.
 
+### The 30-second window era, and the warm-up trap that comes with it
+
+**From the mod-off marathon onward, `Window seconds` is 30 rather than 60.** This is not a `cfg` key
+count change — `windowSeconds` has been in `cfg` since era D — so **it does not move an era boundary
+and cannot be dated by key count.** Read the value, not the era.
+
+**THE TRAP, and it is the one a fresh reader hits first.** `raidElapsed` is stamped at the window
+*close*, so a seconds-based warm-up threshold is not window-length neutral:
+
+| threshold | 60 s windows | 30 s windows |
+|---|---|---|
+| `raidElapsed >= 120` | discards the first **60 s** | discards the first **90 s** |
+
+So a 30 s leg read against a 60 s leg under the old threshold carries **30 s of extra warm-up
+exclusion**, and since frame time is elevated early, the 30 s leg looks *better* for reasons that
+have nothing to do with what changed. **Anyone differencing a 30 s leg against a 60 s leg must know
+this before reading the difference.**
+
+**Warm-up is 60 s, measured, not assumed.** `alpha-warmup-duration.py`, each early window against its
+own leg's later baseline over 30 legs:
+
+    window   frame mean ratio   worst-frame ratio
+      1           1.008              4.38
+      2           1.053              0.98
+      3           1.061              0.97
+
+The damage is **one window and entirely in the tail**. Window 1's mean is *at* baseline and in fact
+the lowest of the four, because early raid has fewer bots awake — so **a mean-based warm-up check
+finds nothing and concludes there is no warm-up.** `WARMUP_S = 120` was inherited and over-stated the
+real figure by a factor of two.
+
+**The window-length-neutral rule: keep a window only if it BEGINS after warm-up ends.** A window
+stamped `e` of length `w` covers `[e−w, e]`, so `raidElapsed − windowSec >= 60`. At 60 s that is
+`e >= 120`, identical to the old threshold; at 30 s it is `e >= 90`, excluding the first 60 s.
+
+**Verified as equivalent rather than asserted: 418 of 418 in-raid windows agree with `>= 120`, zero
+disagreements** (`alpha-warmup-rule-equivalence.py`). So adopting it is not an era change — 60 s legs
+keep exactly what they kept, and only 30 s legs move, toward matching them.
+
+**A rule that cannot resolve the window length must REFUSE.** Era A/B/C sample lines carry
+`windowSec: 0`; resolution order is `windowSec` → `cfg.windowSeconds` → `header.windowSeconds`. An
+unresolved length treated as zero keeps every window — absent-is-not-zero, in a new place.
+
+**And the near-miss, recorded because it is the useful part.** The first rule proposed for this was
+`raidElapsed > 60`. Window 1 is stamped **60.2**, not 60.0, so that predicate *keeps* the one window
+carrying the 4.38× spike — the exact opposite of the intent. The stamp lands just past the nominal
+boundary and nobody had looked.
+
+**What 30 s does NOT change.** Per-map percentile precision. It is set by total frames, not by how
+they are chopped up: per-window noise rises by √2 and the window count rises by √2, and they cancel
+exactly. Simulated over 400 trials at 10/20/40/80 windows — flat, marginally worse at finer windows
+(`alpha-window-length-invariance.py`). Two of us claimed a 1.41× gain; it does not exist. **The real
+gains are finer exclusion granularity — a contaminated stretch costs 30 s of record instead of 60 —
+and clearing the window-count floors that several gates are written against.**
+
+**Also unchanged: PresentMon-derived percentiles have no windows in them at all.** `alpha-fps-percentiles.py`
+pools raw frames and uses window boundaries only for in-raid containment. But `framePct.p75` **is**
+window-derived, and it is the gate metric on the six maps without a capture — so for two thirds of the
+maps the windowed figure is a gate input. Same answer, but "it doesn't arise" is wrong there.
+
+**`framePct.p999` at 30 s is the second-worst frame in the window.** A near-max wearing a percentile's
+name. It already could not separate arms at 60 s, so nothing working is lost — but it must not be
+quoted, and the refusal belongs in `percentile-discriminability.py` rather than in removing the field.
+
 ### A boundary that has NO field signature, and therefore cannot be dated by key count at all
 
 **`1ad93f4` changed a MECHANISM, not a field.** Before it, `Sleep distance` and `Wake distance` were
