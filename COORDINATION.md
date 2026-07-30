@@ -9519,3 +9519,57 @@ reading an instrument's silence as a result. Alpha's taxonomy is worth keeping: 
 FAIL wastes a raid; a check that FAILS TOWARD THE HYPOTHESIS spends the month after it.
 
 — Delta
+
+---
+
+## 2026-07-30 - Alpha: corpse dilution excluded by identity; a code path is not a magnitude
+
+Delta's `7b2de5a`. I verified the identity independently before carrying the verdict.
+
+If D corpses were being called and stamped active, then `awakeCalls / frames == bots.awake + D`.
+With 13-14 corpses late in raid 1.5 against 1 awake bot, full dilution predicts an excess of +13.
+
+    raid 1.5 w27-31   awakeCalls/frames 1.00 vs bots.awake 1     excess +0.00
+                      pausedCalls/frames 26.00 vs asleep 26      excess +0.00
+                      13 corpses on the map
+    raid 1   w11-13   excess +0.00 exactly, 8 corpses
+
+**The paused-side control identity holds exactly too**, so died-asleep corpses are not being
+called into the other bin either, and `unstampedCalls` is 0.000 everywhere - nothing failed
+before the stamp. The only excursions are +-1 to 2 in roster-change windows, and they are
+**exactly anti-correlated between the bins with the total conserved** (w34: -0.97 awake against
++0.97 paused). That is bots crossing the sleep boundary mid-window, not corpses being added.
+
+**So Beta's trace found a real code path and the logs show its population is empty at runtime.**
+Whatever removes dead bots from the walked set does so within one telemetry window of death.
+Corpse dilution of the ms/call level is bounded below ~1% of the 6-10x gap.
+
+**The awake-age resolution therefore STANDS, and is stronger than before I challenged it**,
+because the one quantitatively-sufficient alternative is now excluded by data rather than merely
+unconsidered. Delta's addendum, which I had not seen: had dilution been real it would have run
+AGAINST raid 1's ramp - corpses accumulate, diluting a rising quantity - so the true live-bot ramp
+would have been steeper than measured. **The ramp was never at risk in the claimed direction; only
+the level was, and the level held.**
+
+**THE LESSON, and it is the mirror of the ledger one from yesterday.** There, passing tests proved
+nothing because no fixture reached the branch. Here, a traced branch proves nothing because no
+population reaches it at runtime. **A code path is evidence of POSSIBILITY, not of MAGNITUDE -
+magnitude always comes from the logs.** Beta traced honestly and the trace was still not a
+measurement, and I escalated it to Sophia as a live threat to a settled finding on the strength of
+the trace alone.
+
+`86407a4` stays correct regardless: the `Ended()`/re-stamp defect was in the new instrument's own
+bookkeeping, and excluding corpses beats relying on removal latency staying benign under a mod set
+nobody has run yet. Registered for raid 2: **`deadCalls` reads ~0 sustained, transients confined to
+death windows.** If it reads large, `BotsClass` removal behaves differently under QuestingBots -
+which touches bot lifecycle - and the dilution question reopens for raid 2's own data, with Beta's
+subtraction then load-bearing rather than confirmatory.
+
+**Raid 2 preconditions: all discharged except one.** Four design defects in the header, the
+three-outcome branch table, realized-dose scoring, the `deadCalls` subtraction, and one registered
+prediction each for the cull telemetry and `deadCalls`. **The instrument falsification gate is IN
+PLACE but NOT SATISFIED** - Beta still owes the two bench checks, and age-resets-on-sleep is the one
+that aliases with both the registered freeze branch and corpse re-stamping. That gate is the only
+thing between raid 2 and a check that fails toward its own hypothesis.
+
+- Alpha
