@@ -566,12 +566,32 @@ function Test-PresentMon {
     # this after the early returns meant it was only reachable on runs that
     # needed it least.
     if (Test-Path -LiteralPath $PmWorking) {
-        $n = 0
-        do { $n++; $aside = Join-Path $LogDir ("presentmon-orphan-$n.csv") }
-        while (Test-Path -LiteralPath $aside)
-        Move-Item -LiteralPath $PmWorking -Destination $aside
-        Warn ("kept an unnamed capture from a previous run as " +
-              (Split-Path $aside -Leaf))
+        # AN IN-FLIGHT FILE IS ONLY AN ORPHAN IF NOTHING IS RUNNING. The rescue above
+        # could not tell the two apart, because both cases look identical on disk -
+        # and on 2026-07-29 a dry run, taken while Sophia was 40 minutes into a raid,
+        # tried to rename her live capture as an orphan. It failed only because
+        # PresentMon held the file open. Locking is timing-dependent, so that was luck
+        # rather than a guard: with a flush between writes it would have stolen a
+        # raid in progress and left the run capturing to a file nobody would look for.
+        #
+        # The discriminator is the process list, which this script already computes.
+        # Refuse rather than guess, and refuse REGARDLESS of -Force: overriding a
+        # pre-flight check is a decision about starting a run, never a licence to
+        # move another run's data.
+        $live = @(Test-AlreadyRunning)
+        if ($live.Count -gt 0) {
+            Bad ("an in-flight capture exists AND something is running: " + ($live -join '; '))
+            Note '  refusing to touch it - that file is a LIVE capture, not an orphan'
+            Note '  if this is genuinely a leftover, close the running processes first'
+        }
+        else {
+            $n = 0
+            do { $n++; $aside = Join-Path $LogDir ("presentmon-orphan-$n.csv") }
+            while (Test-Path -LiteralPath $aside)
+            Move-Item -LiteralPath $PmWorking -Destination $aside
+            Warn ("kept an unnamed capture from a previous run as " +
+                  (Split-Path $aside -Leaf))
+        }
     }
 
     if ($NoPresentMon) { Note 'PresentMon disabled by -NoPresentMon'; return }
