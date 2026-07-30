@@ -218,7 +218,7 @@ for.
 
     ScriptRunBehaviourLateUpdate     1.500 ms (raid 1)   1.038 ms (raid 1.5)
     already attributed to playerLate 0.781      52%      0.444      43%
-    UNATTRIBUTED remainder           0.679 ms            0.596 ms
+    UNATTRIBUTED remainder           0.679 ms            0.593 ms
     for scale, the animator          3.519 ms            1.809 ms
 
 So the target is **0.6-0.7 ms**, in a phase already half-attributed, against an animator 2-3x
@@ -240,12 +240,17 @@ The raw correlation looked like bot work: rho(remainder, awake) **+0.443** in ra
 animator's +0.681. But awake also tracks frame time (+0.518), and everything is bigger in a busy
 window. Removing the common busyness term by taking the remainder's SHARE of the frame inverts it:
 
-                                raid 1     raid 1.5
-    rho(remainder share, awake)  -0.384     -0.269
-    rho(animator  share, awake)  +0.329     +0.481   <- positive control, behaves
-    remainder, ms per awake bot  +0.0040    +0.0052
-    animator,  ms per awake bot  +0.1350    +0.0613  <- same split, same windows
-    remainder as % of animator      3.0%       8.6%
+                                raid 1     raid 1.5    (steady population, warm-up cut applied)
+    rho(remainder share, awake)  -0.509     -0.376
+    rho(animator  share, awake)  +0.419     +0.432   <- positive control, behaves
+    remainder, ms per awake bot  +0.0057    +0.0042
+    animator,  ms per awake bot  +0.1158    +0.0423  <- same split, same windows
+    remainder as % of animator      4.9%      10.1%
+
+Robust across the whole 2x2 of population choices: the remainder's share-vs-awake rho is negative
+in all four (-0.269 to -0.509) while the animator's is positive in all four (+0.329 to +0.481), and
+the per-bot price stays 0.004-0.006 ms against the animator's 0.042-0.135. The conclusion does not
+depend on the filter, which is worth more than defending one filter.
 
 **The remainder moves 0.010 ms across a two-bot swing - in both legs, to the same three
 decimals - while the animator moves 0.12-0.34 ms in the same windows.** The positive control
@@ -257,15 +262,45 @@ turn off changes it. That holds without reference to any config, which is why it
 to keep.
 
 And the ceiling if the whole thing vanished, instrument and attribution both perfect: **68.1 ->
-71.4 fps** in raid 1, **82.6 -> 86.7** in raid 1.5. Under four fps for total elimination of a
-block we have just shown we cannot move.
+71.4 fps** in raid 1 (14.681 -> 14.002 ms), **82.7 -> 87.0** in raid 1.5 (12.094 -> 11.501). Under
+four and a half fps for total elimination of a block we have just shown we cannot move.
 
-**A population note worth keeping.** Gamma read the remainder as 0.726/0.592 and I read 0.679/0.596
-from the same key - a 7% gap on raid 1 from a different steady-state filter (I drop windows with an
-empty roster and the truncated final window). Neither is wrong and it changes no conclusion, but
-this is the same population error in its mildest form: two people agreeing on a number to three
-decimals for `ScriptRunBehaviourLateUpdate` and differing on the thing derived from it, because
-"steady state" was never written down.
+### The 0.679-vs-0.726 gap was NOT the population, and both of us misdiagnosed it
+
+Gamma read the remainder as 0.726/0.592 and I read 0.679/0.596 from the same key. We both called it
+a population difference - "steady state" never having been written down - and Gamma built
+`analysis/steady.py` in response.
+
+Then the 2x2 (warm-up cut on/off x roster gate on/off) came back with **my number identical in all
+four populations: 0.679.** A population explanation that survives no population change is not the
+explanation.
+
+It was **aggregation order**, for the fifth time this week:
+
+    raid 1, warm-up 120s, n=11
+      median(LateUpdate) - median(playerLate) = 1.500 - 0.774 = 0.726   Gamma
+      median(LateUpdate - playerLate)                        = 0.679   Alpha
+    raid 1.5, warm-up 120s, n=33
+      median(LateUpdate) - median(playerLate) = 1.034 - 0.442 = 0.592   Gamma
+      median(LateUpdate - playerLate)                        = 0.593   Alpha
+
+**0.679 is the right one.** The quantity wanted is "unattributed time in a typical frame", which is
+a median OF the per-window differences. A difference of two medians is not a median of anything -
+the two medians can come from different windows, so the result need not be attained in any window
+that happened.
+
+**And the diagnostic lesson is in the second leg, not the first.** The same mistake produced a
+0.001 ms agreement on raid 1.5 and a 0.047 ms gap on raid 1. So "our two numbers agreed" was never
+evidence the method was sound - it was evidence that leg's distributions happened to line up. An
+agreement produced by luck looks exactly like an agreement produced by correctness.
+
+Worth recording that the figure in this file's own table was **0.719** before the rescan, which is
+difference-of-medians at no warm-up cut. I switched aggregation order between writing the section
+and writing the script, and did not notice until the populations refused to explain the gap.
+
+`steady.py` is still worth having - Gamma's own readers genuinely disagreed with each other, and
+one of them never tested `state == 'raid'` at all - but it was built for a defect that turned out
+not to be this one.
 
 **The cheap step that comes first: COUNT, do not time.** An instance census by type touches no
 call path and gives the denominator plus the candidate list. Then patch 5-10 types selectively
