@@ -151,13 +151,18 @@ class P {
         // before quoting a per-bot cost - a long raid with many deaths is
         // not cheaper per live bot, it has more corpses in the denominator.
         var addDead = umt.GetMethod("AddDead", BindingFlags.NonPublic | BindingFlags.Static);
-        addDead.Invoke(null, null);
-        addDead.Invoke(null, null);
+        addDead.Invoke(null, new object[] { freq / 8000 });   // 0.125 ms
+        addDead.Invoke(null, new object[] { freq / 8000 });
         var deadSb = new System.Text.StringBuilder();
         append.Invoke(null, new object[] { deadSb });
         string deadJson = deadSb.ToString();
         Check("dead calls counted", deadJson.Contains("\"deadCalls\":2"), true);
         Check("and NOT subtracted from awakeCalls", deadJson.Contains("\"awakeCalls\":2"), true);
+        // deadMs as well as deadCalls, or the reconciliation cannot close:
+        // the per-bot rows sum to awakeMs MINUS deadMs, and without the ms
+        // term a reader can see that corpses were counted but not subtract
+        // them.
+        Check("dead ms recorded too", deadJson.Contains("\"deadMs\":0.25"), true);
 
         // A window boundary has to zero every field, or the first window after a busy one
         // reports the busy one's totals against its own call counts - the hold-last-value
@@ -167,7 +172,8 @@ class P {
         append.Invoke(null, new object[] { sb2 });
         Check("ResetWindow zeroes every field",
               sb2.ToString(), "{\"awakeMs\":0,\"awakeCalls\":0,\"pausedMs\":0,"
-                              + "\"pausedCalls\":0,\"unstampedCalls\":0,\"deadCalls\":0}");
+                              + "\"pausedCalls\":0,\"unstampedCalls\":0,"
+                              + "\"deadCalls\":0,\"deadMs\":0}");
 
         // The point of this block is one field: forcedButExcluded must be null when either
         // half was not observed, and [] only when both were and the answer really is empty.
@@ -557,6 +563,91 @@ class P {
         var aaSb2 = new System.Text.StringBuilder();
         aaAppend.Invoke(null, new object[] { aaSb2 });
         Check("ResetWindow zeroes the sums", aaSb2.ToString().Contains("\"ms\":0,\"n\":0}"), true);
+
+        // ---- Awake-age SPAN state machine ------------------------------
+        //
+        // The gating check, and the alias it closes is the expensive one. The
+        // raid's registered prediction has a branch reading "the second block
+        // opens at the first block's END value" - which means sleep FROZE the
+        // accumulator rather than resetting it. **A counter that silently
+        // froze would produce that same signature**, so the instrument error
+        // and the finding would be indistinguishable after the fact.
+        //
+        // The clock is injected for exactly this: Time.realtimeSinceStartup is
+        // a Unity ECall and would have made the one stateful thing here the
+        // one thing no bench could drive.
+        Console.WriteLine("\nAwakeAge span reset (raid gate)");
+        var wokeAt = aa.GetMethod("WokeAt", BindingFlags.NonPublic | BindingFlags.Static);
+        var endedM = aa.GetMethod("Ended", BindingFlags.NonPublic | BindingFlags.Static);
+        var recordAt = aa.GetMethod("RecordAt", BindingFlags.NonPublic | BindingFlags.Static);
+        var resetRaid = aa.GetMethod("ResetForRaid", BindingFlags.NonPublic | BindingFlags.Static);
+        var botType = Type.GetType("EFT.BotOwner, Assembly-CSharp");
+        object bot1 = System.Runtime.Serialization.FormatterServices
+                          .GetUninitializedObject(botType);
+
+        resetRaid.Invoke(null, null);
+        wokeAt.Invoke(null, new object[] { bot1, 100f });
+        recordAt.Invoke(null, new object[] { bot1, freq / 1000, 130f });   // age 30 -> b0
+        endedM.Invoke(null, new object[] { bot1 });
+        wokeAt.Invoke(null, new object[] { bot1, 500f });
+        recordAt.Invoke(null, new object[] { bot1, freq / 1000, 530f });   // age 30 -> b0
+
+        var tk = (long[])ticksF.GetValue(null);
+        var cl = (int[])callsF.GetValue(null);
+        Check("both calls land in the YOUNG bucket after a sleep", cl[0], 2);
+        Check("a frozen accumulator would have put one at age 430", cl[3], 0);
+
+        // Ended must actually remove, or the re-stamp above never happens.
+        // ReferenceEquals is load-bearing here: BotOwner is a MonoBehaviour,
+        // so `== null` is Unity's overload and answers TRUE for an object with
+        // no native peer - which is every destroyed bot, and this test object.
+        var sinceF = aa.GetField("Since", BindingFlags.NonPublic | BindingFlags.Static);
+        endedM.Invoke(null, new object[] { bot1 });
+        Check("Ended removes a bot with no native peer",
+              ((System.Collections.ICollection)sinceF.GetValue(null)).Count, 0);
+
+        // A second wake on a RUNNING span must not reset it - active to
+        // goToSave and back are both un-paused and neither is a wake.
+        resetRaid.Invoke(null, null);
+        wokeAt.Invoke(null, new object[] { bot1, 100f });
+        wokeAt.Invoke(null, new object[] { bot1, 200f });
+        recordAt.Invoke(null, new object[] { bot1, freq / 1000, 230f });   // age 130 -> b1
+        cl = (int[])callsF.GetValue(null);
+        Check("add-if-absent: span survives a redundant wake", cl[1], 1);
+        Check("and did not restart at the second one", cl[0], 0);
+
+        // (b) the reconciliation: per-bot rows must sum to the buckets, which
+        // are in turn awakeMs - deadMs. Two instruments over one set of calls,
+        // so a disagreement is a bug rather than a finding.
+        var drain = aa.GetMethod("DrainRows", BindingFlags.NonPublic | BindingFlags.Static);
+        object bot2 = System.Runtime.Serialization.FormatterServices
+                          .GetUninitializedObject(botType);
+        resetRaid.Invoke(null, null);
+        wokeAt.Invoke(null, new object[] { bot1, 0f });
+        wokeAt.Invoke(null, new object[] { bot2, 0f });
+        recordAt.Invoke(null, new object[] { bot1, freq / 1000, 10f });
+        recordAt.Invoke(null, new object[] { bot1, freq / 1000, 20f });
+        recordAt.Invoke(null, new object[] { bot2, freq / 2000, 30f });
+
+        var rows = new System.Collections.Generic.List<string>();
+        Action<string> collect = rows.Add;
+        drain.Invoke(null, new object[] { collect, 7 });
+        Check("one row per bot, not per call", rows.Count, 2);
+        Check("rows carry the window", rows.TrueForAll(r => r.Contains("\"window\":7")), true);
+
+        double rowMs = 0d;
+        foreach (var r in rows) {
+            int i = r.IndexOf("\"ms\":") + 5;
+            rowMs += double.Parse(r.Substring(i, r.IndexOf(',', i) - i),
+                                  System.Globalization.CultureInfo.InvariantCulture);
+        }
+        tk = (long[])ticksF.GetValue(null);
+        double bucketMs = 0d;
+        foreach (var t in tk) bucketMs += t * 1000d / freq;
+        Check("per-bot rows sum to the buckets", Math.Abs(rowMs - bucketMs) < 0.01d, true);
+        Check("draining clears the rows",
+              ((System.Collections.ICollection)aa.GetField("Live",
+                  BindingFlags.NonPublic | BindingFlags.Static).GetValue(null)).Count, 0);
 
         // ---- Trigger-subscriber count --------------------------------
         //

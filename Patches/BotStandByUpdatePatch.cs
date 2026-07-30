@@ -201,7 +201,6 @@ namespace Framesaver.Patches
             // subscribers. That envelope is the point: the cost of a wake is
             // what it triggers, not what this method executes.
             StandByTransitions.Woken(Stopwatch.GetTimestamp() - start);
-            AwakeAge.Woke(bot);
         }
 
         /// <summary>
@@ -369,7 +368,6 @@ namespace Framesaver.Patches
             if (standBy.StandByType_1 != before)
             {
                 StandByTransitions.Slept(Stopwatch.GetTimestamp() - start);
-                AwakeAge.Ended(bot);
             }
         }
 

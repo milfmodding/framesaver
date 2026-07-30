@@ -222,7 +222,29 @@ namespace Framesaver.Patches
         [PatchPostfix]
         private static void Postfix(BotStandBy __instance, BotStandByType value)
         {
-            SleepingBotAnimatorPatch.SetSleeping(__instance, value == BotStandByType.paused);
+            bool paused = value == BotStandByType.paused;
+            SleepingBotAnimatorPatch.SetSleeping(__instance, paused);
+
+            // Awake-age spans are driven from HERE rather than from our own
+            // Wake/GoToSleep, because this hook sees every transition whatever
+            // caused it. A bot paused or woken by BotsPatrolGeneratorGameEvent,
+            // by BotLeaveData or by another mod would otherwise keep a stale
+            // stamp and report an age spanning a sleep it did take - which is
+            // precisely the frozen-accumulator reading the raid's registered
+            // second branch would be mistaken for.
+            //
+            // AwakeAge.Woke is add-if-absent, so the un-paused values that are
+            // not wakes - active to goToSave and back - leave a running span
+            // alone.
+            BotOwner owner = __instance != null ? __instance.BotOwner_0 : null;
+            if (paused)
+            {
+                AwakeAge.Ended(owner);
+            }
+            else
+            {
+                AwakeAge.Woke(owner);
+            }
         }
     }
 
