@@ -112,6 +112,14 @@ namespace Framesaver.Patches
                 return false;
             }
 
+            // Re-applied every interval rather than only at activation, so a
+            // distance edited mid-raid reaches bots that were already on the
+            // field. Without this the fields carry whatever was configured
+            // when each bot spawned, while cfg reports one uniform number -
+            // and the comparison two blocks down would run against the stale
+            // value. Two float writes per bot per interval.
+            BotStandByInitPointsPatch.ApplyDistances(__instance);
+
             // Normally respects BotsPatrolGeneratorGameEvent, which toggles this at runtime for scripted
             // events - but QuestingBots also clears it on every bot, which switches this whole system off.
             if (!__instance.CanDoStandBy && !TryReclaimStandBy(__instance, bot))
