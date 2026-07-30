@@ -91,15 +91,21 @@ for path in sorted(glob.glob(os.path.join(LOG, "framesaver-*.ndjson"))):
                 pass
     kept, _ = steady.partition(raw)
     arm = header_arm(path)
+    # Keyed by (map, raid index), NOT by map or by log. A SESSION log can hold several raids on
+    # different maps, and `20260726-183701-ai-stack` does exactly that - raid 1 on factory4_day,
+    # raid 2 on TarkovStreets. Keying a whole log to one map is how that leg got reported to me as
+    # "the Streets leg" and back to me as "no, factory" when the truthful answer is both.
     by_map = defaultdict(list)
     for w in kept:
-        b = w.get("bots") or {}
+        b = dict(w.get("bots") or {})
         if b.get("total"):
-            by_map[str(w.get("map"))].append(b)
+            b["_standBy"] = bool((w.get("cfg") or {}).get("standBy"))
+            by_map[(str(w.get("map")), w.get("raid"))].append(b)
     name = os.path.basename(path).replace("framesaver-", "").replace(".ndjson", "")
-    for m, bs in by_map.items():
-        groups[m]["%s [%s]" % (name[:34], arm)] = {
+    for (m, raid), bs in by_map.items():
+        groups[m]["%s r%s [%s]" % (name[:30], raid, arm)] = {
             "n": len(bs),
+            "standByAlwaysOn": all(b["_standBy"] for b in bs),
             **{f: median([b.get(f) or 0 for b in bs]) for f in FIELDS}}
 
 print("POOLING GUARD: are the legs behind each map's number the same population?")
@@ -114,8 +120,37 @@ for m in sorted(groups):
     for leg in sorted(legs):
         d = legs[leg]
         print("      %-40s %5d %7g %7g %7g" % (leg, d["n"], *(d[f] for f in FIELDS)))
+    # Gamma's rule, put HERE rather than in a second script, because a second home for a rule is a
+    # second place for it to drift: `cfg.standBy` true in every window with median `asleep` 0 is a
+    # config saying ON and an outcome saying nothing happened.
+    #
+    # WITH A POSITIVE CONTROL, because the first version of this rule fired on all three
+    # factory4_day legs and I was ready to report a mod defect. Factory's player span is 46 m x
+    # 72 m against `sleepDistance` 150 - **nothing on that map can ever be far enough away to
+    # sleep**, so `asleep == 0` there is correct behaviour. A rule that cannot tell "the lever did
+    # nothing" from "the lever had nothing to do" is not an instrument.
+    #
+    # The control is inside the corpus and needs no map geometry: has ANY leg on this map ever
+    # recorded asleep > 0? If yes, sleeping demonstrably works here and a zero leg is anomalous. If
+    # no, the map itself may be smaller than the threshold and the two explanations are not
+    # separable from these logs - so it says that instead of picking one.
+    map_ever_slept = any(legs[leg]["asleep"] > 0 for leg in legs)
+    zero = [leg for leg in sorted(legs)
+            if legs[leg]["standByAlwaysOn"] and legs[leg]["asleep"] == 0]
+    if zero and map_ever_slept:
+        for leg in zero:
+            print("      -> STAND-BY DID NOTHING: %s, cfg.standBy true in every" % leg)
+            print("         window and median asleep 0 - on a map where OTHER legs do sleep, so")
+            print("         the map is not the explanation. Not exchangeable with anything here.")
+        flagged.append(m + " (stand-by inert)")
+    elif zero:
+        print("      -> every leg on this map reads asleep 0 with standBy on. NOT called a defect:")
+        print("         no leg here has ever slept, so a map smaller than `sleepDistance` and a")
+        print("         broken lever are indistinguishable from these logs. Factory is the known")
+        print("         case - 46 m x 72 m of player span against a 150 m threshold.")
     if len(legs) == 1:
-        print("      -> single leg: nothing to disagree, and nothing averaging out either")
+        if not zero:
+            print("      -> single leg: nothing to disagree, and nothing averaging out either")
         print()
         continue
     bad = []
