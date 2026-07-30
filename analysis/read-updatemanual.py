@@ -149,22 +149,33 @@ def has_dead(w):
 def census_corpses(w):
     """(corpses inside bots.awake, route) for this window.
 
-    `bots.deadAwake` (cb47968) is the census counting corpses in its own awake
-    branch, a subset of `bots.awake` exactly as deadCalls is of awakeCalls.
-    Before it existed the only route was deadCalls/frames -- the window-MEAN
-    corpse count implied by the call rate, held against an INSTANTANEOUS census
-    taken at window close. They answer the same question two ways and neither
-    is a substitute for the other's provenance, so the direct one leads and the
-    derived one both backs it up and checks it.
+    `deadCalls/frames` LEADS. It is the window-MEAN corpse count, integrated
+    over every call, and the ratio it feeds is a window-mean call rate -- so it
+    is the term that matches its denominator.
+
+    `bots.deadAwake` is a ONE-SHOT roster sample at window close and is the
+    cross-check, not the primary. This file briefly had that the other way
+    round (c28fcff), on the premise that corpses persist on the roster. Delta
+    refuted the premise from the corpus (3926246) and Beta retracted it:
+    `bots.total` declines after its peak in 17 of the 18 logs with enough
+    windows, and in the two logs carrying deaths the drop tracks the death
+    count. Corpses are transient, so an instantaneous sample UNDERSTATES a
+    window mean and preferring it was a correction in the wrong direction.
+
+    **A `deadAwake` of 0 is its PREDICTED value and confirms nothing.** For a
+    sub-window transient the sample reads nonzero only if it happens to land
+    inside a corpse's residency. Treating 0 as "no contamination" would be a
+    check that cannot fail -- so a nonzero reading is news and a zero is not
+    evidence, in either direction.
 
     None means no route at all: the build predates both, and the caller must
     not silently treat that as zero corpses.
     """
     bots = w.get('bots') or {}
-    if bots.get('deadAwake') is not None:
-        return float(bots['deadAwake']), 'census'
     if has_dead(w) and w.get('frames'):
         return (um(w).get('deadCalls') or 0) / float(w['frames']), 'derived'
+    if bots.get('deadAwake') is not None:
+        return float(bots['deadAwake']), 'census'
     return None, 'none'
 
 
@@ -248,7 +259,10 @@ def main(argv):
               % (total_dc, total_ac, share))
         if total_dc == 0:
             print('    zero corpses measured - a real finding here, not a missing field,')
-            print('    because the field is present in every window.')
+            print('    because the field is present in every window. Note the asymmetry')
+            print('    with bots.deadAwake: deadCalls integrates over every call, so its')
+            print('    zero means no corpse ticked. deadAwake is one roster sample and')
+            print('    its zero is the predicted value for a transient - it means nothing.')
 
     print()
     print('=' * 78)
@@ -308,14 +322,26 @@ def main(argv):
                 if (w.get('bots') or {}).get('deadAwake') is not None
                 and has_dead(w) and w.get('frames')]
         if both:
-            gaps = [abs(c - d) for c, d in both]
-            scale = st.median([max(c, d) for c, d in both])
-            print('  corpse count, two routes: census median %.2f, call-rate median %.2f'
-                  % (st.median([c for c, _ in both]), st.median([d for _, d in both])))
-            if scale > 0 and st.median(gaps) / scale > DILUTION_TOL:
-                print('  ! the two corpse routes differ by more than %.0f%% - the roster is'
-                      % (DILUTION_TOL * 100.0))
-                print('    turning over inside the window and neither count describes it.')
+            med_census = st.median([c for c, _ in both])
+            med_rate = st.median([d for _, d in both])
+            print('  corpse count, two routes: call-rate median %.2f (used), roster'
+                  % med_rate)
+            print('    sample median %.2f (cross-check)' % med_census)
+            # Asymmetric on purpose. Corpses are transient, so the one-shot
+            # roster sample reading 0 is its PREDICTED value and refutes
+            # nothing - only a NONZERO reading carries information, because it
+            # means the sample landed inside a residency. A symmetric
+            # disagreement test here would fire on every honest window and
+            # then be ignored, which is how a check stops being read.
+            if med_census > 0 and med_rate > 0:
+                gap = abs(med_census - med_rate) / max(med_census, med_rate)
+                if gap > DILUTION_TOL:
+                    print('  ! both routes are nonzero and differ by %.0f%% - the roster is'
+                          % (gap * 100.0))
+                    print('    turning over inside the window and neither count describes it.')
+            elif med_census == 0 and med_rate > 0:
+                print('    roster sample at 0 against a nonzero call rate is EXPECTED for a')
+                print('    sub-window transient. It is not confirmation of anything.')
 
         ratios = []
         for w in ws:
