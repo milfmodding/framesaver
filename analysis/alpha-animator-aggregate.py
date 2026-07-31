@@ -46,6 +46,25 @@ WARMUP_SEC = 60
 MIN_WINDOWS = 5
 STRONG_R = 0.8
 
+# The lever-arm gate from alpha-animator-slope.py, which I wrote at midday and then did NOT carry
+# into this file - caught by Delta. Four of the six maps this file called "strong" sat on allLive
+# spreads under 5 bots: Interchange 4.57, Lighthouse 4.00, Reserve 4.65, Shoreline 3.09. A high r
+# over a 3-bot lever arm is not a measurement, and r does not warn you about it.
+MIN_SPREAD = 5.0
+
+# WHY THE COEFFICIENT IS NOT THE ARGUMENT, and Delta's framing is better than mine. The ordering
+# claim does not need a slope at all - it can be read off two directly measured POOLS, per map, with
+# no regression, no lever arm and no attenuation:
+#
+#   what stand-by gating can ever save   updateManual.awakeMs / frames    0.056 - 0.298 ms/frame
+#   what the animator costs              phases[ANIM].avg                 1.14  - 6.25  ms/frame
+#
+# The cull's pool is 13x to 64x the gate's on every one of the nine maps. A ceiling comparison beats
+# a coefficient comparison here because both numbers are sums the log already carries. The slope
+# below is for SIZING the cull, and it is not yet good enough to multiply by a population -
+# intercepts run negative on four of six maps (Lighthouse -5.96 at slope 0.490), which is by itself
+# proof the linear form is wrong outside the fitted range.
+
 
 def arm_of(cfg):
     standby, force = cfg.get("standByEnabled"), cfg.get("forceAllRoles")
@@ -130,11 +149,17 @@ def main():
         if a is None or b is None:
             continue
         want = "ALL LIVE" if arm == "modOff" else "non-paused"
+        key = "allLive" if want == "ALL LIVE" else "nonPaused"
         slope, r = (b, rb) if want == "ALL LIVE" else (a, ra)
-        mark = "  <- strong" if abs(r) >= STRONG_R else ""
+        xs = [p[key] for p in pts]
+        spread = max(xs) - min(xs)
+        thin = spread < MIN_SPREAD
+        mark = "  THIN LEVER %.1f" % spread if thin else ("  <- usable" if abs(r) >= STRONG_R else "")
         print("  %-14s %-9s %4d   %8.3f %6.2f      %8.3f %6.2f  %s%s"
               % (mp, arm, len(pts), a, ra, b, rb, want, mark))
-        if abs(r) >= STRONG_R:
+        # BOTH gates, and the lever arm first. A strong r over a 3-bot spread is what this file
+        # reported as its headline before Delta checked it.
+        if abs(r) >= STRONG_R and not thin:
             picked[arm].append((mp, slope))
 
     print()
