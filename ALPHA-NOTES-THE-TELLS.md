@@ -98,6 +98,39 @@ had flagged.
 **Tell:** after writing a rule down, grep for instances before you feel done. **A written lesson is
 not a fixed instance**, and the sense of resolution arrives at the writing.
 
+## 8b. Applying the rule deliberately does not protect the thing you build to apply it
+
+Written as a pair, at Beta's suggestion, because either half alone reads as a slip and the pair is
+what makes it a class. Both happened on 2026-07-31, within about four hours, to someone who was
+naming the rule out loud while doing it.
+
+**One level deeper.** `bots.animCulled` is `CullSleepingBotAnimators ? Sleeping.Count : 0` — it
+reports our own intent, so it reads 0 the instant the flag flips while the engine is still culling.
+A textbook instrument that returns its own success value. The fix was to read the engine instead:
+count sleeping bots carrying `CullCompletely`. Then Beta walked the IL and found that
+`FastAnimatorProcessorClass.cullingMode` stores to a field **nothing else reads** — so the write
+does nothing *and* the value round-trips. **A plain read-back would have reported 100% success for
+a feature doing literally nothing.** The replacement for an instrument that returns its own success
+value had the same defect, one layer in.
+
+**One level out.** Within hours, he tightened the deploy gate to refuse an unstamped binary — the
+failure with 22 measured instances behind it. His first version read the revision property without
+depending on the target that populates it, so it was always empty and the gate refused *every*
+deploy, good ones included. He falsified it: the deliberately-broken build refused, exactly as
+designed. **The control also refused.** Had he run only the falsification, he would have shipped a
+gate that blocked all deploys and recorded it as verified.
+
+**Tell:** there is no altitude at which this stops. The instrument, the fix for the instrument, and
+the gate that checks the fix all have the same failure available to them, and *knowing that* did not
+prevent it in either case — both were built by someone who had written the rule down that week. What
+caught both was running the check in **every** direction, including the boring one where it is
+supposed to pass. A falsification that passes tells you nothing on its own; it is only informative
+beside a control that *didn't*.
+
+This is the same conclusion as "the reviewer must not be the builder", arriving from the other side:
+not because builders are careless, but because deliberate care is demonstrably not protective against
+this particular shape.
+
 ## 9. Being in correction-mode gives your own instruments the least scrutiny
 
 Checking a teammate's report, I found two apparent contradictions. Both were **my own broken tools** —
