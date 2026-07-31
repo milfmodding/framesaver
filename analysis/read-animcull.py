@@ -177,6 +177,7 @@ def main(argv):
     rows = load(argv[1:])
     windows, dropped = eligible(rows)
 
+    print('read:       %s' % steady.sources(argv[1:]))
     print('population: %s' % steady.describe(drop_teardown=True, by_start=True))
     print('            + arm resolvable, + not flushedByProtocol')
     print('kept %d window(s); dropped %s'

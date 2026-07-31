@@ -537,6 +537,7 @@ def main(argv):
     print('=' * 78)
     print('1. FIELD PRESENT AND DENOMINATORS INTACT')
     print('=' * 78)
+    print('  read                     %s' % steady.sources(argv[1:]))
     print('  sample windows           %d' % len(rows))
     print('  carrying updateManual    %d' % sum(1 for w in rows if w.get('updateManual') is not None))
     print('  population               %s'

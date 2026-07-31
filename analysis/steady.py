@@ -187,6 +187,35 @@ def describe(warmup_s=WARMUP_S, require_population=False,
     return base
 
 
+def sources(paths):
+    """One line naming WHICH corpus was read, for a reader to print.
+
+    WHY A READER MUST SAY THIS. There are two log directories on this machine
+    -- F:\\SPT\\Base\\... (which CORPUS.md documents) and F:\\SPT\\SPT4.0.13\\...
+    (where the marathon landed). Base carries zero windows with `updateManual`;
+    SPT4.0.13 carries 258. I read Base all day and told the team a field was
+    absent everywhere, and every reader I ran printed a population line that
+    described the FILTER in detail and never once said which files it had
+    opened.
+
+    A population is (definition, input), and stating half of it precisely is
+    what makes the other half invisible. Same error as keying one map per log,
+    one level up.
+    """
+    import os
+    dirs = {}
+    for p in paths:
+        d = os.path.dirname(os.path.abspath(p)) or '.'
+        dirs[d] = dirs.get(d, 0) + 1
+    if len(dirs) == 1:
+        d, n = list(dirs.items())[0]
+        return '%d file(s) from %s' % (n, d)
+    # More than one directory is worth shouting about: it is either deliberate
+    # pooling or the two-corpus mistake, and the reader cannot tell which.
+    return 'MIXED SOURCES - ' + '; '.join(
+        '%d from %s' % (n, d) for d, n in sorted(dirs.items()))
+
+
 def is_teardown(rows):
     """Set of ids of windows that are the LAST in-raid window of their segment.
 
