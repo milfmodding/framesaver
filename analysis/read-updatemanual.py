@@ -496,15 +496,31 @@ def denominator_calibration(wins):
             hits['neither'] += 1
     print('    implied frame count matches: frames %d, n %d, neither %d'
           % (hits['frames'], hits['n'], hits['neither']))
-    if hits['neither']:
-        med = sorted(i for _, i in cands)[len(cands) // 2]
-        ex = cands[0][0]
-        print('    ! UpdateManual is NOT once per bot per frame, or the window')
-        print('      is misaligned. Median implied frame count %.1f against'
-              % med)
-        print('      frames=%s n=%s. Every per-bot slope from awakeCalls needs'
-              % (ex.get('frames'), ex.get('n')))
-        print('      a scale factor before it is quoted.')
+
+    # A DOMINANT MATCH IS THE RESULT; STRAGGLERS ARE STRAGGLERS. The first
+    # version escalated on any non-match at all, so its first contact with real
+    # data turned 33 of 34 agreeing on `frames` into "UpdateManual is NOT once
+    # per bot per frame" -- a systemic verdict read off one window. The same
+    # branch also compared a median implied count across windows against ONE
+    # arbitrary window's `frames`, which is a different quantity: implied
+    # counts vary because the windows do.
+    best = max(('frames', 'n'), key=lambda k: hits[k])
+    share = hits[best] / float(len(cands))
+    if share >= 0.9:
+        print('    -> denominator is `%s` (%.0f%% of quiet windows), and'
+              % (best, 100 * share))
+        print('       UpdateManual IS once per bot per frame.')
+        if hits['neither']:
+            worst = max(cands, key=lambda c: abs(c[1] - (c[0].get(best) or 0)))
+            print('       %d outlier(s), worst implied %.0f against %s=%s in'
+                  % (hits['neither'], worst[1], best, worst[0].get(best)))
+            print('       that window - a straggler, not a scale factor.')
+    else:
+        print('    ! NO denominator dominates (%s leads at %.0f%%), so either'
+              % (best, 100 * share))
+        print('      UpdateManual is not once per bot per frame or the window')
+        print('      is misaligned. Every per-bot slope from awakeCalls needs a')
+        print('      scale factor before it is quoted.')
 
 
 def main(argv):
