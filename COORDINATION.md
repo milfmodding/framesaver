@@ -10680,3 +10680,70 @@ retraction named the file and the key, and the reader looked at what sat next to
 rules live in `analysis/selftest/README.md`.
 
 — Beta
+
+---
+
+## Gamma — compaction handoff, 2026-07-31 evening
+
+State at the line: HEAD `1e374bb`, gate `bc90b76`, nothing deployed, working tree clean.
+`read-animcull` / `read-botwindow` / `read-botarm` exit 1 on the live corpus (coverage gaps, correct —
+they gate on fields no log carries). `read-updatemanual` exits 0. Harnesses 12 / 7 / 14, each asserting
+an exit code **and** a line the case must print.
+
+### The one live defect with my name near it
+
+**`updateManual.deadCalls` is identically zero and should not be.** Alpha found it; I reproduced and
+narrowed it. Established, not guessed:
+
+- 205 windows carry the `deadCalls` key, **0** above zero, and **65 of those same windows** have
+  `bots.deadAwake > 0`. Same build, same window — not an era artifact. `AddDead` and the emit landed
+  together in `86407a4`, an ancestor of `bc90b76`, the binary stamped in the log header.
+- **Alpha's "two different liveness tests" framing is wrong.** Both call sites read the *same*
+  property on the same type — `bot.IsDead` at `Telemetry.cs:1814` and `__instance.IsDead` at
+  `UpdateManualTimingPatches.cs:207`, both `BotOwner`. It is one expression answering differently in
+  two call contexts, which is a much narrower thing to hunt.
+- **Corpses do tick**, so the zero is a defect and not a correct answer: `awakeCalls/frames` tracks
+  `bots.awake` at 2.6% median error and `bots.awake − deadAwake` at 47%, over 53 corpse-carrying
+  windows, with `unstampedCalls` at 0. The calls are not going anywhere else.
+
+**Do not fix it by subtracting `deadAwake`.** Within Streets, per-call cost falls only to 0.70 as the
+corpse fraction rises where "corpses are free" predicts 0.21 — solving the mix gives corpse ≈ 0.0098
+against live ≈ 0.0186 ms/call, about half a live bot. Two legs and crude terciles, so suggestive
+rather than established. The consequence is the usable part: `awakeCalls` over-counts and
+`awakeCalls − deadAwake` over-corrects, so **any per-bot figure is a bracket bounded by the two, not a
+point**, until `AddDead` works.
+
+### Deferred, mine
+
+- `closedBy: timer|state|protocol|session` on the sample line — after raid 2, with Beta's roster-walk
+  consolidation. Beside `final` and `flushedByProtocol`, never instead.
+- `MIN_WINDOWS = 3` re-expressed in the unit its intent is in, then equivalence-proved on the corpus.
+- Wire `read-animcull`'s presence check to per-record `fieldsObservedInLogs` for SPT4.0.13 **if** the
+  binary→logs join ever becomes 1:1 there. It is ground truth for Base only today.
+
+### Not worth re-deriving
+
+**The awake aggregate needs no new field.** `BotsClass.UpdateByUnity` iterates every bot with no
+`BotState` filter, so `(awakeCalls − deadCalls) / frames` is the frame-weighted mean live awake count,
+over exactly the frames `phases[...].avg` covers — both reset in the same block. The cheap partial is
+`standByTransitions.woken + slept`. **Denominator settled on real data:** 33 of 34 quiet windows say
+`frames`, 97%, and UpdateManual IS once per bot per frame.
+
+**The anim-cull protocol cannot detect a latch**, because it pins the LateUpdate skip off in every arm
+— correctly, since that is the only mechanism producing one. A near-zero `animCulledEngine` on a
+control arm there is *designed out*, not ruled out. `read-animcull` prints DESIGNED OUT rather than a
+verdict whenever `cfg.skipLate` is false throughout.
+
+**Nothing static proves a field impossible.** Beta withdrew that premise and measured it: ~46 keys are
+demonstrably emitted by Base's binary and absent from its image. Absence is evidence; only
+`fieldsObservedInLogs` proves emission, and only for Base.
+
+### Method, and it is in the repo rather than here
+
+`analysis/selftest/README.md` carries the three rules and why the directory has a ceiling. Short form:
+a check built from your model tests the model, not the world; so the catches come from the far side of
+the join under test; and the artefact must carry its own scope, because the retelling drops it. Plus
+the actionable half — **the outsider has to be told where to stand** — and the timing note that a fix
+commit is when you are least likely to check the sibling.
+
+- Gamma
