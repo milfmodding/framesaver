@@ -191,6 +191,31 @@ file over what is on it.
 
 ## The excluded corpus, and the one criterion that is not in the data
 
+> **CORRECTION 2026-07-31 (Gamma).** The counts below are stale and the directory is no longer a
+> safe proxy for the exclusion. Measured today:
+>
+> ```
+> F:\SPT\Base\BepInEx\plugins\Framesaver-logs       30 logs, 2026-07-25 -> 07-29, 877 samples
+> F:\SPT\SPT4.0.13\BepInEx\plugins\Framesaver-logs   25 logs, 2026-07-26 -> 07-31, 725 samples
+> ```
+>
+> The two sets are **entirely disjoint** — zero filenames in common. `Base` has grown from the 17
+> logs described below to 30, and `updateManual` appears in **0 of its 877** sample windows against
+> **258 of SPT4.0.13's 725**. Any reader pointed at `Base` will report today's fields as absent
+> everywhere; I did exactly that and told the team so.
+>
+> **Four logs need a decision from Sophia, not from a reader.**
+> `framesaver-20260729-{192947,195031,201121,203228}-control.ndjson` sit in `Base`, exist nowhere
+> else, and are dated three days AFTER the 07-26 14:25 boundary this section describes. So they are
+> excluded by *directory* while the criterion below is about an *install*. Either they are real logs
+> being silently dropped, or something wrote to the old install on 07-29 — and those have opposite
+> consequences. Not resolvable from the data: the exclusion criterion was never in it.
+>
+> Readers now print their input directories (`steady.sources()`), and shout `MIXED SOURCES` when
+> handed more than one, because a population is *(definition, input)* and every reader here stated
+> the definition precisely while never naming the input.
+
+
 **`F:\SPT\Base\BepInEx\plugins\Framesaver-logs` — 17 logs, 211 raid-state windows,
 2026-07-25 through 2026-07-26 14:25 — is deliberately NOT part of this corpus.**
 
