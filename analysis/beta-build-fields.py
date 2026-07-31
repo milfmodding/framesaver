@@ -14,14 +14,26 @@ This replaces that inference with a measurement.
 
 WHAT A NAME IN THE OUTPUT MEANS, because the asymmetry is the whole value:
 
-    present  ->  the EMIT CODE EXISTS in that binary. NOT that it ever fired.
-                 An upper bound, and a weak one.
-    absent   ->  STRUCTURAL. No raid, no config and no map could have produced
-                 that field from this binary.
+    absent from `fields`  ->  STRUCTURAL. No raid, no config and no map could
+                              have produced it from this binary. The strong
+                              direction, and the only one to read.
+    present in `fields`   ->  the string exists in the image. Deliberately
+                              OVER-collected, so not proof it is a field.
+    present in `fieldsAsJsonKeys` -> definitely emitted as a JSON key. Precise,
+                              but INCOMPLETE - never read ITS absence.
 
-Absence is the strong direction, which is precisely the direction the
-absent-versus-zero question needs. Same argument as probe-symbols.py's
-docstring: a false zero is the strongest possible wrong claim about a build.
+**The first version of this file got that backwards and shipped.** It matched
+`"name":` only, which misses every block emitted through Telemetry's `Block()`
+helper, where the literal is the bare word. `aiTotal`, `ambientLight` and
+`asyncDrained` are emitted by the CURRENT build and were reported absent from
+it. A file built to make "absent means structural" trustworthy was
+manufacturing false absences - the exact failure, inside the fix for it.
+
+Caught by trying to identify which artifact wrote a known log: the answer came
+back "no candidate", including the binary that certainly could have. A tool
+that cannot find a right answer it has been handed is saying something about
+itself. Same argument as probe-symbols.py's docstring - a false zero is the
+strongest possible wrong claim about a build.
 
 THE JOIN, AND ITS LIMIT. Records are keyed by md5 and tagged with the install
 directory when the binary is currently installed in one, so a reader can go
@@ -60,20 +72,53 @@ INSTALLS = {
 # A JSON key as this codebase emits them: lowercase initial, then word chars.
 # Matched against `"name":` because that is the literal shape in the #US heap.
 KEY = re.compile(r'"([a-z][A-Za-z0-9]{1,40})":')
+# Two characters minimum, not three. The first cut required three and so
+# reported `aa`, `at`, `gc` and `ms` absent from every binary - four real
+# emitted fields, four more false absences, found the same way as the last
+# batch: by asking the tool a question whose answer was nearly known.
+TOKEN = re.compile(r'[A-Za-z][A-Za-z0-9]{1,40}')
+
+
+def _decodes(blob):
+    """Byte-level UTF-16 decode from BOTH parities. #US literals are UTF-16 but
+    carry no alignment guarantee relative to the file start, so decoding only
+    from offset 0 silently misses every literal at an odd offset."""
+    return (blob.decode("utf-16-le", "ignore"),
+            blob[1:].decode("utf-16-le", "ignore"))
 
 
 def field_names(blob):
-    """Field names in a .NET #US heap.
+    """Every identifier-shaped string in the image. The CONSERVATIVE set, and
+    it must stay conservative, because absence is the only direction anyone
+    reads.
 
-    Byte-level UTF-16 decode from BOTH parities. #US literals are UTF-16 but
-    carry no alignment guarantee relative to the file start, so decoding only
-    from offset 0 silently misses every literal at an odd offset - a failure
-    that looks exactly like a missing field, which is the reading this whole
-    file exists to make impossible.
+    **The first version of this matched `"name":` only, and was wrong in the
+    dangerous direction.** Telemetry emits most blocks through a helper -
+    `Block(sb, "aiTotal", _aiTotal)` - so the literal in the assembly is the
+    bare word and the quotes are added at runtime. `aiTotal`, `ambientLight`
+    and `asyncDrained` are emitted by the CURRENT build and the quoted-only
+    scan reported all three absent from it. A file whose entire purpose is
+    "absent means structural" was manufacturing false absences.
+
+    Over-collecting is the safe error and is now deliberate: a string in the
+    image that is not a field weakens `present`, which was already only an
+    upper bound. `mods` is a known instance - it appears in the Base image and
+    in none of Base's 30 logs. Use `fieldsAsJsonKeys` when you need the strong
+    form of presence.
     """
     names = set()
-    for start in (0, 1):
-        names |= set(KEY.findall(blob[start:].decode("utf-16-le", "ignore")))
+    for text in _decodes(blob):
+        names |= set(TOKEN.findall(text))
+    return names
+
+
+def json_key_names(blob):
+    """Names appearing as a complete `"name":` literal - definitely emitted as
+    a JSON key. Precise but INCOMPLETE for the helper-emitted blocks above, so
+    never use its absence for anything."""
+    names = set()
+    for text in _decodes(blob):
+        names |= set(KEY.findall(text))
     return names
 
 
@@ -144,6 +189,7 @@ def record(path, install=None, docs=None):
         "emitsCommitField": '"commit":' in blob.decode("utf-16-le", "ignore")
                             or '"commit":' in blob[1:].decode("utf-16-le", "ignore"),
         "fields": sorted(field_names(blob)),
+        "fieldsAsJsonKeys": sorted(json_key_names(blob)),
     }
 
 
@@ -201,8 +247,16 @@ def main():
     json.dump({
         "generatedBy": "analysis/beta-build-fields.py",
         "semantics": {
-            "present": "the emit code exists in this binary; NOT that it fired",
-            "absent": "structural - no raid or config could produce it here",
+            "fields": "identifier-shaped strings in the image. ABSENT is "
+                      "structural and is the only direction to read. PRESENT "
+                      "means the string exists, not that it is a field - "
+                      "deliberately over-collected, because the earlier "
+                      "quoted-only scan produced FALSE ABSENCES for every "
+                      "block emitted through a helper (aiTotal, ambientLight, "
+                      "asyncDrained).",
+            "fieldsAsJsonKeys": "complete \"name\": literals - definitely "
+                                "emitted as a key, but INCOMPLETE, so never "
+                                "read its absence for anything",
             "join": "directory -> binary is sound for Base (one binary "
                     "throughout) and NOT for SPT4.0.13, whose installed binary "
                     "is not the one that wrote most of its logs",
