@@ -88,6 +88,7 @@ namespace Framesaver
 
         // ---- 3. Experimental ----------------------------------------------------------------
         public static ConfigEntry<bool> CullSleepingBotAnimators;
+        public static ConfigEntry<bool> CullAllBotAnimators;
         public static ConfigEntry<float> MaxDeltaTime;
         public static ConfigEntry<bool> DeactivateSleepingBotState;
         public static ConfigEntry<bool> SkipSleepingLateUpdate;
@@ -352,6 +353,17 @@ namespace Framesaver
             // else turns UseBodyFastAnimator on, the cull is inert under it,
             // so we detect that and say so rather than shipping a cull that
             // does nothing.
+            CullAllBotAnimators = Config.Bind(
+                "4. Experimental", "Decouple cull from stand-by", false,
+                "Make EVERY live bot eligible for the animator cull instead of only sleeping ones. " +
+                "The cull is worth ~0.25-0.30 ms per animating bot; stand-by's own gating is worth " +
+                "~0.011 ms, and it is stand-by that changes behaviour, fights other AI mods and needs " +
+                "the role exemptions. This takes the large mechanism without the small one. Unity culls " +
+                "on renderer VISIBILITY, so a bot you can see is never culled and no distance or role " +
+                "rule is needed. OFF because one risk is unmeasured: culling stops animation events " +
+                "being queued, and whether a bot that leaves your screen mid-reload ever finishes is " +
+                "not something any log can answer. See harness/RELOAD-OBSERVATION-TEST.md.");
+
             CullSleepingBotAnimators = Config.Bind(
                 "4. Experimental", "Cull sleeping bot animators", true,
                 "Set AnimatorCullingMode.CullCompletely on bots that are asleep, so their animator state " +

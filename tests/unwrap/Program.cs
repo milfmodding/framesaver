@@ -814,13 +814,49 @@ class P {
             }
             return false;
         };
-        var askedGet = sba.GetProperty("CulledLastFrame")?.GetGetMethod();
+        // The intent/engine split now sits one level down: `Marked()` picks the
+        // population and reads the flags, CulledLastFrame just counts it.
+        var marked = sba.GetMethod("Marked", BindingFlags.NonPublic | BindingFlags.Static);
         var engineGet = sba.GetProperty("CulledEngine")?.GetGetMethod();
         Check("CulledEngine ships", engineGet != null, true);
-        Check("CulledLastFrame IS gated on the flag (control)",
-              readsField(askedGet, "CullSleepingBotAnimators"), true);
-        Check("CulledEngine is NOT gated on the flag",
-              readsField(engineGet, "CullSleepingBotAnimators"), false);
+        Check("the marked set IS gated on the cull flag (control)",
+              readsField(marked, "CullSleepingBotAnimators"), true);
+        Check("...and on the decoupled flag too (control)",
+              readsField(marked, "CullAllBotAnimators"), true);
+        Check("CulledEngine is NOT gated on either flag",
+              readsField(engineGet, "CullSleepingBotAnimators")
+              || readsField(engineGet, "CullAllBotAnimators"), false);
+
+        // ---- The decoupled cull ------------------------------------------
+        //
+        // Ships OFF. The one risk no log can see is that CullCompletely stops
+        // animation events being queued, so a bot leaving the screen mid-reload
+        // may never finish it - harness/RELOAD-OBSERVATION-TEST.md.
+        Console.WriteLine("\nDecoupled animator cull");
+        var pluginT = asm.GetType("Framesaver.Plugin");
+        Check("the flag ships", pluginT.GetField("CullAllBotAnimators") != null, true);
+        Check("and the cfg block records it", inUs(",\"cullAllBots\":"), true);
+        var cullAll = sba.GetMethod("CullEveryBot",
+                                    BindingFlags.NonPublic | BindingFlags.Static);
+        Check("CullEveryBot ships", cullAll != null, true);
+        Check("it is gated on the decoupled flag",
+              readsField(cullAll, "CullAllBotAnimators"), true);
+        Check("and yields to the inert-animator guard",
+              readsField(cullAll, "Inert"), true);
+
+        // The safety property worth a test rather than a comment: the decoupled
+        // write must NOT go through ApplyIfSleeping, whose bool is what the
+        // LateUpdate and world-tick prefixes skip on. Answering true for every
+        // bot would skip Player.LateUpdate for the whole roster and suppress the
+        // VisualPass this cull rides on - the two features annihilating each
+        // other on the first frame. Checked by IL: the skip prefixes must not
+        // reach the decoupled flag at all.
+        foreach (var skip in new[] { "SkipSleepingPlayerLateUpdatePatch",
+                                     "SkipSleepingWorldTickPatch" })
+            Check($"{skip} cannot see the decoupled flag",
+                  readsField(asm.GetType("Framesaver.Patches." + skip)
+                                .GetMethod("Prefix", BindingFlags.NonPublic | BindingFlags.Static),
+                             "CullAllBotAnimators"), false);
 
         // ---- 'Force fast body animator' is REMOVED, not interlocked -------
         //
@@ -1005,7 +1041,7 @@ class P {
         // condition is evaluated before Check increments the counter. Setting it
         // to the number at the bottom of a green run fails by one, which is a
         // confusing way to learn that.
-        Check("the suite still runs every section it used to", ran >= 196, true);
+        Check("the suite still runs every section it used to", ran >= 204, true);
 
         Console.WriteLine(bad == 0
             ? $"\nall {ran} cases pass (against shipped IL)"

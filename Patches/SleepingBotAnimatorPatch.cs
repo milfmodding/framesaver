@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using Comfort.Common;
 using EFT;
 using HarmonyLib;
 using SPT.Reflection.Patching;
@@ -38,7 +39,121 @@ namespace Framesaver.Patches
         [PatchPostfix]
         private static void Postfix(Player __instance)
         {
+            // Decoupled cull first, and deliberately NOT folded into
+            // ApplyIfSleeping. That method's bool is what the LateUpdate and
+            // world-tick prefixes skip on, so answering true for every bot
+            // would skip Player.LateUpdate for the whole roster - suppressing
+            // the VisualPass this cull rides on, for everyone, permanently.
+            // The two features would annihilate each other on the first frame.
+            if (CullEveryBot(__instance))
+            {
+                return;
+            }
+
             ApplyIfSleeping(__instance);
+        }
+
+        /// <summary>
+        /// The decoupled cull: every live AI player is eligible, and Unity culls
+        /// whichever of them are invisible.
+        ///
+        /// **There is no distance check here and there should not be.**
+        /// AnimatorCullingMode keys on RENDERER VISIBILITY, not distance, so our
+        /// marking only decides eligibility and the engine decides the rest -
+        /// per bot, per frame, for free. That deletes the whole apparatus the
+        /// coupled version needs: no `Sleeping` set, no distance measure of our
+        /// own, and no role exemption. A sniper engaging from 200m is either on
+        /// screen and not culled, or off it - and vanilla already froze his
+        /// transforms at 10m via CullUpdateTransforms, so nothing is lost that
+        /// the base game had.
+        ///
+        /// Writes unconditionally rather than checking visibility ourselves.
+        /// Setting CullCompletely on a VISIBLE bot changes nothing - culling
+        /// modes only act while renderers are invisible - so the check would be
+        /// a second, worse copy of one the engine already does.
+        ///
+        /// **The risk this carries, and it is not measurable from any log:**
+        /// CullCompletely stops state-machine evaluation, so animation events
+        /// stop being ENQUEUED. Free for a paused bot, which is not reloading.
+        /// Unknown for an awake bot that leaves the screen mid-reload. See
+        /// harness/RELOAD-OBSERVATION-TEST.md - that is why this ships off.
+        /// </summary>
+        internal static bool CullEveryBot(Player player)
+        {
+            if (!Plugin.CullAllBotAnimators.Value || Inert || !IsLiveBot(player))
+            {
+                return false;
+            }
+
+            IAnimator body = player.BodyAnimatorCommon;
+            if (body != null)
+            {
+                body.cullingMode = AnimatorCullingMode.CullCompletely;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// A bot that is alive. `IsAI` keeps human players out, including Fika
+        /// remotes; the health check is not optional, because
+        /// GameWorld.AllAlivePlayersList never removes the dead - UnregisterPlayer
+        /// is reached only from Player.Dispose() at raid teardown - so the list
+        /// its name promises is not the list it holds.
+        /// </summary>
+        internal static bool IsLiveBot(Player player)
+        {
+            return player != null
+                   && player.IsAI
+                   && player.HealthController != null
+                   && player.HealthController.IsAlive;
+        }
+
+        /// <summary>
+        /// The bots we asked the engine to cull this frame - `Sleeping` when the
+        /// cull is coupled to stand-by, the live AI roster when it is not.
+        ///
+        /// Empty when neither cull is switched on, which is what keeps
+        /// `animCulled` meaning exactly what it meant in all 25 existing logs.
+        /// </summary>
+        private static List<Player> Marked()
+        {
+            List<Player> marked = new List<Player>();
+
+            if (Plugin.CullAllBotAnimators.Value)
+            {
+                AppendLiveBots(marked);
+                return marked;
+            }
+
+            if (Plugin.CullSleepingBotAnimators.Value)
+            {
+                foreach (KeyValuePair<Player, BotStandBy> entry in Sleeping)
+                {
+                    marked.Add(entry.Key);
+                }
+            }
+
+            return marked;
+        }
+
+        /// <summary>Every live AI player, or nothing outside a raid.</summary>
+        private static void AppendLiveBots(List<Player> into)
+        {
+            GameWorld world = Singleton<GameWorld>.Instance;
+            List<Player> alive = world != null ? world.AllAlivePlayersList : null;
+            if (alive == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < alive.Count; i++)
+            {
+                if (IsLiveBot(alive[i]))
+                {
+                    into.Add(alive[i]);
+                }
+            }
         }
 
         /// <summary>
@@ -142,7 +257,7 @@ namespace Framesaver.Patches
         /// </summary>
         public static int CulledLastFrame
         {
-            get { return Plugin.CullSleepingBotAnimators.Value ? Sleeping.Count : 0; }
+            get { return Marked().Count; }
         }
 
         /// <summary>
@@ -179,15 +294,9 @@ namespace Framesaver.Patches
         {
             get
             {
-                if (!Plugin.CullSleepingBotAnimators.Value)
-                {
-                    return 0;
-                }
-
                 int offScreen = 0;
-                foreach (KeyValuePair<Player, BotStandBy> entry in Sleeping)
+                foreach (Player player in Marked())
                 {
-                    Player player = entry.Key;
                     if (player == null)
                     {
                         continue;
@@ -235,16 +344,27 @@ namespace Framesaver.Patches
         /// feature doing literally nothing. Hence the type test: ask whether
         /// the write can land before believing what it reads back.
         ///
+        /// **Walks the whole live AI roster, not the marked set**, and that is a
+        /// deliberate widening from the first version. A latch is a bot the
+        /// engine is still culling after we stopped asking - so scanning only
+        /// what we currently mark is scanning the one population guaranteed not
+        /// to contain the evidence. It also makes the field work with stand-by
+        /// switched off entirely, where `Sleeping` is empty by construction and
+        /// the old version read 0 no matter what the engine was doing. That is
+        /// exactly the configuration the reload observation test runs in.
+        ///
         /// Read as a triple with the two above: asked / honoured / off screen.
         /// </summary>
         public static int CulledEngine
         {
             get
             {
+                List<Player> bots = new List<Player>();
+                AppendLiveBots(bots);
+
                 int culled = 0;
-                foreach (KeyValuePair<Player, BotStandBy> entry in Sleeping)
+                foreach (Player player in bots)
                 {
-                    Player player = entry.Key;
                     if (player == null)
                     {
                         continue;
