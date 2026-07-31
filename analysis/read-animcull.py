@@ -157,15 +157,25 @@ def build_can_emit(field, paths):
     `present` is an upper bound -- the emit code exists, not that it fired --
     so a True here never licenses "this field should have had a value".
 
-    AND THE BRACKET IS WIDER THAN IT NEEDS TO BE, deliberately. `fieldsUnion`
-    spans every binary Beta could reach, including `bin/Release` and artifacts
-    that never wrote a log at all, so the middle state can say "unknown" where
-    the true answer is False -- `animCulledEngine` is the live example: it
-    exists only in a build newer than every SPT4.0.13 log, yet lands in the
-    union and therefore in the bracket. Narrowing it means joining binary
-    mtimes to log dates, which is another unproven join, and the error here is
-    in the safe direction: it refuses to claim rather than claiming wrongly.
-    Worth knowing before anyone reads "unknown" as "possibly present".
+    THE BRACKET IS NARROWED WITH `deployed`, AND NEITHER PRECOMPUTED UNION IS
+    THE RIGHT ONE. Beta added a deploy status per binary after I flagged that
+    `fieldsUnion` spans builds that never wrote a log. But:
+
+      fieldsUnion          includes `deployed: false` - a build output that
+                           demonstrably wrote nothing. Too wide.
+      fieldsUnionDeployed  excludes the 7 `deployed: null` binaries, whose
+                           evidence line says the deploy record is known to be
+                           INCOMPLETE. An unknown deploy could still have
+                           written a log, so this is too narrow, and too narrow
+                           is the dangerous direction: it would let this reader
+                           call a field structural when a binary that emitted
+                           it may have been running.
+
+    So the set is computed here: every record whose `deployed` is not False.
+    Unknown counts as could-have, which is the safe reading of an incomplete
+    record. On today's file that is 321 of 322 fields, and the one it excludes
+    is `animCulledEngine` itself -- which is why SPT4.0.13 can now be answered
+    exactly rather than bracketed.
     """
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         'build-fields.json')
@@ -195,8 +205,13 @@ def build_can_emit(field, paths):
 
     if field in (data.get('fieldsInEveryBinary') or []):
         return True, 'in every candidate binary (join is a bracket here)'
-    if field not in (data.get('fieldsUnion') or []):
-        return False, 'in no known binary at all'
+    could = set()
+    for rec in data.get('records') or []:
+        if rec.get('deployed') is not False:
+            could |= set(rec.get('fields') or [])
+    if field not in could:
+        return False, ('in no binary that could have written a log - every '
+                       'record carrying it is deployed:false')
     return None, ('SPT4.0.13: the installed binary did not write most of these '
                   'logs, and this field is in some candidate binaries and not '
                   'others - the join does not reach an answer')
