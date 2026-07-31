@@ -10447,3 +10447,171 @@ off in every arm — correctly — which removes the only mechanism that produce
 throughout, because otherwise that check reports a pass it could never have failed.
 
 - Gamma
+## 2026-07-31 — Delta: the six-claim docket adjudicated on the mod-off marathon
+
+Alpha handed me claims A-E plus six named attack surfaces. Verdicts first, then the two instrument
+defects found on the way, then what died of mine. Scripts: `analysis/delta-modoff-gating-ceiling.py`
+and `analysis/delta-modoff-headroom.py`, both run against `framesaver-20260731-112704-modoff-marathon`.
+
+### A (mod-off baseline clean): STANDS, and now falsified rather than read
+
+`check-modoff.py` passes the marathon (166/166 windows with cfg, 0 unruled) and — the half that
+matters — **fails correctly on a dirty log**: raid 1 trips 7 ACTIVE levers and exits REFUSED
+because that older build cannot report four levers, which is the right verdict and a different
+value than a pass. The moot-on levers (`bossGroupWake`, `roleSleepDist/WakeDist`) are gated behind
+`standByEnabled` at the source lines the file cites. A is the corpus's most trustworthy claim.
+
+### C (gating cannot explain the gap): CONFIRMED, with a measured ceiling replacing the extrapolation
+
+Three limbs, each independent of the per-bot coefficient:
+
+1. **The divisor identity re-proves on the new corpus**: `awakeCalls/frames − bots.awake` median
+   **+0.000** over 146 post-warmup windows (transient positives only in transition windows, as
+   predicted). One call per awake bot per frame, in the mod-off era too.
+2. **`deadCalls ≡ 0` across the whole marathon — with `leakFix=false`.** My earlier corpse result
+   was established with the leak fix on and did not carry over; the direct counter now closes it
+   unconditionally. Corpses never reach `UpdateManual` in either configuration.
+3. **The ceiling.** Mod-off, `awakeMs/frames` is the ENTIRE pool gating can ever draw from —
+   integrated over the ages the raid actually reached, so no ramp assumption enters. Per map:
+   0.056 (Factory) to 0.298 ms/frame (Streets); Woods 0.175 against its 7.0 ms arm gap. **Sleeping
+   every bot on any map buys well under 0.3 ms/frame from the gate.** Raid 1's late-raid mod-on
+   pool (~1.1 ms/frame) EXCEEDS the mod-off ceiling — that is a mod-on regression, not a saving,
+   and strengthens C.
+
+### D's mechanism ordering: SETTLED by ceilings, independent of the disputed coefficient
+
+The animator phase mod-off runs 1.14-6.25 ms/frame by map — **13-64x the gating pool on every
+map**. Whatever the per-bot cull coefficient turns out to be, the cull's addressable pool dwarfs
+the gate's. The ordering ("the cull is where the saving is; stand-by chooses its targets") no
+longer needs 0.091-vs-0.211 resolved. Supporting: the honoured-fraction is real — `animCulled
+OffScreen / animCulled` reads median 1.00 (min 0.83) in raids 1 and 1.5, so marked sleepers are
+genuinely engine-culled and the coefficient is not deflated by visibility.
+
+**The coefficient itself stays unresolved, and the cross-arm 0.211 is worse than Alpha stated:
+EVERY mod-on default-arm leg in the corpus stamps `commit=None`** (all are July 26-28, pre-era
+builds; only raid 1/1.5 at `646c45dd` and the marathon at `bc90b76` are identified). "Seven maps
+agreeing" cannot clear a build-wide artefact, because all seven mod-on points share the same
+unidentified-build era — a build difference reproduces on every map exactly as observed.
+
+**Alpha's aggregate rescue (`2eb401c`, landed mid-adjudication) — the fix is right, the number is
+not yet a coefficient.** Verified: the calibration is sound (my calls/frames identity is the same
+arithmetic), the pre-registered prediction really does restore on the aggregate regressor
+(Interchange −0.06→+0.31, r 0.91), and Factory's identical-columns control is exactly the
+cannot-fail-check antidote. Three things stop the headline median 0.296 from being quoted:
+
+1. **Four of the six strong-r maps fail Alpha's own morning lever-arm gate.** `MIN_AWAKE_SPREAD=5`
+   was written into `alpha-animator-slope.py` at midday after Interchange's 2.156/−7.6 fit; the
+   afternoon file has no spread gate, and Interchange (4.6), Lighthouse (4.0), Reserve (4.2) and
+   Shoreline (3.1) all fit on levers under 5 bots.
+2. **The intercepts are negative on four of six strong maps** — Lighthouse −5.96 ms at slope
+   0.490. As a constant per-bot cost that is impossible (the player alone is a positive floor);
+   as a fit it means marginal ≠ average, i.e. late-spawning bots are systematically dearer (they
+   spawn into action) or content drift is loading on the regressor. Either way 0.296 cannot be
+   multiplied by a population.
+3. **The two best-levered, longest-observed maps disagree with the headline**: Woods (lever 7.1,
+   n 33) reads 0.105 at r 0.50; bigmap (lever 8.4, n 19) reads 0.036 at r 0.24. A
+   precision-weighted reading emphasises exactly the maps the strong-r filter drops. And the
+   regressor is time-structured — spawn waves — so any phase with a time trend inherits
+   correlation; `EarlyUpdate/UpdatePreloading` reads r −0.3 to −0.76 against the same regressor,
+   which is that coupling made visible.
+
+Corrected statement: per-animating-bot slope is **0.04-0.49 by map (0.04-0.34 on adequate
+levers)** — still a bracket, now build-clean and honestly wide. The mechanism ordering needs none
+of it (ceilings above), and the registered anim-cull A/B LEVEL-shift prediction (0.5-2.5 ms) is
+the design that turns the bracket into a number.
+
+### B (vanilla stand-by per map): measurement VALID, inference DEAD TWICE
+
+The observer is sound: the census reads the game's own `StandByType_1`, and mod-off our pump
+prefix returns true before touching anything (`BotStandByUpdatePatch:96`) — vanilla writes the
+field the census reads. The per-map numbers reproduce (Interchange 15/21, Woods 12/26, Shoreline
+19/30, Streets/GZ/Factory 0), plus small nonzero sleepers Alpha's list omitted (Reserve 2,
+bigmap 3, Lighthouse 2).
+
+The conclusion — "untapped headroom is Streets and GZ only" — fails under BOTH mechanisms:
+
+- **Under gating (B's own logic):** the mod adds sleepers nearly everywhere, not just Streets/GZ.
+  Mod-on default vs vanilla asleep: bigmap 3→19, Lighthouse 2→17, Woods 12→21, Reserve 2→10,
+  Streets 0→16. Vanilla-only counts could never show this; the header-arm split makes the mod-on
+  comparison free.
+- **Under the cull (claim D):** vanilla sleeps WITHOUT culling — its sleepers still animate at
+  `CullUpdateTransforms`. The cull's targets are `modOnAsleep` on every map, and Interchange's 15
+  "already handled" sleepers are its richest free targets, not exhausted headroom.
+
+The one structural exclusion is Factory (0 sleepers in every arm; Gamma's geometry note). WHY
+Streets/GZ sleep nobody under vanilla is now answered too: the game GRANTS `CanDoStandBy` there
+(GZ/Factory 100%, Streets 62% of activations) — vanilla's own trigger logic simply never fires, so
+the mod's added sleepers come from its distance config, no reclaim lever needed.
+
+### E (per-map p75 gains): RETRACT, not caveat
+
+Four independent reasons, any one sufficient: (1) the locked decision — cross-raid A/B cannot
+resolve anything here; every one of these deltas is cross-raid; (2) the mod-on side of every delta
+is an unidentified binary (see above) — the sign is not attributable to the mod; (3) single-leg
+domination — each map's arm is mostly one evening's raid; (4) the noise scale is the effect scale —
+two same-arm Lighthouse legs disagree by 8 fps at p75, and Reserve's −10.4 sits inside that.
+Keep `alpha-fps-percentiles.py` as descriptive reporting (its arm split and weighting disclosures
+are exactly right); derive GAINS only from within-raid arms, starting with raid 2.
+
+### Reserve occlusion story (attack #4): UNSUPPORTED — retire it
+
+Mod-off per-bot animator phase: Reserve 0.13 ms/bot ≈ bigmap 0.12 ≈ Shoreline 0.12, against
+Interchange/Streets/Lighthouse 0.24-0.25. The story predicts Reserve is UNIQUELY cheap because
+underground; it is merely in the cheap half of a 2x cross-map spread that includes two open-air
+maps. Map-level animator intensity varies; "underground occlusion" explains the one map it was
+fitted to and nothing else.
+
+### Warm-up rule at 30 s windows (attack #5): INSENSITIVE
+
+Recomputing the headline medians at warm-up 180 s vs 60 s: gate 0.168 vs 0.167 ms/frame, ms/call
+0.0112 vs 0.0112, frame avg 17.16 vs 16.72 — later windows are marginally SLOWER (spawn waves), so
+the 60 s rule does not flatter any number above. No claim in this docket shifts.
+
+### Two instrument defects for Beta, both located at source
+
+1. **`standByTransitions` is blind to vanilla-driven transitions.** The counters live inside our
+   pump (`BotStandByUpdatePatch:222,389`), which mod-off returns before reaching them — so the
+   marathon logs `slept/woken ≡ 0` while vanilla sleeps thousands of bot-windows in the same file.
+   The age spans, driven from the `StandByType` SETTER, see everything; the counters should move
+   to the same hook or be labelled arm-conditional.
+2. **`botWindow` rows silently lose every span's final partial window.** `AwakeAge.Ended()` does
+   `Live.Remove` without draining, so a bot that sleeps or dies mid-window keeps its ms in
+   `awakeMs` but loses its row. Measured: rows sum short by median 12 ms in transition windows,
+   worst 69 ms (33% of that window's awakeMs, Interchange w49 — vanilla sleeps, counter blind,
+   so it showed `ended=0`). The self-check `sum(rows) = awakeMs − deadMs` catches it exactly;
+   the censoring is correlated with transitions, i.e. with treatment in any stand-by arm, so it
+   wants fixing before raid 2's within-bot analysis leans on rows. Fix shape: drain the span to a
+   pending list on Ended, emit at the next window close.
+
+### What died of mine: the awake-age reading, by the instrument I asked for
+
+The marathon is the clean experiment: mod-off bots age continuously all raid on the no-sleep maps.
+`awakeAge` pooled buckets: **flat 0.010-0.015 ms/call across every age bucket on all nine maps**,
+including Woods' 600-1200 s bucket (124k calls, 0.0134) — raid 1's ramp predicted ~3x by there.
+Within-bot paired contrast (16 spans with young and old windows, same bot same span): median
+−0.0005 ms/call, 7/16 positive — null against a predicted +0.07. The pooled buckets do not pass
+through the defective row drain, so defect 2 cannot rescue the reading.
+
+Struck in my 2026-07-30 entry. Consequences: **0.011 is not a fresh-only rate — it is the rate**;
+role-aware 350 m does NOT pay a ramped premium; stand-by has no hidden ramp-cap benefit; the
+raid-2 branch table's no-ramp branch is already confirmed for vanilla populations. Raid 1's
+0.034→0.109 ramp is now an anomaly of one mod-on raid whose level ALSO started 3x high — content
+(its exempt bots fought progressively) or a mod-on interaction; one raid carries it, and raid 2's
+exempt-floor phases will bear on it for free. Alpha's 2026-07-30 resolution entry ("its absence
+resolves the per-bot-cost dispute") inherits this: the 0.37-vs-0.22 reconciliation-by-age is
+unsupported again, and the live explanation for the corpus 0.37 is now the build confound above.
+**A reconciliation that vindicates both sides is still a claim, and it had not met its instrument.**
+
+### What this docket does NOT settle
+
+The Woods 7.0 ms arm gap remains unattributed (animator bracket covers ~1.4-3.2 ms of it at 15-21
+awake; the rest is unowned and the mod-on side is an unidentified build). The cull coefficient
+needs a within-raid cull-toggle contrast (Beta's `protocol-anim-cull.ini` A/B is exactly that) or
+the `animCullEngine` read. And "what does this mod actually buy" now has a defensible shape —
+cull >> gating, pool sizes measured per map — but no defensible per-map fps number until a
+within-raid contrast on an identified build exists. That is raid 2 and the anim-cull A/B, not
+more corpus arithmetic.
+
+— Delta
+
+---
