@@ -91,12 +91,48 @@ def product_version(path):
         return None
 
 
-def record(path, install=None):
+# Prose that records deploys. COORDINATION.md is append-only, so an md5 in it
+# is evidence a build shipped. Absence is NOT evidence it did not: 7 artifacts
+# exist without one, and artifacts are taken AT deploy time - so the record is
+# incomplete and `deployed` has three values for that reason and not for
+# tidiness.
+DEPLOY_RECORD = ["COORDINATION.md", "FINDINGS.md", "TESTING.md",
+                 "COMPATIBILITY.md", "README.md"]
+
+
+def deploy_status(path, md5, install, docs):
+    """Was this binary ever in an install, and how do we know.
+
+    Gamma asked for `wroteLogs`. This says `deployed`, because that is what is
+    measurable - whether anyone then PLAYED a raid on it is recorded nowhere,
+    so `wroteLogs` would be an inference wearing a measurement's name.
+    """
+    if install:
+        return True, "currently installed in %s" % install
+    named = [d for d in docs if md5[:8] in docs[d] or md5 in docs[d]]
+    if named:
+        return True, "md5 named in " + ", ".join(sorted(named))
+    if os.path.basename(os.path.dirname(path)).lower() == "release":
+        # The only case callable false. It is stamped with the current HEAD,
+        # its md5 matches neither install, and no announcement names it - and
+        # byte-identical .NET builds do not recur, since the MVID differs per
+        # compile. This is also the case that produces the slack Gamma found:
+        # animCulledEngine exists ONLY here, so leaving it "unknown" keeps a
+        # field in the bracket that no log-writing binary could ever emit.
+        return False, "build output; matches no install and no record names it"
+    return None, "no record found, and the record is known to be incomplete"
+
+
+def record(path, install=None, docs=None):
     blob = open(path, "rb").read()
     ver = product_version(path)
+    deployed, why = deploy_status(path, hashlib.md5(blob).hexdigest(),
+                                  install, docs or {})
     return {
         "dll": path,
         "install": install,
+        "deployed": deployed,
+        "deployedEvidence": why,
         "md5": hashlib.md5(blob).hexdigest(),
         "bytes": len(blob),
         "mtime": datetime.fromtimestamp(
@@ -112,19 +148,25 @@ def record(path, install=None):
 
 
 def main():
+    docs = {}
+    for name in DEPLOY_RECORD:
+        full = os.path.join(MOD, name)
+        if os.path.exists(full):
+            docs[name] = open(full, encoding="utf-8", errors="ignore").read().lower()
+
     records = []
     for name, path in sorted(INSTALLS.items()):
         if os.path.exists(path):
-            records.append(record(path, install=name))
+            records.append(record(path, install=name, docs=docs))
         else:
             print("missing install binary: %s" % path, file=sys.stderr)
 
     for path in sorted(glob.glob(os.path.join(MOD, "artifacts", "*.dll"))):
-        records.append(record(path))
+        records.append(record(path, docs=docs))
 
     built = os.path.join(MOD, "bin", "Release", "Framesaver.dll")
     if os.path.exists(built):
-        records.append(record(built))
+        records.append(record(built, docs=docs))
 
     if not records:
         print("no binaries reachable - refusing to emit an empty corpus",
@@ -167,6 +209,15 @@ def main():
         },
         "binaries": len(records),
         "fieldsUnion": sorted(union),
+        # The bracket Gamma's middle state should use. fieldsUnion spans every
+        # binary reachable on disk INCLUDING ones that never shipped, so a field
+        # existing only in bin/Release lands in it and "unknown" then reads as
+        # "possibly present" for something no log-writing binary could emit.
+        # This drops only records proven never deployed; `deployed: null` stays
+        # in, because the deploy record is incomplete and unknown must not be
+        # silently treated as no.
+        "fieldsUnionDeployed": sorted(set().union(*[
+            set(r["fields"]) for r in records if r["deployed"] is not False])),
         "fieldsInEveryBinary": sorted(inter),
         "findingNestedFieldSets": not breaks,
         "nestingBreaks": breaks,
