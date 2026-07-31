@@ -712,6 +712,157 @@ class P {
                                     ",\"deadAwake\":" })
             Check($"emits {lit}", inUs(lit), true);
 
+        // ---- Animator cull: the instrument guarding the main mechanism ----
+        //
+        // The cull measures ~0.22ms per awake bot across two maps and five legs -
+        // twenty times what stand-by's own gating saves - so this is where nearly
+        // all of the mod's frame time comes from, and `animCulled` alone cannot
+        // tell a working cull from a dead one. Everything below certifies the
+        // instrument that can.
+        Console.WriteLine("\nAnimator cull instrument");
+        var sba = asm.GetType("Framesaver.Patches.SleepingBotAnimatorPatch");
+        var reaches = sba.GetMethod("WriteReachesUnity",
+                                    BindingFlags.NonPublic | BindingFlags.Static);
+        Check("WriteReachesUnity exists", reaches != null, true);
+
+        // Both real types, resolved out of the game assembly. Neither can be
+        // constructed without Unity and assets, which is why the method takes a
+        // Type - the alternative was testing a hand-rolled fake, i.e. testing the
+        // fake.
+        var fastAnim = Type.GetType("FastAnimatorProcessorClass, Assembly-CSharp");
+        var unityAnim = Type.GetType("GClass1446, Assembly-CSharp");
+        Check("FastAnimatorProcessorClass still exists", fastAnim != null, true);
+        Check("the Unity animator wrapper still exists", unityAnim != null, true);
+        if (reaches != null && fastAnim != null && unityAnim != null) {
+            Check("write does NOT reach Unity on the fast animator",
+                  reaches.Invoke(null, new object[] { fastAnim }), false);
+            Check("write DOES reach Unity on the real wrapper (control)",
+                  reaches.Invoke(null, new object[] { unityAnim }), true);
+            Check("null type is not counted as reachable",
+                  reaches.Invoke(null, new object[] { null }), false);
+        }
+
+        // The fact the whole design rests on, and it is a fact about the GAME,
+        // not about us: the fast animator's cullingMode is an auto-property, so a
+        // write to it round-trips while doing nothing. That is why CulledEngine
+        // type-tests instead of simply reading the value back - a read-back would
+        // have reported 100% success for a feature doing literally nothing, which
+        // is the most flattering false answer available.
+        //
+        // If BSG ever gives it a real implementation this fails, and it should:
+        // both the type test and the interlock would need revisiting.
+        //
+        // Asserted from behaviour, not from the name `<cullingMode>k__BackingField`
+        // - the decompiled assembly carries renamed backing fields, so a name check
+        // fails for the wrong reason and looks like the property was fixed.
+        const int All = (int)(BindingFlags.Public | BindingFlags.NonPublic
+                              | BindingFlags.Instance | BindingFlags.Static
+                              | BindingFlags.DeclaredOnly);
+        // The field a getter of the form `return this.X;` returns, else null.
+        Func<MethodInfo, FieldInfo> plainReadBack = m => {
+            byte[] il = m?.GetMethodBody()?.GetILAsByteArray();
+            if (il == null || il.Length != 7) return null;          // ldarg.0/ldfld/ret
+            if (il[0] != 0x02 || il[1] != 0x7B || il[6] != 0x2A) return null;
+            try { return m.Module.ResolveField(BitConverter.ToInt32(il, 2)); } catch { return null; }
+        };
+        Func<Type, FieldInfo, int> readersOf = (t, f) => t.GetMethods((BindingFlags)All).Count(m => {
+            byte[] il = m.GetMethodBody()?.GetILAsByteArray();
+            if (il == null) return false;
+            for (int i = 0; i + 5 <= il.Length; i++) {
+                if (il[i] != 0x7B) continue;
+                try { if (Equals(m.Module.ResolveField(BitConverter.ToInt32(il, i + 1)), f)) return true; }
+                catch { }
+            }
+            return false;
+        });
+        if (fastAnim != null && unityAnim != null) {
+            var slot = plainReadBack(fastAnim.GetProperty("cullingMode").GetGetMethod());
+            Check("fast animator's cullingMode just reads a field back", slot != null, true);
+            // The inert half, and the reason a read-back would have lied: the
+            // value it stores is consulted by NOTHING. One reader, the getter.
+            if (slot != null)
+                Check("...that nothing else in the class ever reads",
+                      readersOf(fastAnim, slot), 1);
+            // A count of 1 is only meaningful if the scan can reach 2. Without
+            // this, a scanner that only ever finds the method it started from
+            // passes the line above and proves nothing.
+            Check("the reader scan can count past one (control)",
+                  readersOf(fastAnim, fastAnim.GetField("FastAnimatorController",
+                                                        (BindingFlags)All)) > 1, true);
+            Check("the real wrapper forwards instead (control)",
+                  plainReadBack(unityAnim.GetProperty("cullingMode").GetGetMethod()) == null, true);
+        }
+
+        // CulledEngine must NOT be gated on the config flag and CulledLastFrame
+        // must be - that asymmetry IS the instrument. Both directions are checked
+        // because a scanner that finds nothing and a scanner that finds
+        // everything each pass one of these and fail the other.
+        Func<MethodInfo, string, bool> readsField = (m, field) => {
+            var body = m?.GetMethodBody();
+            byte[] il = body?.GetILAsByteArray();
+            if (il == null) return false;
+            var mod = m.Module;
+            for (int i = 0; i + 5 <= il.Length; i++) {
+                if (il[i] != 0x7E && il[i] != 0x7B) continue;   // ldsfld / ldfld
+                try {
+                    if (mod.ResolveField(BitConverter.ToInt32(il, i + 1)).Name == field)
+                        return true;
+                } catch { }
+            }
+            return false;
+        };
+        var askedGet = sba.GetProperty("CulledLastFrame")?.GetGetMethod();
+        var engineGet = sba.GetProperty("CulledEngine")?.GetGetMethod();
+        Check("CulledEngine ships", engineGet != null, true);
+        Check("CulledLastFrame IS gated on the flag (control)",
+              readsField(askedGet, "CullSleepingBotAnimators"), true);
+        Check("CulledEngine is NOT gated on the flag",
+              readsField(engineGet, "CullSleepingBotAnimators"), false);
+
+        // The interlock. fastBodyAnimator substitutes the inert animator, which
+        // deletes the cull while the log still reports it working - so forcing it
+        // is refused outright rather than warned about.
+        var fbap = asm.GetType("Framesaver.Patches.FastBodyAnimatorPatch");
+        var fbPost = fbap.GetMethod("Postfix", BindingFlags.NonPublic | BindingFlags.Static);
+        Check("fast-animator patch consults the cull setting",
+              readsField(fbPost, "CullSleepingBotAnimators"), true);
+        Check("and refuses rather than warns", inUs("Force fast body animator' REFUSED"), true);
+
+        // ---- Every protocol file on disk, against the shipped settings ----
+        //
+        // An unknown key refuses the WHOLE protocol at raid start, so a typo
+        // costs a raid - and the raids are the scarce thing. The runner needs a
+        // BepInEx host to resolve keys, but the keys themselves are Config.Bind
+        // literals in the same assembly, so they are checkable from here.
+        //
+        // Every protocol-*.ini, not a named list: a file added later is exactly
+        // the one nobody thought to check.
+        Console.WriteLine("\nProtocol files resolve against the shipped settings");
+        string root = Path.GetDirectoryName(dll ?? "");
+        root = Path.GetFullPath(Path.Combine(root ?? ".", "..", ".."));
+        var inis = Directory.GetFiles(root, "protocol-*.ini");
+        Check("protocol files found", inis.Length > 0, true);
+        foreach (var ini in inis) {
+            var unknown = new System.Collections.Generic.List<string>();
+            foreach (var raw in File.ReadAllLines(ini)) {
+                var line = raw.Split('#', ';')[0].Trim();
+                int eq = line.IndexOf('=');
+                if (line.StartsWith("[") || eq < 1) continue;
+                string key = line.Substring(0, eq).Trim();
+                if (key.StartsWith("@")) {
+                    string d = key.Substring(1).ToLowerInvariant();
+                    if (d != "name" && d != "seconds") unknown.Add(key);
+                } else if (key.ToLowerInvariant() != "name" && !inUs(key)) {
+                    unknown.Add(key);
+                }
+            }
+            Check(Path.GetFileName(ini), string.Join("/", unknown), "");
+        }
+        // Same reason as the #US control above: without this, a matcher that
+        // said yes to everything would pass every line in the loop.
+        Check("an invented setting name would be caught (control)",
+              inUs("Cull sleeping bot animatorz"), false);
+
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
         return bad == 0 ? 0 : 1;
     }

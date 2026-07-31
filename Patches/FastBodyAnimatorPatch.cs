@@ -39,6 +39,29 @@ namespace Framesaver.Patches
                 return;
             }
 
+            // Hard interlock, not a warning. The fast animator replaces
+            // Unity's Animator with FastAnimatorProcessorClass, whose
+            // cullingMode is an inert auto-property - so it silently deletes
+            // the animator cull, measured at ~0.22ms per awake bot and where
+            // nearly all of this mod's frame time actually comes from. Worse,
+            // it deletes it invisibly: `animCulled` reports what we asked for,
+            // so the log would show the cull working at full strength while it
+            // did nothing.
+            //
+            // The cull ships on by default and is the primary mechanism; this
+            // ships off and its own description says it may be incomplete. So
+            // this is the lever that yields. Turning the cull off is an
+            // explicit act, and then this is available.
+            if (Plugin.CullSleepingBotAnimators.Value)
+            {
+                Plugin.LogSource.LogError(
+                    "Framesaver: 'Force fast body animator' REFUSED - it would silently disable "
+                    + "'Cull sleeping bot animators', which is this mod's largest single saving, "
+                    + "while the log still reported the cull as working. Turn the cull off first "
+                    + "if you want the fast animator.");
+                return;
+            }
+
             ApplicationConfigClass config = BackendConfigAbstractClass.Config;
             if (config == null)
             {

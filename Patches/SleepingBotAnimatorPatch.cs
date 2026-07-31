@@ -183,6 +183,82 @@ namespace Framesaver.Patches
             }
         }
 
+        /// <summary>
+        /// Of the bots we marked, how many carry CullCompletely on an animator
+        /// that can actually honour it.
+        ///
+        /// **Deliberately not gated on the config flag, unlike the two above.**
+        /// That asymmetry is the whole point. `CulledLastFrame` reports what we
+        /// asked for, so switching the cull off drops it to 0 on the very next
+        /// window - while the engine keeps culling every bot that was already
+        /// asleep, because our own LateUpdate skip suppresses Player.VisualPass
+        /// (its ONLY call site, Player.cs:1565) and VisualPass is the thing
+        /// that would have rewritten cullingMode. A latched arm and a clean arm
+        /// are otherwise byte-identical in the log, which is the worst possible
+        /// property for the instrument guarding the mod's main mechanism.
+        ///
+        /// **A plain read-back of cullingMode would NOT have been enough**, and
+        /// this is the trap worth spelling out. On BSG's
+        /// FastAnimatorProcessorClass `cullingMode` is `{ get; set; }` with no
+        /// reader anywhere in the class - so the write does nothing AND the
+        /// value round-trips, and a read-back would report full success for a
+        /// feature doing literally nothing. Hence the type test: ask whether
+        /// the write can land before believing what it reads back.
+        ///
+        /// Read as a triple with the two above: asked / honoured / off screen.
+        /// </summary>
+        public static int CulledEngine
+        {
+            get
+            {
+                int culled = 0;
+                foreach (KeyValuePair<Player, BotStandBy> entry in Sleeping)
+                {
+                    Player player = entry.Key;
+                    if (player == null)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        IAnimator body = player.BodyAnimatorCommon;
+                        if (body != null && WriteReachesUnity(body.GetType())
+                            && body.cullingMode == AnimatorCullingMode.CullCompletely)
+                        {
+                            culled++;
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Same rule as CulledOffScreen: a body mid-teardown
+                        // undercounts rather than misclassifies.
+                    }
+                }
+
+                return culled;
+            }
+        }
+
+        /// <summary>
+        /// Whether writing cullingMode on this animator reaches Unity at all.
+        ///
+        /// False only for FastAnimatorProcessorClass, which
+        /// Player.CreateBodyAnimator substitutes for Unity's Animator when
+        /// UseBodyFastAnimator is set (Player.cs:4661). It is not a Unity
+        /// Animator and its cullingMode is inert, so the whole animator cull
+        /// becomes a no-op under it. FastBodyAnimatorPatch refuses to force
+        /// that flag while the cull is on; this covers anything else setting
+        /// it.
+        ///
+        /// Takes a Type rather than the instance so it can be tested against
+        /// both real types without a Unity host to construct one in.
+        /// </summary>
+        internal static bool WriteReachesUnity(Type animator)
+        {
+            return animator != null && !typeof(FastAnimatorProcessorClass).IsAssignableFrom(animator);
+        }
+
         public static void ReadAndReset()
         {
         }
