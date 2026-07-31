@@ -191,7 +191,40 @@ file over what is on it.
 
 ## The excluded corpus, and the one criterion that is not in the data
 
-> **CORRECTION 2026-07-31 (Gamma).** The counts below are stale and the directory is no longer a
+> **SETTLED 2026-07-31 by Sophia. The criterion is now in the data, as a date.**
+>
+> `Base` is an **older SPT version**, upgraded away from so the numbers would be current. Her rule,
+> verbatim: *"Framesaver only needs to be tested on this working directory"*, and **"anything from
+> after your working directory was created is noise."**
+>
+> That makes the boundary a filesystem fact rather than a recollection:
+>
+> ```
+> F:\SPT\Base        created 2025-10-19 01:36    (nine months of play behind it)
+> F:\SPT\SPT4.0.13   created 2026-07-26 15:28:36  <- THE BOUNDARY
+> ```
+>
+> So the 07-26 **14:25** boundary this section already described was correct: `142522-customs` is
+> the last `Base` log written before the new install existed, an hour ahead of it. The criterion was
+> right and only its *justification* was missing.
+>
+> **The four orphan logs are resolved as noise.** `20260729-{192947,195031,201121,203228}-control`
+> postdate the boundary by three days, so they fall under the rule. Sophia cannot account for them
+> and suspects a misconfiguration; she is explicit that she cannot speak to it, so nothing further is
+> inferable and nothing should be built on them. Beta established they were written by the same
+> 26 July binary as the other `Base` logs (md5 `b6bd3927...`), so no build difference splits them off.
+>
+> **Disposition: `Base` is a CLOSED corpus.** Available if a historical question needs it, never
+> pooled, and not a control — the two installs differ in SPT version *and* AI mod stack *and*
+> Framesaver build, so the contrast confounds three things at once. The earlier suggestion that it
+> was the clean no-AI-mods reference was ours, not hers, and it does not survive her answer.
+>
+> One thing worth keeping from the wrong turn: every analysis script had always pointed at
+> `SPT4.0.13`, which was correct. What was wrong was the *stated* population — "25 logs", "725
+> windows", "the corpus" — quoted without the qualifier that made it true.
+>
+> **CORRECTION 2026-07-31 (Gamma), retained for the history.** The counts below are stale and the
+> directory is no longer a
 > safe proxy for the exclusion. Measured today:
 >
 > ```
