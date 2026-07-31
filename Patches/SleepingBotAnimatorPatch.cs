@@ -70,7 +70,7 @@ namespace Framesaver.Patches
                 return false;
             }
 
-            if (Plugin.CullSleepingBotAnimators.Value)
+            if (Plugin.CullSleepingBotAnimators.Value && !Inert)
             {
                 IAnimator body = player.BodyAnimatorCommon;
                 if (body != null)
@@ -81,6 +81,21 @@ namespace Framesaver.Patches
 
             return true;
         }
+
+        /// <summary>
+        /// True when the game is running BSG's fast body animator, under which
+        /// writing cullingMode is a no-op - so the cull is switched off rather
+        /// than left to burn a write per sleeping bot per frame for nothing.
+        ///
+        /// This is the READ-ONLY half of a setting that used to force that
+        /// animator on. The write path is gone: it breaks the game. But
+        /// UseBodyFastAnimator still exists and another mod or a hand-edited
+        /// client.config.json can set it, and if that ever happens the cull -
+        /// this mod's largest single saving - is silently inert while
+        /// `animCulled` still reports full success. A deleted footgun where a
+        /// compatibility hole remains is worth a guard.
+        /// </summary>
+        internal static bool Inert;
 
         /// <summary>
         /// Called from the stand-by state-change hook below. VisualPass rewrites cullingMode every frame, so
@@ -247,9 +262,9 @@ namespace Framesaver.Patches
         /// Player.CreateBodyAnimator substitutes for Unity's Animator when
         /// UseBodyFastAnimator is set (Player.cs:4661). It is not a Unity
         /// Animator and its cullingMode is inert, so the whole animator cull
-        /// becomes a no-op under it. FastBodyAnimatorPatch refuses to force
-        /// that flag while the cull is on; this covers anything else setting
-        /// it.
+        /// becomes a no-op under it. Framesaver no longer offers to turn that
+        /// flag on - it breaks the game - so this is purely about detecting
+        /// something else having done so. See DetectInertAnimator.
         ///
         /// Takes a Type rather than the instance so it can be tested against
         /// both real types without a Unity host to construct one in.
@@ -281,6 +296,42 @@ namespace Framesaver.Patches
         internal static void ResetForRaid()
         {
             Sleeping.Clear();
+            DetectInertAnimator();
+        }
+
+        /// <summary>
+        /// Sets <see cref="Inert"/> from the game's own config, once per raid.
+        ///
+        /// Here rather than in a patch of its own, because a per-raid reset
+        /// already runs here and the config is certainly loaded by now - so the
+        /// check costs no hook at all. Once per raid also puts the error in the
+        /// log of the raid it spoiled, which is where someone reading back will
+        /// look for it.
+        /// </summary>
+        private static void DetectInertAnimator()
+        {
+            bool wasInert = Inert;
+            Inert = false;
+
+            try
+            {
+                ApplicationConfigClass config = BackendConfigAbstractClass.Config;
+                Inert = config != null && config.UseBodyFastAnimator;
+            }
+            catch (Exception)
+            {
+                // Cannot read it, so do not claim it. Leaving Inert false keeps
+                // the cull running; CulledEngine reads the engine and will
+                // disagree with animCulled if the write is landing nowhere.
+            }
+
+            if (Inert && !wasInert)
+            {
+                Plugin.LogSource.LogError(
+                    "Framesaver: UseBodyFastAnimator is ON, so animator culling cannot work - "
+                    + "cullingMode is inert on BSG's fast animator. The sleeping-bot cull is "
+                    + "DISABLED for this raid. Something other than Framesaver set that flag.");
+            }
         }
     }
 

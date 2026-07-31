@@ -87,7 +87,6 @@ namespace Framesaver
         public static ConfigEntry<int> MinBrainsPerFrame;
 
         // ---- 3. Experimental ----------------------------------------------------------------
-        public static ConfigEntry<bool> ForceFastBodyAnimator;
         public static ConfigEntry<bool> CullSleepingBotAnimators;
         public static ConfigEntry<float> MaxDeltaTime;
         public static ConfigEntry<bool> DeactivateSleepingBotState;
@@ -342,14 +341,17 @@ namespace Framesaver
                 "where the TimeUpdate presentation-wait spikes live. Sources that this build does not support " +
                 "report themselves as unavailable and then stop costing anything.");
 
-            ForceFastBodyAnimator = Config.Bind(
-                "4. Experimental", "Force fast body animator", false,
-                "Turn on BSG's own FastAnimatorProcessorClass in place of Unity's Animator for character " +
-                "bodies. Unity's animation pass is ~25% of the frame on Streets, so this targets the single " +
-                "largest CPU-side game cost. The code path ships disabled, and the assets ship with it - but " +
-                "it may be disabled because it is incomplete. Requires a restart. If characters T-pose, " +
-                "animate wrongly, or fail to spawn, set this back to false and restart.");
-
+            // "Force fast body animator" was here and is gone. It swapped
+            // Unity's Animator for BSG's FastAnimatorProcessorClass, which
+            // BREAKS THE GAME - a first-draft experiment from the very start
+            // of this mod, and the reason BSG ships it disabled. Removed
+            // rather than interlocked, because an interlock still leaves the
+            // user a route to a broken client.
+            //
+            // SleepingBotAnimatorPatch keeps the read-only half: if anything
+            // else turns UseBodyFastAnimator on, the cull is inert under it,
+            // so we detect that and say so rather than shipping a cull that
+            // does nothing.
             CullSleepingBotAnimators = Config.Bind(
                 "4. Experimental", "Cull sleeping bot animators", true,
                 "Set AnimatorCullingMode.CullCompletely on bots that are asleep, so their animator state " +
@@ -478,7 +480,6 @@ namespace Framesaver
             BotLog.Subscribe();
             new BossWaveSettingsPatch().Enable();
             new BotControllerSettingsPatch().Enable();
-            new FastBodyAnimatorPatch().Enable();
             new SleepingBotAnimatorPatch().Enable();
             new BotStandByStateChangePatch().Enable();
             new SkipSleepingPlayerLateUpdatePatch().Enable();

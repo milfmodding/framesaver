@@ -819,14 +819,38 @@ class P {
         Check("CulledEngine is NOT gated on the flag",
               readsField(engineGet, "CullSleepingBotAnimators"), false);
 
-        // The interlock. fastBodyAnimator substitutes the inert animator, which
-        // deletes the cull while the log still reports it working - so forcing it
-        // is refused outright rather than warned about.
-        var fbap = asm.GetType("Framesaver.Patches.FastBodyAnimatorPatch");
-        var fbPost = fbap.GetMethod("Postfix", BindingFlags.NonPublic | BindingFlags.Static);
-        Check("fast-animator patch consults the cull setting",
-              readsField(fbPost, "CullSleepingBotAnimators"), true);
-        Check("and refuses rather than warns", inUs("Force fast body animator' REFUSED"), true);
+        // ---- 'Force fast body animator' is REMOVED, not interlocked -------
+        //
+        // Sophia: it breaks the game, and always did - it was a first-draft
+        // experiment. An interlock still leaves the user a route to a broken
+        // client, so the whole write path is gone. These assert the removal:
+        // a setting that quietly came back would be a broken client shipped by
+        // us, and nobody goes looking for a knob they were told was deleted.
+        Console.WriteLine("\nFast body animator is removed, guard remains");
+        Check("the forcing patch is gone",
+              asm.GetType("Framesaver.Patches.FastBodyAnimatorPatch") == null, true);
+        Check("the setting is gone from Plugin",
+              asm.GetType("Framesaver.Plugin").GetField("ForceFastBodyAnimator") == null, true);
+        Check("and the cfg block no longer emits it", inUs(",\"fastAnim\":"), false);
+        // Control for the three above: the search does find a cfg key that IS
+        // still emitted, so "not found" means removed rather than broken.
+        Check("...while a surviving cfg key is still found (control)",
+              inUs(",\"cullSleeping\":"), true);
+
+        // What remains is the READ-ONLY half. UseBodyFastAnimator still exists
+        // and another mod can set it, and under it the cull is inert while
+        // animCulled still reports full success - so detect it and switch the
+        // cull off rather than burning a write per bot per frame for nothing.
+        var detect = sba.GetMethod("DetectInertAnimator",
+                                   BindingFlags.NonPublic | BindingFlags.Static);
+        Check("the inert-animator detector ships", detect != null, true);
+        Check("it reads the game's own flag",
+              readsField(detect, "UseBodyFastAnimator"), true);
+        Check("the cull consults what it found",
+              readsField(sba.GetMethod("ApplyIfSleeping",
+                                       BindingFlags.NonPublic | BindingFlags.Static), "Inert"), true);
+        Check("and says so in the log of the raid it spoiled",
+              inUs("UseBodyFastAnimator is ON"), true);
 
         // ---- Every protocol file on disk, against the shipped settings ----
         //
