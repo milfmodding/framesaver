@@ -133,10 +133,22 @@ def build_can_emit(field, paths):
     """(verdict, note) for whether the BINARY behind these logs could emit it.
 
     True / False / None, where None is "the join does not reach an answer" and
-    must never be collapsed into either. This is the third state beside absent
-    and zero: a field the build could not emit is absent for reasons no raid,
-    map or config could change, and reading that as evidence about the game is
-    the mistake this whole file exists to prevent.
+    must never be collapsed into either.
+
+    FALSE IS EVIDENCE, NOT PROOF, AND AN EARLIER VERSION OF THIS FILE CLAIMED
+    OTHERWISE. It printed "structural, not a fact about any raid - no config,
+    map or arm could have produced a value here", inheriting a premise Beta
+    then withdrew and measured: for the one binary whose logs can be joined 1:1
+    (Base, 30 logs, one image), ~46 keys are demonstrably emitted and absent
+    from the image. `brainsTicked`, `poolSize`, `worldUpdate`, `spikes` among
+    them. Some names are built at runtime and some are Unity's own PlayerLoop
+    system names that were never ours to emit, so **no static extraction can be
+    complete** and impossibility was never available from it.
+
+    What survives is a joint claim from two independent directions: the field
+    appears in no image that could have written a log, AND no window in this
+    run carries it. The second is ground truth for this population rather than
+    inference. That is worth printing and is not the same sentence.
 
     Read straight out of Beta's `build-fields.json` rather than inferred from a
     commit. `read-animcull` used to assert "every log before 86a13bb is in this
@@ -204,9 +216,11 @@ def build_can_emit(field, paths):
     if install == 'base':
         for rec in data.get('records') or []:
             if (rec.get('install') or '').lower() == 'base':
-                return (field in (rec.get('fields') or []),
-                        'Base, one binary (md5 %s) wrote all its logs'
-                        % (rec.get('md5') or '?')[:8])
+                found = field in (rec.get('fields') or [])
+                return found, ('%s the one image (md5 %s) that wrote all 30 '
+                               'Base logs'
+                               % ('found in' if found else 'not found in',
+                                  (rec.get('md5') or '?')[:8]))
         return None, 'no Base record in build-fields.json'
 
     # POSITIVE branch takes the NARROW set, per the file's own whichSetToUse:
@@ -229,8 +243,7 @@ def build_can_emit(field, paths):
         if rec.get('deployed') is not False:
             could |= set(rec.get('fields') or [])
     if field not in could:
-        return False, ('in no binary that could have written a log - every '
-                       'record carrying it is deployed:false')
+        return False, 'not found in any image that could have written a log'
     return None, ('SPT4.0.13: the installed binary did not write most of these '
                   'logs, and this field is in some candidate binaries and not '
                   'others - the join does not reach an answer')
@@ -314,9 +327,15 @@ def main(argv):
         print('   REFUSED. No window carries the field, which is absent and')
         print('   NOT zero.')
         if emit is False:
-            print('   AND THE BUILD COULD NOT EMIT IT: %s.' % note)
-            print('   So this is structural, not a fact about any raid - no')
-            print('   config, map or arm could have produced a value here.')
+            print('   AND %s.' % note)
+            print('   Two independent sources agree - never seen in these')
+            print('   windows, and not in any image. NEITHER PROVES the field')
+            print('   was impossible: a static scan is measurably incomplete')
+            print('   (Beta found ~46 fields demonstrably emitted by the one')
+            print('   binary we can check against its own logs, yet absent')
+            print('   from its image - names built at runtime, or the engine\'s')
+            print('   own). Read this as "no evidence it could appear here",')
+            print('   not as "no raid could have produced it".')
         elif emit is True:
             print('   BUT THE BUILD COULD EMIT IT (%s),' % note)
             print('   so the absence IS about these raids and is worth')
