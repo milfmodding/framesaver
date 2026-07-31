@@ -220,6 +220,7 @@ def main():
         return 2
 
     sets = [frozenset(r["fields"]) for r in records]
+    keysets = [frozenset(r["fieldsAsJsonKeys"]) for r in records]
     union = set().union(*sets)
     inter = set(sets[0]).intersection(*sets)
 
@@ -257,6 +258,13 @@ def main():
             "fieldsAsJsonKeys": "complete \"name\": literals - definitely "
                                 "emitted as a key, but INCOMPLETE, so never "
                                 "read its absence for anything",
+            "whichSetToUse": "NEGATIVE branch (structural, 'no raid could "
+                             "have produced this'): absent from fieldsUnion or "
+                             "fieldsUnionDeployed - wide sets, so absence is "
+                             "strong. POSITIVE branch ('this build emits it'): "
+                             "jsonKeysInEveryBinary - narrow set, so presence "
+                             "is strong. Never the reverse: fieldsUnion's "
+                             "presence and jsonKeys' absence are both weak.",
             "join": "directory -> binary is sound for Base (one binary "
                     "throughout) and NOT for SPT4.0.13, whose installed binary "
                     "is not the one that wrote most of its logs",
@@ -272,7 +280,17 @@ def main():
         # silently treated as no.
         "fieldsUnionDeployed": sorted(set().union(*[
             set(r["fields"]) for r in records if r["deployed"] is not False])),
+        # DO NOT use fieldsInEveryBinary as a "definitely emitted" test. Since
+        # `fields` was widened to kill the false absences, it holds every
+        # identifier-shaped string in the image - class names, log-message
+        # words, hex - so a short field name can match a method rather than an
+        # emit. Gamma found this by wiring a True branch to it.
         "fieldsInEveryBinary": sorted(inter),
+        # Use THESE for a positive test. Intersection of the strong sets: a
+        # name here appears as a complete `"name":` literal in every binary, so
+        # every candidate can emit it as a key. Absence proves nothing.
+        "jsonKeysUnion": sorted(set().union(*keysets)),
+        "jsonKeysInEveryBinary": sorted(set(keysets[0]).intersection(*keysets)),
         "findingNestedFieldSets": not breaks,
         "nestingBreaks": breaks,
         "records": records,
