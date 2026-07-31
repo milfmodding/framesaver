@@ -163,19 +163,25 @@ def build_can_emit(field, paths):
 
       fieldsUnion          includes `deployed: false` - a build output that
                            demonstrably wrote nothing. Too wide.
-      fieldsUnionDeployed  excludes the 7 `deployed: null` binaries, whose
-                           evidence line says the deploy record is known to be
-                           INCOMPLETE. An unknown deploy could still have
-                           written a log, so this is too narrow, and too narrow
-                           is the dangerous direction: it would let this reader
-                           call a field structural when a binary that emitted
-                           it may have been running.
+      fieldsUnionDeployed  drops ONLY the proven-false and keeps every
+                           `deployed: null`, which is the correct reading of a
+                           record its own evidence line calls incomplete.
 
-    So the set is computed here: every record whose `deployed` is not False.
-    Unknown counts as could-have, which is the safe reading of an incomplete
-    record. On today's file that is 321 of 322 fields, and the one it excludes
-    is `animCulledEngine` itself -- which is why SPT4.0.13 can now be answered
-    exactly rather than bracketed.
+    I asserted in an earlier version of this docstring that
+    `fieldsUnionDeployed` excluded the unknown-deploy binaries and was
+    therefore too narrow. **That was wrong** -- a claim about someone else's
+    artefact written without opening it. Verified since: it is set-identical to
+    the union computed below, on every record.
+
+    The set is still computed here rather than read, for one reason: this
+    reader's False branch says "no raid could have produced this", and it
+    should not depend on a consumer and a producer agreeing about what
+    `deployed: null` means. The rule is stated where it is used - unknown
+    counts as could-have - and if the file's convention ever changes, this
+    keeps giving the safe answer instead of silently inheriting a new one.
+    Beta's proof of why unknown must stay in is the `Base` binary itself: it is
+    installed right now and named in no document, so "no record" meaning "never
+    shipped" would have excluded the binary that wrote 30 of the 55 logs.
     """
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         'build-fields.json')
