@@ -14,7 +14,7 @@ CHECK = r"F:\SPT\Mods\Framesaver\harness\check-modoff.py"
 # A cfg block for a CORRECT mod-off baseline under the bc90b76 build.
 CLEAN = {
     "windowSeconds": 30, "standBy": False, "leakFix": False, "brainPeriod": 0,
-    "fastAnim": False, "cullSleeping": False, "maxDelta": 0.3333, "skipLate": False,
+    "fastAnim": False, "cullSleeping": False, "maxDelta": 0.083, "skipLate": False,
     "skipTick": False, "jobBudgetMs": 0, "jobSlowFrames": -1, "asyncBudgetMs": 0,
     "suspendGc": False, "reclaimStandBy": False, "deactivateSleeping": False,
     "keepFighting": False, "drainInUpdateOnly": False, "drainDiagnostics": True,
@@ -65,7 +65,8 @@ results = []
 
 # 1. THE REGRESSION. maxDelta reads Unity's value because the setting is 0 and the mod wrote
 #    nothing. Before the fix this returned 1 and would have failed all nine marathon logs.
-results.append(case("clean baseline, maxDelta = vanilla 0.3333",
+#    0.083 is EFT own value, measured on Ground Zero 2026-07-31 - NOT Unity 0.333.
+results.append(case("clean baseline, maxDelta = the game 0.083",
                     [variant(), variant()], 0, want_text="Clean mod-off baseline"))
 
 # 2. NEGATIVE CONTROL for the same field: the cap still applied. Must be caught.
@@ -73,9 +74,13 @@ results.append(case("maxDelta = 0.1, the value the mod imposes",
                     [variant(maxDelta=0.1), variant(maxDelta=0.1)], 1,
                     want_text="the value the mod IMPOSES"))
 
+# 2b. A third value is a NOTE about the game, not a dirty baseline - must still pass.
+results.append(case("maxDelta = 0.05, neither vanilla nor our cap -> note",
+                    [variant(maxDelta=0.05)], 0, want_text="NOTE, not a failure"))
+
 # 3. A mid-raid edit leaves the windows disagreeing. A single-value report would hide it.
 results.append(case("maxDelta not constant across windows",
-                    [variant(maxDelta=0.3333), variant(maxDelta=0.1)], 1,
+                    [variant(maxDelta=0.083), variant(maxDelta=0.1)], 1,
                     want_text="NOT CONSTANT"))
 
 # 4. An acting lever left on must still fail, i.e. the fix did not blunt the original check.

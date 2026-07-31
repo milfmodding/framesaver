@@ -90,12 +90,19 @@ LEVERS = {
 # check is therefore one-sided plus a constancy requirement - it can catch the lever being on and
 # it cannot certify a specific number. Pin OUTCOME_KEYS["maxDelta"]["vanilla"] once a clean
 # marathon log has established the value, and this becomes a two-sided check.
+# ESTABLISHED 2026-07-31 by the first mod-off log (Ground Zero, 11 windows, constant): the game's
+# own Time.maximumDeltaTime is 0.083, i.e. 1/12 s. NOT Unity's 0.333 - EFT sets its own. Recorded
+# as a NOTE and never a failure, because one map is not the population: if Streets reports a
+# different value that is a finding about EFT, not a dirty baseline, and failing the log would
+# throw away a good raid over it. `must_not_be` is what still fails, and it is sufficient - 0.1 is
+# the only value our mod can impose here.
 OUTCOME_KEYS = {
     "maxDelta": {
         "must_not_be": [0.1],
-        "vanilla": None,
+        "vanilla": 0.083,
+        "vanilla_tol": 0.002,
         "why": "cfg.maxDelta is Time.maximumDeltaTime, not the setting. 0.1 was our cap in all "
-               "520 corpus windows; Unity's own default is 0.333",
+               "520 corpus windows; the game's own value is 0.083 (1/12 s), not Unity's 0.333",
     },
 }
 
@@ -252,9 +259,6 @@ def main():
         elif distinct[0] in spec["must_not_be"]:
             active.append("%-18s = %r   this is the value the mod IMPOSES - %s"
                           % (key, distinct[0], spec["why"]))
-        elif spec["vanilla"] is not None and distinct[0] != spec["vanilla"]:
-            active.append("%-18s = %r   expected the established vanilla %r - %s"
-                          % (key, distinct[0], spec["vanilla"], spec["why"]))
         else:
             print("  outcome %-18s = %r   constant, and not the value the mod imposes."
                   % (key, distinct[0]))
@@ -262,6 +266,11 @@ def main():
                 print("           - the untouched value has never been recorded, so this run")
                 print("             ESTABLISHES it. Pin it in OUTCOME_KEYS to make the check")
                 print("             two-sided; until then a wrong-but-not-0.1 value would pass.")
+            elif abs(distinct[0] - spec["vanilla"]) > spec["vanilla_tol"]:
+                print("           - NOTE, not a failure: differs from the established vanilla %r."
+                      % spec["vanilla"])
+                print("             The mod cannot produce this value, so the baseline stands. It")
+                print("             is a fact about the GAME on this map and wants recording.")
 
     # Keys present in the log that this file has no ruling on. Reported loudly because the silent
     # version of this is how four levers came to be uncovered: a checker that ignores what it does
