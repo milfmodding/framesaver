@@ -64,6 +64,13 @@ import sys
 from datetime import datetime, timezone
 
 MOD = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Log directories whose binary is known 1:1, so keys observed there are GROUND
+# TRUTH for what that binary emits. Only Base qualifies: it carried one binary
+# throughout. SPT4.0.13's installed binary did not write most of its logs.
+GROUND_TRUTH_LOGS = {
+    "Base": r"F:\SPT\Base\BepInEx\plugins\Framesaver-logs\*.ndjson",
+}
 INSTALLS = {
     "Base": r"F:\SPT\Base\BepInEx\plugins\Framesaver.dll",
     "SPT4.0.13": r"F:\SPT\SPT4.0.13\BepInEx\plugins\Framesaver.dll",
@@ -168,6 +175,16 @@ def deploy_status(path, md5, install, docs):
     return None, "no record found, and the record is known to be incomplete"
 
 
+def observed_keys(pattern):
+    """JSON keys actually present in logs. The only complete source there is."""
+    keys = set()
+    for path in glob.glob(pattern):
+        with open(path, encoding="utf-8", errors="ignore") as handle:
+            for line in handle:
+                keys |= set(KEY.findall(line))
+    return keys
+
+
 def record(path, install=None, docs=None):
     blob = open(path, "rb").read()
     ver = product_version(path)
@@ -189,6 +206,11 @@ def record(path, install=None, docs=None):
         "emitsCommitField": '"commit":' in blob.decode("utf-16-le", "ignore")
                             or '"commit":' in blob[1:].decode("utf-16-le", "ignore"),
         "fields": sorted(field_names(blob)),
+        # Ground truth where the binary-to-logs join is 1:1. PROVES emission,
+        # unlike anything read out of the image - and measures how badly the
+        # image under-reports: 49 of these are absent from `fields`.
+        "fieldsObservedInLogs": sorted(
+            observed_keys(GROUND_TRUTH_LOGS[install])) if install in GROUND_TRUTH_LOGS else None,
         "fieldsAsJsonKeys": sorted(json_key_names(blob)),
     }
 
@@ -258,13 +280,14 @@ def main():
             "fieldsAsJsonKeys": "complete \"name\": literals - definitely "
                                 "emitted as a key, but INCOMPLETE, so never "
                                 "read its absence for anything",
-            "whichSetToUse": "NEGATIVE branch (structural, 'no raid could "
-                             "have produced this'): absent from fieldsUnion or "
-                             "fieldsUnionDeployed - wide sets, so absence is "
-                             "strong. POSITIVE branch ('this build emits it'): "
-                             "jsonKeysInEveryBinary - narrow set, so presence "
-                             "is strong. Never the reverse: fieldsUnion's "
-                             "presence and jsonKeys' absence are both weak.",
+            "whichSetToUse": "POSITIVE ('this build emits it'): "
+                             "jsonKeysInEveryBinary, or fieldsObservedInLogs "
+                             "where present - both prove emission. NEGATIVE: "
+                             "there is NO set here that proves a field is "
+                             "impossible. Absence from fieldsUnion is evidence, "
+                             "not proof, and is measurably wrong 49 times for "
+                             "the one binary we can check. State it as 'not "
+                             "found in any image' and let the reader decide.",
             "join": "directory -> binary is sound for Base (one binary "
                     "throughout) and NOT for SPT4.0.13, whose installed binary "
                     "is not the one that wrote most of its logs",
