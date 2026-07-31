@@ -19,8 +19,10 @@ class P {
     }
 
     static int bad = 0;
+    static int ran = 0;
     static void Check(string what, object got, object expect) {
         bool ok = Equals(got, expect);
+        ran++;
         if (!ok) bad++;
         Console.WriteLine($"  {(ok ? "ok  " : "FAIL")}  {what,-46} got {got}  expect {expect}");
     }
@@ -42,9 +44,10 @@ class P {
         };
         foreach (var c in cases) {
             double got = (double)unwrap.Invoke(null, new object[] { c.to - c.from });
-            bool ok = Math.Abs(got - c.expect) < 1e-9;
-            if (!ok) bad++;
-            Console.WriteLine($"  {(ok ? "ok  " : "FAIL")}  {c.why,-46} {c.from} -> {c.to} = {got}");
+            // Through Check rather than its own tally, so these six count toward
+            // the floor at the bottom. The comparison stays a tolerance one; only
+            // the bookkeeping is shared.
+            Check($"{c.why} ({c.from} -> {c.to})", Math.Abs(got - c.expect) < 1e-9, true);
         }
 
         var pr = asm.GetType("Framesaver.ProtocolRunner");
@@ -987,7 +990,26 @@ class P {
         Check("suppressing prefixes match the reviewed list",
               string.Join(" ", suppressors), string.Join(" ", known));
 
-        Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
+        // `bad == 0` is an ABSENCE, and this file argues elsewhere that an
+        // absence of complaint is not a verification. Half the sections here sit
+        // behind an `if` - a null dll, a type that vanished from the game
+        // assembly - so one going quiet costs its checks and nothing says so.
+        // Gamma shipped 8 crash-test cases that had been bailing before their
+        // first assertion since the day they were committed, signed off on "0
+        // tracebacks".
+        //
+        // A floor, not an exact count: adding checks never touches it, and the
+        // only event it fails on is the count FALLING, which is the event.
+        //
+        // The floor is one below the printed total, because this check's own
+        // condition is evaluated before Check increments the counter. Setting it
+        // to the number at the bottom of a green run fails by one, which is a
+        // confusing way to learn that.
+        Check("the suite still runs every section it used to", ran >= 196, true);
+
+        Console.WriteLine(bad == 0
+            ? $"\nall {ran} cases pass (against shipped IL)"
+            : $"\n{bad} FAILURES of {ran}");
         return bad == 0 ? 0 : 1;
     }
 
