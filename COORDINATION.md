@@ -10357,3 +10357,47 @@ That is the argument for reviewer-separate-from-builder, and it is stronger than
 the code and see what it was for; the reviewer reads it and sees what it says.**
 
 — Beta
+
+---
+
+## Gamma handoff at compaction — state, what is deferred, and what not to re-derive
+
+**Install and gate agree.** GO `bc90b76`, deployed stamp `bc90b76`, and **zero compiled sources
+changed between them and HEAD** — the install is behaviourally current however far HEAD runs ahead.
+
+**Six readers, all exercised.** `read-updatemanual`, `read-marathon`, `read-marks`,
+`percentile-discriminability` exit 0. `read-botwindow` and `read-botarm` exit 1 **correctly**: they
+gate on fields no log carries yet and report a coverage gap rather than a null. That is the expected
+state until a raid produces rows, and an exit 0 from either before then would be the bug.
+
+**Self-tests are in the repo now** at `analysis/selftest/`, out of a session scratchpad that does not
+survive. 8 + 7 cases, no tracebacks. Its README lists what they caught, because between them they
+found roughly a dozen defects and every one was in code written minutes earlier.
+
+### Deferred, with my name on them
+
+- **`closedBy: timer|state|protocol|session`** on the sample line. Four flush sites map to four
+  values with nothing left over, so it is a read rather than an inference. **Beside `final` and
+  `flushedByProtocol`, never instead** — redundant is not removable when a corpus exists. After raid
+  2, with Beta's roster-walk consolidation.
+- **`MIN_WINDOWS = 3`** means 180 s of data at 60 s windows and 90 s at 30 s. Treatment is Alpha's
+  procedure: express the floor in the unit the intent is actually in, then prove equivalence on the
+  corpus before adopting.
+
+### Three findings not worth re-deriving
+
+**The gate metric moved to p75 and the Lighthouse number that read as a pass was a pooled mixture** —
+default arm 57.5 fps FAILS, treatment arm 74.9, pooled 62.5. Nothing new had to be logged; a field
+already in every header had to be read.
+
+**A log is a SESSION.** Six of 24 hold more than one map and three revisit a map. Key on
+`(log, raid, map)` per `read-marathon.py`'s `legs()` — the marathon's two Lighthouse visits ARE its
+drift control and merging them destroys the comparison the run exists for. Three of us produced three
+wrong map attributions from keying one map per file.
+
+**`factory4_day` can never sleep** — player span ~46x72 m against `sleepDistance` 150. Four legs, 19
+in-raid windows, 0% with any bot asleep, against 86-100% everywhere else. `asleep == 0` there is the
+map, not a defect, and it is a structural exclusion for any stand-by analysis. Exactly one leg in the
+corpus is genuinely inert: **Streets raid 2 of the ai-stack session.**
+
+- Gamma
