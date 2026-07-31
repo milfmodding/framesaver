@@ -10287,3 +10287,73 @@ handled - my own rule, and the reason this entry exists rather than a note to se
 **The grep cost thirty seconds and is cheaper than every control built today.**
 
 — Beta
+
+---
+
+## 2026-07-30 — Beta: handoff at the sixth compaction. State, and the three things I would not want re-derived.
+
+**Everything below read from disk, not recalled — which is itself one of the
+lessons.**
+
+    harness/GO             bc90b76        (Alpha's; read it, never quote it from memory)
+    install == bin/Release 9c14f132254aac9b79aa3ca074a8923e, stamp bc90b76
+    artifacts/rollback     12
+    tree                   clean
+
+### What shipped today that was not here this morning
+
+| field | what it answers |
+|---|---|
+| `standByTransitions{woken,slept,diedAwake,diedAsleep,+ms}` | the per-TRANSITION axis; every other instrument is per frame |
+| `awakeAge[]` + `botWindow` rows | per-bot cost against continuous awake-age, bucketed and per-bot |
+| `botStandBy{effective,roleAllows,forced}` | the grant where it is DECIDED, which makes the latch usable |
+| `bots.deadAwake`, `updateManual.deadCalls/deadMs` | corpses, made subtractable from three denominators |
+| `bossGroups{linked,heldAwake}`, `animCulledOffScreen` | feature-is-real pairs |
+| `cfg` + 6 keys, `roleSleep` header block | the arm and the distances, per window |
+| `@seconds` protocol boxing, `protocol.stepSeconds` | time-boxed arms, so matched raid age is built in |
+
+Plus **posted-role sleep distance** and **boss-group wake** as behaviour, and a
+**build gate that refuses to deploy from a dirty tree**.
+
+### Three things I would not want re-derived
+
+**1. `forceAllRoles` is a one-way latch, with or without QuestingBots.** The grant
+is available at activation through our `InitPoints` postfix and is *never*
+revocable — QB changes which path grants, not whether it can be taken back,
+because QB clears once per bot at activation (`method_10`, PreActive branch only).
+This killed an ABAB design. `botStandBy` is what makes it usable instead: a bot
+carries its arm for life, so the *bot-level* contrast is clean and the
+window-level one is a mixture.
+
+**2. The last in-raid window of every segment is broken three ways** — truncated
+(median 25 s against 60), census-failed (`bots.*` reads 0), and carrying stale
+instant-sampled fields (`snipersAwake`, `animCulled`, `agents.live`). 33 of 33
+across the corpus. `final` does **not** mark them; it means "the session ended".
+Frame data in them is fine — the invalidity is per-field. Deferred fix:
+`closedBy: timer|state|protocol|session`, **beside** `final`, never instead.
+
+**3. Factory can never sleep.** 46 m × 72 m against a 150 m sleep distance — four
+raids, twenty windows, zero sleeping bots ever, where every other map sleeps in
+84–96% of windows. Any pooled stand-by figure including factory is diluted by
+windows where the feature cannot fire by geometry.
+
+### Deferred, with dispositions, all after raid 2
+
+The roster walk is written **five times with four different guards** — `bots.awake`
+counts corpses, three others do not. `censusRead`/`closedBy` belong in the same
+consolidation, and the shared helper must take the guard as a **parameter** rather
+than picking one: four defensible differences silently collapsed into one policy
+is worse than four honest copies.
+
+### And the one that changed how I work
+
+**A wrong query and a right query are indistinguishable from the inside.** Gamma
+produced three errors in one investigation — wrong path, absent-as-zero,
+absence-as-evidence — and all three printed clean output with no error. Every one
+was caught by someone holding a different number, never by anything they ran.
+
+That is the argument for reviewer-separate-from-builder, and it is stronger than
+"a reviewer catches more": **the author cannot un-know the intent, so they read
+the code and see what it was for; the reviewer reads it and sees what it says.**
+
+— Beta
