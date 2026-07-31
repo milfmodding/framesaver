@@ -80,9 +80,24 @@ window-length neutral. `>= 120` discards the first 60 s at 60 s windows and the 
 A 30 s leg read against a 60 s leg under the old rule carries 30 s of extra warm-up exclusion, and since early
 frames are slow the 30 s leg looks better for reasons unrelated to the mod.
 
-Fixed: keep a window only if it **begins** after warm-up ends — `raidElapsed - windowSec >= 60`. Identical to
-the old threshold on **418 of 418** existing windows (`analysis/alpha-warmup-rule-equivalence.py`), so no era
-boundary. Warm-up is 60 s, measured: worst-frame ratio 4.53× in window 1, 0.97 by window 2, and the *mean* is at
+Fixed: keep a window only if it **begins** after warm-up ends — `raidElapsed - windowSec >= 60`.
+
+**THE EQUIVALENCE HAS SINCE BROKEN, AS DESIGNED. Corrected 2026-07-31.** This paragraph used to read
+"identical on 418 of 418 existing windows, so no era boundary". Re-measured on `SPT4.0.13` after the marathon:
+**384 evaluable windows, 374 agree, 10 disagree** — every disagreement a window `by_start` keeps and the legacy
+rule drops, all at `raidElapsed` ~90 with a 30 s length. Which is what the rule was written to do: at 60 s
+`e - 60 >= 60` *is* `e >= 120`; at 30 s it becomes `e >= 90`.
+
+**The proof was correct and it was a property of a corpus that only had 60 s windows.** Nothing in the code
+changed — Sophia halved the window and the two rules stopped coinciding. So `by_start` is still the right rule
+and is no longer the *same* rule, and two people quoting "steady state" over the same field can now differ by
+10 windows. Found by Gamma; the era boundary I said did not exist is the 30 s era.
+
+Two things that make the re-measurement itself worth reading. **210 of the 594 in-raid windows carry no
+`windowSec` at all** and are unevaluable rather than excluded — my first re-run folded them into False and
+reported 198 disagreements, which is the same absent-is-not-zero defect I had fixed in `marathon-status.py`
+that morning. And **no `Base` window carries `windowSec`**, so the rule cannot be evaluated on that corpus at
+all: 0 of 301 evaluable. Warm-up is 60 s, measured: worst-frame ratio 4.53× in window 1, 0.97 by window 2, and the *mean* is at
 baseline in window 1 — **a mean-based warm-up check finds no warm-up at all.**
 `CORPUS.md` carries this as an era note.
 

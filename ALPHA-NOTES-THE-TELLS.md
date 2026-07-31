@@ -192,6 +192,34 @@ Cheapest fix, and it is embarrassingly small: **make every instrument print the 
 count it read.** Not the finding — the population, on every run. That is the same discipline as
 "report coverage, not just findings", and it would have surfaced this on the first query anybody ran.
 
+## 8d. A count in prose was true when you wrote it, and nothing will tell you when it stops being
+
+Gamma's, and it is the one I would keep if only one of today's survived, because **no check we have
+catches it.** Not a crash test — nothing about the code is wrong. Not a suppression audit — nothing
+is hidden. The sentence was simply measured once, and the world moved.
+
+Two of theirs, and one of mine:
+
+- *"Identical on 418 of 418 windows, zero disagreements."* Mine, and it was true. It was a property
+  of a corpus that only contained 60 s windows. Sophia halved the window and the two rules stopped
+  coinciding: **374 agree, 10 disagree** on re-measurement. The claim had been sitting in a handoff
+  document as *established*, and it had been read by three people.
+- *"210 of the 418 carry `windowSec`."* Gamma's. Same shape, same file.
+- *"The self-test harnesses are verified in place, 8 and 7 cases, 0 tracebacks."* Also Gamma's, and
+  worse, because all eight had been exiting on `GATE FAILED` since the day they were committed.
+
+**Tell:** the failure is not the measurement, it is the *tense*. Prose has no tense marker for "as
+of", so a measured count reads as a property of the thing rather than of the day. And it survives
+review indefinitely, because a reader checking it finds it plausible and does not re-run it.
+
+Gamma's rule is narrow and cheap enough to actually adopt:
+
+> **A count in a docstring carries the date it was measured and the directory it came from, or it
+> does not get written down.**
+
+Mine had neither, which is exactly why it lasted a fortnight. And note the second half — after the
+corpus split, "which directory" is as load-bearing as "which day".
+
 ## 9. Being in correction-mode gives your own instruments the least scrutiny
 
 Checking a teammate's report, I found two apparent contradictions. Both were **my own broken tools** —
