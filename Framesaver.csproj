@@ -132,15 +132,31 @@
     proceed, which was wrong for a reason only visible once the branch was
     exercised: **SourceLink does not shell out to git.** It reads .git directly,
     so a missing git binary still produces a correctly-formed stamp naming HEAD -
-    the dangerous case is not an unstamped binary, it is a PLAUSIBLE one over a
-    tree nothing could check. A warning in a build log is exactly the finding
-    reported without a disposition that gets remembered as handled.
+    a plausible stamp over a tree nothing could check. A warning in a build log
+    is exactly the finding reported without a disposition that gets remembered
+    as handled.
+
+    That paragraph used to end "the dangerous case is not an unstamped binary".
+    Both cases are dangerous and the unstamped one has now been MEASURED: Alpha's
+    census puts 22 of 25 logs in the corpus at commit:"" - every log before this
+    gate existed - so most of what we have measured cannot be tied to a binary at
+    all, and every cross-log comparison drawn from them compares a known build
+    against an unknown one. An unstamped deploy is refused below for that reason
+    and no other.
 
     -p:AllowUnverifiedDeploy=true is the escape hatch, so someone building
     without git types one flag and knows precisely what they gave up. An
     explicit act rather than a line that scrolls past.
   -->
-  <Target Name="RefuseDirtyDeploy" BeforeTargets="PostBuild" Condition="'$(Deploy)' == 'true'">
+  <!--
+    DependsOnTargets is load-bearing, not tidiness: $(SourceRevisionId) is set by
+    InitializeSourceControlInformation, and without this the stamp check reads
+    empty and REFUSES EVERY DEPLOY - including the good ones. Found by running
+    the control rather than only the falsification: the deliberately-broken build
+    refused, and so did the healthy one, so the "it fires" result meant nothing.
+  -->
+  <Target Name="RefuseDirtyDeploy" BeforeTargets="PostBuild" Condition="'$(Deploy)' == 'true'"
+          DependsOnTargets="InitializeSourceControlInformation">
     <Exec Command="git status --porcelain -- *.cs Patches/*.cs Framesaver.csproj"
           WorkingDirectory="$(MSBuildProjectDirectory)"
           ConsoleToMSBuild="true" StandardOutputImportance="low"
@@ -167,6 +183,24 @@
     -->
     <Warning Condition="'$(AllowUnverifiedDeploy)' == 'true' And '$(FramesaverGitExit)' != '0'"
              Text="Framesaver: AllowUnverifiedDeploy is set and git could not run, so the clean-tree check did not run. This binary's stamp may not describe its source." />
+
+    <!--
+      An unstamped deploy is refused outright. The SDK writes the sha into
+      AssemblyInformationalVersion from $(SourceRevisionId); if that is empty
+      the binary ships with commit:"" and every log it writes is anonymous.
+      Nothing downstream can recover it later - not the gate, not a rollback,
+      not an analysis - which is why this is worth failing a build over and the
+      dirty-tree case is only worth failing a DEPLOY over.
+
+      Same escape hatch rather than a second one, so there is one flag to learn
+      and one habit to break. Building the mod outside a git checkout is a real
+      thing a stranger might do.
+    -->
+    <Error Condition="'$(SourceRevisionId)' == '' And '$(AllowUnverifiedDeploy)' != 'true'"
+           Text="Framesaver: refusing to deploy. This assembly carries NO commit stamp, so every telemetry log it writes will read commit:&quot;&quot; and can never be tied back to a build - 22 of the 25 logs already in the corpus are in exactly that state and their cross-log comparisons are unrecoverable. Build from a git checkout, or re-run with -p:AllowUnverifiedDeploy=true if you accept anonymous logs." />
+
+    <Warning Condition="'$(AllowUnverifiedDeploy)' == 'true' And '$(SourceRevisionId)' == ''"
+             Text="Framesaver: AllowUnverifiedDeploy is set and there is no commit stamp. Logs from this binary will read commit:&quot;&quot; and cannot be attributed to a build." />
 
     <Error Condition="'$(FramesaverGitExit)' == '0' And '$(FramesaverDirty)' != ''"
            Text="Framesaver: refusing to deploy. Compiled sources differ from HEAD, so the build stamp would name a commit this binary was not built from:%0A$(FramesaverDirty)%0ACommit first, then rebuild - the stamp is read from git HEAD at build time." />

@@ -98,9 +98,24 @@ namespace Framesaver.Patches
         internal static bool Inert;
 
         /// <summary>
-        /// Called from the stand-by state-change hook below. VisualPass rewrites cullingMode every frame, so
-        /// simply dropping a bot from this set restores vanilla behaviour on the next frame - no need to undo
-        /// anything, including when the config toggle is switched off mid-raid.
+        /// Called from the stand-by state-change hook below. Dropping a bot
+        /// from this set restores vanilla behaviour on the next frame without
+        /// undoing anything, because VisualPass rewrites cullingMode - **but
+        /// only while Player.LateUpdate is still running for that bot.**
+        ///
+        /// This used to add "including when the config toggle is switched off
+        /// mid-raid", flatly, as a reason not to worry. That was true when
+        /// written and `Skip sleeping bot LateUpdate` later falsified it:
+        /// LateUpdate holds the ONLY call site of VisualPass (Player.cs:1565),
+        /// so with the skip on nothing rewrites cullingMode and a bot asleep at
+        /// a config change stays culled until it next wakes. Same shape as the
+        /// claim Wake() used to make about BotState - a comment that promises a
+        /// recovery which, in one arm, nothing performs.
+        ///
+        /// Not gated on any flag, deliberately: CulledEngine's whole value rests
+        /// on this set being populated whether or not the cull is switched on.
+        /// Gate this for cost and that field silently reads 0 on a latched arm,
+        /// which is the exact reading it exists to prevent.
         /// </summary>
         internal static void SetSleeping(BotStandBy standBy, bool sleeping)
         {

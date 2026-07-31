@@ -887,6 +887,38 @@ class P {
         Check("an invented setting name would be caught (control)",
               inUs("Cull sleeping bot animatorz"), false);
 
+        // Protocol prose also names TELEMETRY fields, and those were unchecked
+        // until one shipped misspelled - `animCullEngine` for `animCulledEngine`.
+        // A reader keyed on the protocol's spelling gets None, and None is
+        // absent-not-zero, which reads as a clean control arm. The misspelling
+        // survived a green suite because the check above validates settings
+        // keys, and these are not settings.
+        //
+        // Backticked, starts lowercase, and camelCase or dotted - which is JSON
+        // field convention here and excludes the PascalCase code identifiers
+        // this prose is also full of. Dotted paths are checked on their last
+        // segment, since that is the key actually emitted.
+        Console.WriteLine("\nTelemetry fields named in protocol prose");
+        var fieldRe = new System.Text.RegularExpressions.Regex(
+            @"`([a-z][A-Za-z0-9]*(?:\.[a-zA-Z][A-Za-z0-9]*)*)`");
+        foreach (var ini in inis) {
+            var missing = new System.Collections.Generic.List<string>();
+            foreach (System.Text.RegularExpressions.Match m
+                     in fieldRe.Matches(File.ReadAllText(ini))) {
+                string tok = m.Groups[1].Value;
+                if (tok.IndexOf('.') < 0 && tok.ToLowerInvariant() == tok) continue;
+                // Quoted, but NOT `"leaf":` - `botStandBy` and `botWindow` are
+                // emitted as VALUES of the type key, so a key-shaped pattern
+                // reported three real fields as missing. Weaker and still
+                // sufficient: a misspelling appears nowhere in the image at all.
+                string leaf = tok.Substring(tok.LastIndexOf('.') + 1);
+                if (!inUs("\"" + leaf + "\"")) missing.Add(tok);
+            }
+            Check(Path.GetFileName(ini) + " fields", string.Join("/", missing), "");
+        }
+        Check("a misspelt field would be caught (control)",
+              inUs("\"animCullEngine\""), false);
+
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
         return bad == 0 ? 0 : 1;
     }
