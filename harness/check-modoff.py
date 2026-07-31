@@ -51,7 +51,10 @@ LEVERS = {
     "standBy":           (False, True,  "the stand-by subsystem itself"),
     "leakFix":           (False, True,  "dead-agent removal changes the agent population"),
     "brainPeriod":       (0,     True,  "brain slicing; 0 is off"),
-    "fastAnim":          (False, True,  "forces a cheaper body animator"),
+    # `fastAnim` is NOT here any more - see RETIRED. Leaving it in LEVERS would make this file
+    # REFUSE every log from a build that no longer emits the key, because absent-is-not-off is the
+    # rule for a lever that exists. A lever that has been DELETED is a different case and needs a
+    # different answer, or the guard fires on the fix.
     "maxDelta":          (0,     True,  "caps Time.maximumDeltaTime; 0 leaves Unity's 0.333 alone"),
     "asyncBudgetMs":     (0,     True,  "caps the async completion drain; 0 is unbounded/vanilla"),
     "suspendGc":         (False, True,  "suspends GC during completion callbacks"),
@@ -104,6 +107,21 @@ OUTCOME_KEYS = {
         "why": "cfg.maxDelta is Time.maximumDeltaTime, not the setting. 0.1 was our cap in all "
                "520 corpus windows; the game's own value is 0.083 (1/12 s), not Unity's 0.333",
     },
+}
+
+# Settings REMOVED from the mod. Absent is the expected and correct reading here, which is the
+# opposite of the rule for a live lever - so they cannot stay in LEVERS without the absent-is-not-off
+# refusal firing on precisely the builds that carry the fix.
+#
+# Present-and-on is still a finding: it means the log came from a pre-removal build and whatever it
+# measured is subject to whatever the setting did. Present-and-off is a note, not a problem - the
+# whole existing corpus is that case.
+RETIRED = {
+    "fastAnim": "Force fast body animator, removed 2026-07-31 on Sophia's call. It substituted "
+                "FastAnimatorProcessorClass, whose cullingMode is an inert auto-property, so it "
+                "silently deleted the animator cull - the mod's largest saving at ~0.21 ms per "
+                "awake bot - while `animCulled` still reported the cull working at full strength. "
+                "Sophia: a first draft from the beginning that completely breaks the game.",
 }
 
 # Emitted in the cfg block, and deliberately not levers: measurement, or a bare distance rather
@@ -272,10 +290,21 @@ def main():
                 print("             The mod cannot produce this value, so the baseline stands. It")
                 print("             is a fact about the GAME on this map and wants recording.")
 
+    # Retired settings. Absent is correct; present-and-on means a pre-removal build.
+    for key, why in sorted(RETIRED.items()):
+        vals = [c.get(key) for c in cfgs]
+        present = [v for v in vals if v is not None]
+        if not present:
+            print("  retired %-18s absent, as expected for a post-removal build" % key)
+        elif any(present):
+            active.append("%-18s = on, and this setting was REMOVED - %s" % (key, why))
+        else:
+            print("  retired %-18s present but off - a pre-removal build. Harmless here." % key)
+
     # Keys present in the log that this file has no ruling on. Reported loudly because the silent
     # version of this is how four levers came to be uncovered: a checker that ignores what it does
     # not recognise reports "clean" for a run it never examined.
-    ruled = set(LEVERS) | set(NON_LEVERS)
+    ruled = set(LEVERS) | set(NON_LEVERS) | set(RETIRED)
     unruled = sorted(set(k for c in cfgs for k in c) - ruled)
 
     for line in active:

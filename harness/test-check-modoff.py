@@ -103,6 +103,18 @@ results.append(case("bossGroupWake/roleSleepDist on -> moot, exit 0",
 results.append(case("forceAllRoles on -> named as moot",
                     [variant(forceAllRoles=True)], 0, want_text="forceAllRoles"))
 
+# 7b. RETIRED settings. Absent must be FINE (a post-removal build must not refuse), present-and-off
+#     must be a note, and present-and-on must FAIL. Without the third case the retirement is just a
+#     deletion and an old build running the setting would pass silently.
+noanim = dict(CLEAN)
+del noanim["fastAnim"]
+results.append(case("fastAnim absent -> fine, post-removal build", [noanim], 0,
+                    want_text="absent, as expected"))
+results.append(case("fastAnim present but off -> note, not a failure",
+                    [variant(fastAnim=False)], 0, want_text="present but off"))
+results.append(case("fastAnim present and ON -> must FAIL",
+                    [variant(fastAnim=True)], 1, want_text="was REMOVED"))
+
 # 8. A key this build cannot report is still a refusal, unchanged.
 missing = dict(CLEAN)
 del missing["suspendGc"]

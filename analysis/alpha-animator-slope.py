@@ -10,6 +10,35 @@ A factor of twenty. **Stand-by's value is that it identifies which bots are safe
 animator cull is where essentially all of the saving is.** Sophia said from memory that the cull
 "had a pretty big impact" - this is that, quantified, and it was the pointer that found it.
 
+THE PER-BOT SLOPE IS NOT CORROBORATED WITHIN AN ARM, AND THAT IS UNEXPLAINED. Read this before
+quoting 0.211. The cross-arm fit says animator cost rises 0.211 ms per awake bot. But fitted
+WITHIN a single arm, where awake count varies over windows and build/day/route are held constant,
+the median slope is **0.091** and the mod-off arms are flat or slightly negative (Streets -0.002,
+Interchange -0.058, Reserve -0.035).
+
+A pre-registered prediction then failed. With the cull OFF nothing is culled, so every bot animates
+and cost should track TOTAL bots. It does not: mod-off slopes against total are ~0 with |r| < 0.4
+on seven of nine maps. **Within a raid, animator cost barely tracks bot count at all** - and if the
+cross-arm gap were caused by the number of bots culled, it would have to.
+
+So the honest position is: the cross-arm DIFFERENCE is real, large, and in the same direction on
+seven maps. Its attribution to a per-bot cost is NOT established, and two analyses of the same data
+disagree by 2.3x. Candidate explanations, none tested:
+
+  * Vanilla already writes `CullUpdateTransforms` past `AnimatorCullDistance` (10 m), so most bots
+    may already be cheap and only the few within 10 m cost anything - a count that is roughly
+    constant within a raid. If so our cull buys much less than the cross-arm gap suggests, and the
+    gap comes from something else.
+  * `bots.awake` may be an instantaneous sample at window close while the phase figure is a mean
+    over 30 s. Pairing a point estimate with a window mean attenuates any real within-arm slope
+    toward zero. This one would RESCUE the slope and it is a question for Gamma, not a conclusion.
+  * The mod-on legs are a different and partly unstamped binary, so the cross-arm gap may not be
+    the mod at all.
+
+What survives regardless: even the pessimistic 0.091 ms per bot is eight times the ~0.011 ms that
+stand-by's own gating saves, so the ordering of the two mechanisms is robust while the coefficient
+is not. Range 0.09-0.21, ratio 8-20x.
+
 WHY THE SLOPE AND NOT THE DELTA. A mod-on-minus-mod-off delta on one map is a between-leg
 difference: different day, different route, and for `20260728-225956-marathon` a `header.commit` of
 `None`, i.e. an unidentified binary. The slope is fitted WITHIN a map across arms, so it survives
