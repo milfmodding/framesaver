@@ -173,8 +173,19 @@ namespace Framesaver.Patches
         /// <summary>
         /// Single wake path, so restoring BotState cannot be forgotten at one of the three call sites.
         ///
-        /// BotState is restored unconditionally rather than behind the config flag: turning the option off
-        /// mid-raid must let already-deactivated bots recover as they wake, instead of stranding them.
+        /// BotState is restored unconditionally rather than behind the config
+        /// flag, so a bot that reaches here recovers whatever the setting now
+        /// says.
+        ///
+        /// **That is not the same as "the option is safe to switch off
+        /// mid-raid", which this comment used to claim.** A bot already
+        /// NonActive+paused cannot reach here at all: the only thing driving
+        /// its wake check is SleepingBotStandByPumpPatch above, and that
+        /// prefix bails on the same flag. Vanilla BotOwner.UpdateManual will
+        /// not call StandBy.Update() for a NonActive bot, so switching the
+        /// option off strands exactly the bots it was meant to release - the
+        /// restore is unreachable, not absent. Do not alternate this setting
+        /// inside a raid.
         /// </summary>
         private static void Wake(BotStandBy standBy, BotOwner bot)
         {
