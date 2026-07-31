@@ -224,7 +224,8 @@ def partition(rows, warmup_s=WARMUP_S, require_population=False,
     """
     kept = []
     dropped = {'not sample': 0, 'not raid': 0, 'final': 0,
-               'warm-up': 0, 'empty roster': 0, 'teardown': 0}
+               'warm-up': 0, 'length unresolvable': 0,
+               'empty roster': 0, 'teardown': 0}
     tear = is_teardown(rows) if drop_teardown else set()
     for i, w in enumerate(rows):
         if w.get('type') != 'sample':
@@ -233,6 +234,16 @@ def partition(rows, warmup_s=WARMUP_S, require_population=False,
             dropped['not raid'] += 1
         elif w.get('final'):
             dropped['final'] += 1
+        # A REFUSAL AND AN EXCLUSION ARE DIFFERENT EVENTS AND USED TO SHARE A
+        # BUCKET. Under by_start an unresolvable window length makes
+        # past_warmup() return False, so a loader that stamps `_windowSeconds`
+        # from the wrong path has every window charged to "warm-up" -- which is
+        # a plausible-looking number, not an error. read-animcull.py read
+        # header.config.windowSeconds instead of header.windowSeconds and lost
+        # all 58 windows of a 58-window log that way. Same windows dropped
+        # either way; `kept` is unchanged by this split, only the label is.
+        elif by_start and window_length(w) is None:
+            dropped['length unresolvable'] += 1
         elif not past_warmup(w, warmup_s, by_start):
             dropped['warm-up'] += 1
         elif require_population and not ((w.get('bots') or {}).get('total') or 0):

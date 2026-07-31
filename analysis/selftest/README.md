@@ -5,6 +5,7 @@ them from this directory:
 
     python um-crashtest.py     # read-updatemanual.py, 8 cases
     python bw-crashtest.py     # read-botwindow.py, 7 cases
+    python ac-crashtest.py     # read-animcull.py, 11 cases
 
 They exist because **every one of them found a defect in code written minutes
 earlier**, and none of those defects would have produced an error. A list, so
@@ -22,6 +23,16 @@ regression tests:
   strongest possible null fell out of the bottom of the section in silence
 - a warning that fired and then printed the contrast anyway
 - a span-split rule blind to a re-wake early in a window
+- a loader reading `header.config.windowSeconds` when the field is at the
+  header's top level, so `steady.partition()` charged all 58 windows of a
+  58-window log to warm-up — a field-scope error wearing the costume of
+  ordinary attrition. It was found by a count that looked *plausible*, not by
+  an error, and it prompted `steady.py` to split "length unresolvable" out of
+  the warm-up bucket so the next one announces itself
+- two of these cases not testing what their own docstrings claimed: one exited
+  on a window-count refusal before reaching the section it was written for, and
+  one named two failures it could not tell apart because the case made their
+  denominators equal
 
 **What they are not.** They exercise code paths on data built for convenience.
 A synthetic shares the assumption under test, so nothing here validates a
