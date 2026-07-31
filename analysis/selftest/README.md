@@ -34,9 +34,24 @@ regression tests:
   one named two failures it could not tell apart because the case made their
   denominators equal
 
-**What they are not.** They exercise code paths on data built for convenience.
-A synthetic shares the assumption under test, so nothing here validates a
-conclusion — only that a branch runs and says what it claims to say. The one
+**What they are not, and this is the ceiling on the whole directory.** A
+synthetic is built from your model of the thing, so **a check built from your
+model tests the model, not the world.** Every case here can only exercise the
+parts of the model its author already held. Nothing here validates a conclusion
+— only that a branch runs and says what it claims to say.
+
+That is not a limitation to work around, it is where the real defects go. On
+2026-07-31 three defects in `build-fields.json` survived crash tests, review and
+their author's own re-reading, and all three died to a question whose answer
+came **from the far side of the join under test** — a `windowSec` observation
+from the log side against a tool that reads binaries, and a build-recovery
+request whose answer was known from a missing header key. Not merely an
+"independent" answer: one from the opposite side of the thing being tested, which
+is what lets it catch a defect in the join itself.
+
+The corollary is structural rather than about care: **all three catches came
+from outside whoever built the thing.** Same conclusion as reviewer-separate-
+from-builder, arriving from a different direction. The one
 exception is stated in each file: `um-crashtest` builds a case whose true
 per-live-call cost is 0.02 ms by construction, so the corpse subtraction can be
 checked against a known answer. That tests arithmetic, not a claim about raids.
