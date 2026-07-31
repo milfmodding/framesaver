@@ -47,9 +47,24 @@ def pct(sorted_vals, p):
 def leg_arm(ndjson):
     """The treatment arm of a whole leg, read from the header `config` block.
 
-    Returns 'forceAll' / 'default' / 'unknown'. `unknown` means the header genuinely lacks the key
-    - which no log in the present corpus does - and is kept distinct from False so a future build
-    that drops the key can never be read as having run the default arm.
+    Returns 'standbyOff' / 'forceAll' / 'default' / 'unknown'.
+
+    `standbyOff` WAS MISSING AND THAT WAS A CONTAMINATION BUG. This split originally knew only
+    about `forceAllRoles`, because that was the only arm in the corpus when it was written. The
+    mod-off marathon of 2026-07-31 then arrived with `standByEnabled = False`, got labelled
+    `default`, and was pooled with 23 mod-ON legs - so `Woods [default]` was 64% mod-on and 36%
+    mod-off, and `Lighthouse [default]` was 90% mod-on. Those rows were being read as gate
+    figures. This file exists to stop exactly that, and it did it to itself the moment a new arm
+    appeared: **an arm split only separates the arms it was told about.**
+
+    `standbyOff` is NOT a certified mod-off baseline. It reports one setting. Five further levers
+    keep acting with stand-by off, four of them engine-level - `harness/check-modoff.py` is what
+    certifies a leg from the full `cfg` block, and it should be run before any leg is quoted as a
+    baseline. The label here says which legs must not be pooled; it does not say what they are.
+
+    `unknown` means the header genuinely lacks the key - which no log in the present corpus does -
+    and is kept distinct from False so a future build that drops a key can never be read as having
+    run the default arm.
     """
     for ln in open(ndjson, encoding="utf-8-sig", errors="replace"):
         ln = ln.strip()
@@ -61,8 +76,17 @@ def leg_arm(ndjson):
             continue
         if o.get("type") != "header":
             continue
-        v = (o.get("config") or {}).get("forceAllRoles")
-        return "unknown" if v is None else ("forceAll" if v else "default")
+        cfg = o.get("config") or {}
+        standby = cfg.get("standByEnabled")
+        force = cfg.get("forceAllRoles")
+        if standby is None or force is None:
+            return "unknown"
+        # Stand-by off dominates the label: with the subsystem off, forceAllRoles cannot act
+        # (BotStandByInitPointsPatch returns before reading it), so a mod-off leg is one arm and
+        # not two.
+        if not standby:
+            return "standbyOff"
+        return "forceAll" if force else "default"
     return "unknown"
 
 
@@ -200,8 +224,13 @@ def main():
     # Split by arm so a map row that mixes treatment into a baseline cannot be quoted as a gate.
     # The arm comes from the header, which carries it for every log in the corpus - so this needed
     # no new telemetry, only reading a field that was already there.
-    print("  BY MAP AND TREATMENT ARM. `forceAll` legs ran Force for all roles ON and are NOT a")
-    print("  baseline. Quote the `default` row as the gate figure for a map:")
+    print("  BY MAP AND TREATMENT ARM. Three arms, and they are three different questions:")
+    print("    default     stand-by ON, Force for all roles off - what a user of the mod gets")
+    print("    forceAll    Force for all roles ON - a treatment leg, NOT a baseline")
+    print("    standbyOff  stand-by OFF - the mod-off baseline arm. `check-modoff.py` is what")
+    print("                certifies one; this label only keeps it out of the other pools.")
+    print("  The mod's effect on a map is default MINUS standbyOff, both rows read below. Neither")
+    print("  row alone is 'the gate figure' now that two arms exist.")
     print(hdr)
     print("  " + "-" * 100)
     for (m, arm) in sorted(per_map_arm):
