@@ -21,23 +21,46 @@ and cost should track TOTAL bots. It does not: mod-off slopes against total are 
 on seven of nine maps. **Within a raid, animator cost barely tracks bot count at all** - and if the
 cross-arm gap were caused by the number of bots culled, it would have to.
 
-So the honest position is: the cross-arm DIFFERENCE is real, large, and in the same direction on
-seven maps. Its attribution to a per-bot cost is NOT established, and two analyses of the same data
-disagree by 2.3x. Candidate explanations, none tested:
+RESOLVED 2026-07-31, and the first reading of it was an over-correction. VERIFIED in source, not
+taken on report: `CountBots` has exactly ONE call site, Telemetry.cs:1314, immediately before the
+sample line is built - so `bots.awake` is a single INSTANTANEOUS sample at the window boundary while
+`phases[...].avg` is a window aggregate. Regressing an aggregate on a noisy point estimate attenuates
+the slope by about Var(true) / (Var(true) + Var(noise)).
 
-  * Vanilla already writes `CullUpdateTransforms` past `AnimatorCullDistance` (10 m), so most bots
-    may already be cheap and only the few within 10 m cost anything - a count that is roughly
-    constant within a raid. If so our cull buys much less than the cross-arm gap suggests, and the
-    gap comes from something else.
-  * `bots.awake` may be an instantaneous sample at window close while the phase figure is a mean
-    over 30 s. Pairing a point estimate with a window mean attenuates any real within-arm slope
-    toward zero. This one would RESCUE the slope and it is a question for Gamma, not a conclusion.
-  * The mod-on legs are a different and partly unstamped binary, so the cross-arm gap may not be
-    the mod at all.
+That artefact is ASYMMETRIC between the two fits, in the observed direction:
 
-What survives regardless: even the pessimistic 0.091 ms per bot is eight times the ~0.011 ms that
-stand-by's own gating saves, so the ordering of the two mechanisms is robust while the coefficient
-is not. Range 0.09-0.21, ratio 8-20x.
+  * within an arm, true variation in awake across windows is small, so sampling noise is a large
+    share of total variance -> severe attenuation, biased DOWN;
+  * across arms the x-difference is large (22 vs 10 vs 1), so the same absolute noise is a small
+    share -> mild attenuation.
+
+0.091 / 0.211 = 0.43, an ordinary reliability ratio for that pairing. The disagreement's direction
+and rough size are what the artefact predicts unaided.
+
+But the cross-arm fit is biased UP for a different reason (Beta's, and it is the half I had not
+seen): across arms `awake` is not an independent variable, it is a CONSEQUENCE of the treatment. The
+arm moves stand-by, the cull and every other lever at once, so the cross-arm slope is
+Dcost / Dawake with a numerator containing every mechanism the arm moved, all of it attributed to
+awakeness.
+
+**Two mis-specified estimators erring in opposite directions. 0.09-0.21 is a BRACKET, not a
+contradiction, and neither end should be quoted alone.**
+
+AND THE FAILED PREDICTION HAS A THIRD READING WHICH IS BETTER THAN MINE. The costly population is
+probably neither `awake` nor `awake + asleep`: `AnimatorCullDistance` is 10 m, so vanilla already
+has nearly every bot at `CullUpdateTransforms` and only the few inside 10 m at `AlwaysAnimate`. How
+many bots are NEAR the player is set by engagement geometry, not roster size, and is roughly constant
+within a raid - which predicts null slopes against both regressors, which is what 7 of 9 maps show.
+Under that model **the cull is a LEVEL effect, not a slope effect**: it removes state-machine
+evaluation from the many far bots. A level shift is invisible to a within-arm slope fit BY
+CONSTRUCTION. So the null is not evidence against the cull; it is the wrong estimator for the shape
+of the effect, and this file is the wrong instrument for the question.
+
+What survives: the ORDERING. Even the attenuated 0.091 is eight times the ~0.011 ms that stand-by's
+own gating saves, so the cull is the larger mechanism at both ends of the bracket. What replaces this
+file is a PAIRED DIFFERENCE of means with `bots.awake` matched across arms - which is what
+`protocol-anim-cull.ini` is built to produce, and which has no regressor and therefore no
+attenuation. Every within-raid regression stays attenuated until `bots.*` becomes a window aggregate.
 
 WHY THE SLOPE AND NOT THE DELTA. A mod-on-minus-mod-off delta on one map is a between-leg
 difference: different day, different route, and for `20260728-225956-marathon` a `header.commit` of
