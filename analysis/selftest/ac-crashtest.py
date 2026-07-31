@@ -142,3 +142,39 @@ run("noasleep", abab(20, 0, ctrl_asleep=0))
 
 # J. Two windows per arm.
 run("thin", abab(20, 0, per_arm=2))
+
+
+# ---- Pooled-corpus refusal ---------------------------------------------
+#
+# Two installs with different AI mod stacks, and pooling them averages two
+# environments into one plausible number with NO signature -- nothing goes out
+# of range. Hence a refusal rather than a warning.
+#
+# THE THIRD CASE IS THE ONE THAT MATTERS. A refusal that fires unconditionally
+# would pass the first two and block every legitimate run, which is exactly the
+# shape of Beta's deploy gate that refused every deploy while its falsification
+# passed. --pool must be shown to ALLOW.
+def pooled(name, extra_args, want):
+    other = os.path.join(HERE, "ac-pool-other")
+    if not os.path.isdir(other):
+        os.mkdir(other)
+    a = os.path.join(HERE, "ac-pool-a.ndjson")
+    b = os.path.join(other, "ac-pool-b.ndjson")
+    for path in (a, b):
+        with open(path, "w", encoding="utf-8") as fh:
+            for o in abab(20, 0):
+                fh.write(json.dumps(o) + "\n")
+    r = subprocess.run([sys.executable, READER] + extra_args + [a, b],
+                       capture_output=True, text=True)
+    print("=" * 70)
+    print("CASE %s" % name)
+    print("=" * 70)
+    for ln in r.stdout.splitlines():
+        if any(k in ln for k in ("read:", "REFUSED", "POOLED", "Readable")):
+            print(ln)
+    print("rc=%d  (want %d)  %s\n"
+          % (r.returncode, want, "ok" if r.returncode == want else "MISMATCH"))
+
+
+pooled("pool_refused", [], 2)          # two directories, no opt-in
+pooled("pool_optin", ["--pool"], 0)    # same inputs, explicitly pooled

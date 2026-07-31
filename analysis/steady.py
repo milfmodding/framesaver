@@ -242,6 +242,45 @@ def sources(paths):
         '%d from %s' % (n, d) for d, n in sorted(dirs.items()))
 
 
+def resolve_inputs(args):
+    """(paths, source_line, refusal) -- refuse a pooled corpus by default.
+
+    `refusal` is a message string, or None when the run may proceed. Readers
+    print `source_line`, then exit 2 on a refusal.
+
+    WHY REFUSE RATHER THAN WARN. Beta established that the two directories are
+    not two builds of one thing, they are two playable installs with different
+    AI mod stacks -- Base has no SAIN/BigBrain/Waypoints/LootingBots, and
+    ModCompat's stand-downs key on detected plugins, so `agents.slicing` and
+    the stand-by guards can differ for reasons that are not our configuration.
+
+    Pooling them averages two mod environments into one plausible number, and
+    **that failure has no signature**: no field goes out of range, no ratio
+    looks wrong, nothing fails. A warning printed above a result that looks
+    fine is read as noise. This is the case where a refusal is proportionate.
+
+    And it cannot be detected from inside the files. `mods` is present in 3 of
+    25 SPT4.0.13 logs and 0 of 30 Base logs, so its absence means "old build"
+    and covers both populations. **Directory is the only attribution available
+    for 52 of the 55 logs**, which is exactly why it has to be on the line.
+
+    `--pool` is the explicit opt-in. It takes an argument list rather than
+    paths so the flag never reaches a glob as a filename.
+    """
+    import os
+    paths = [a for a in args if not a.startswith('--')]
+    pool = '--pool' in args
+    line = sources(paths)
+    if len(set(os.path.dirname(os.path.abspath(p)) or '.'
+               for p in paths)) <= 1 or pool:
+        return paths, line + (' [POOLED, explicitly]' if pool else ''), None
+    return paths, line, (
+        'REFUSED: inputs span more than one install, and the installs carry\n'
+        'different AI mod stacks. Pooling them averages two environments into\n'
+        'one plausible number and nothing downstream would look wrong. Re-run\n'
+        'against one directory, or pass --pool if that is genuinely intended.')
+
+
 def is_teardown(rows):
     """Set of ids of windows that are the LAST in-raid window of their segment.
 

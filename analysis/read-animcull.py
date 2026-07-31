@@ -174,10 +174,15 @@ def main(argv):
         print(__doc__)
         return 2
 
-    rows = load(argv[1:])
+    paths, src, refusal = steady.resolve_inputs(argv[1:])
+    print('read:       %s' % src)
+    if refusal:
+        print(refusal)
+        return 2
+
+    rows = load(paths)
     windows, dropped = eligible(rows)
 
-    print('read:       %s' % steady.sources(argv[1:]))
     print('population: %s' % steady.describe(drop_teardown=True, by_start=True))
     print('            + arm resolvable, + not flushedByProtocol')
     print('kept %d window(s); dropped %s'

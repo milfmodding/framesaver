@@ -528,7 +528,13 @@ def main(argv):
         print(__doc__)
         return 2
 
-    rows = load(argv[1:])
+    paths, src, refusal = steady.resolve_inputs(argv[1:])
+    if refusal:
+        print('  read                     %s' % src)
+        print(refusal)
+        return 2
+
+    rows = load(paths)
     if not rows:
         print('no sample windows found')
         return 2
@@ -537,7 +543,7 @@ def main(argv):
     print('=' * 78)
     print('1. FIELD PRESENT AND DENOMINATORS INTACT')
     print('=' * 78)
-    print('  read                     %s' % steady.sources(argv[1:]))
+    print('  read                     %s' % src)
     print('  sample windows           %d' % len(rows))
     print('  carrying updateManual    %d' % sum(1 for w in rows if w.get('updateManual') is not None))
     print('  population               %s'
