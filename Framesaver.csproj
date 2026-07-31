@@ -23,7 +23,13 @@
       on first launch, keeping the original as .spt-bak. Against a never-launched install the shipped DLL
       still has raw obfuscated type names and five of our targets do not resolve.
     -->
-    <SptDir>$(MSBuildProjectDirectory)\..\..\SPT4.0.13</SptDir>
+    <!--
+      Normalised, not just joined. Unresolved, this prints as
+      "...\Framesaver\..\..\SPT4.0.13\..." in the deploy line, and the whole
+      point of that line is to name WHICH install unambiguously - there are two
+      on this machine and only this one is ever deployed to.
+    -->
+    <SptDir>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\SPT4.0.13'))</SptDir>
     <ManagedDir>$(SptDir)\EscapeFromTarkov_Data\Managed</ManagedDir>
     <BepInExDir>$(SptDir)\BepInEx</BepInExDir>
 
@@ -219,10 +225,25 @@
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <Copy Condition="'$(Deploy)' == 'true'"
           SourceFiles="$(TargetPath)" DestinationFolder="$(BepInExDir)\plugins\" />
+    <!--
+      Both branches name the install, and the deploy branch names the stamp.
+
+      There are TWO playable installs on this machine - F:\SPT\SPT4.0.13 (SAIN,
+      BigBrain, Waypoints, LootingBots) and F:\SPT\Base (no AI mods) - each with
+      its own Framesaver-logs directory, and they share no log filenames. Only
+      SptDir is ever deployed to. For a week I announced "the install matches the
+      gate" with one md5, which was true of one of two installs and nobody could
+      have questioned it, because no artefact wrote down which one it meant.
+
+      This line did name the path. My summaries paraphrased it into "the
+      install", so the scope was recorded and then discarded by a human. Naming
+      it in BOTH branches, with the stamp, makes the announcement a copy rather
+      than a retelling - which is the only version that cannot lose the noun.
+    -->
     <Message Condition="'$(Deploy)' == 'true'" Importance="high"
-             Text="Framesaver: DEPLOYED to $(BepInExDir)\plugins\" />
+             Text="Framesaver: DEPLOYED $(InformationalVersion) to $(BepInExDir)\plugins\ (this install only; other installs are untouched)" />
     <Message Condition="'$(Deploy)' != 'true'" Importance="high"
-             Text="Framesaver: built, NOT deployed. Add -p:Deploy=true to copy into plugins." />
+             Text="Framesaver: built $(InformationalVersion), NOT deployed. -p:Deploy=true copies into $(BepInExDir)\plugins\" />
   </Target>
 
 </Project>
