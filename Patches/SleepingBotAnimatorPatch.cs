@@ -397,6 +397,24 @@ namespace Framesaver.Patches
     /// beacon/tripwire placers. A paused bot is stationary and posed, so none of it should be observable -
     /// but this is the riskiest of the three changes, hence its own flag. If bots come back from sleep in a
     /// wrong pose or with stale visuals, this is the one to turn off first.
+    ///
+    /// **WHAT THIS FLAG BREAKS ELSEWHERE, recorded here because this is where
+    /// someone turning it on is standing.** Player.LateUpdate holds the ONLY
+    /// call site of Player.VisualPass (Player.cs:1565), and VisualPass is the
+    /// only thing that rewrites cullingMode. So with this on:
+    ///
+    ///   - the animator cull stops being reversible. Dropping a bot from
+    ///     `Sleeping`, or switching the cull off mid-raid, no longer restores
+    ///     vanilla - a bot asleep at that moment stays CullCompletely until it
+    ///     next wakes. SetSleeping's docstring asserted the opposite for weeks.
+    ///   - `animCulledEngine` is what tells a returned arm from a latched one,
+    ///     and any protocol that MOVES this flag needs it read. A protocol that
+    ///     pins this off has designed the latch out rather than measured it away.
+    ///
+    /// The rule this is an instance of: a bool prefix can suppress the method it
+    /// wraps, so anything documented as "M always runs" becomes conditional the
+    /// day one is added. tests/unwrap enumerates every such prefix against a
+    /// reviewed list, which is what makes that day loud.
     /// </summary>
     internal class SkipSleepingPlayerLateUpdatePatch : ModulePatch
     {

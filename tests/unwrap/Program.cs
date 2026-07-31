@@ -919,6 +919,74 @@ class P {
         Check("a misspelt field would be caught (control)",
               inUs("\"animCullEngine\""), false);
 
+        // ---- Which of our patches can SUPPRESS the method they wrap --------
+        //
+        // Twice now a docstring has asserted "method M always runs" - VisualPass
+        // rewrites cullingMode every frame; UpdateManual keeps driving
+        // StandBy.Update - and been falsified later by OUR OWN mod gaining the
+        // ability to skip M. Both comments were true when written, sat on the
+        // BENEFICIARY rather than the suppressor, and nothing failed when the
+        // flag that broke them was added.
+        //
+        // That set is exactly computable: a Harmony prefix returning bool can
+        // skip the original; a void one cannot. Type-level, deliberately -
+        // Gamma's first pass grepped bodies for `return false;`, found four, and
+        // MISSED BOTH SKIP PATCHES, which return `!ApplyIfSleeping(...)` with no
+        // literal false anywhere. The two it missed are the two that caused both
+        // incidents, and it reported a confident small number while doing it.
+        //
+        // Compared against a literal list rather than a registry of which
+        // invariants depend on what. A registry is a second artefact that rots
+        // unwatched; this fails the moment a suppressing patch is added, and the
+        // diff line IS the prompt - what asserted that this method always runs?
+        //
+        // LIMIT, so nobody over-trusts it: this catches invariants broken by
+        // SUPPRESSION only. A flag that changes a distance, a period or a
+        // threshold breaks a comment just as thoroughly and is invisible here.
+        Console.WriteLine("\nPrefixes that can skip the method they patch");
+        var suppressors = asm.GetTypes()
+            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic
+                                          | BindingFlags.Static | BindingFlags.Instance
+                                          | BindingFlags.DeclaredOnly))
+            .Where(m => m.ReturnType == typeof(bool)
+                        && m.GetCustomAttributes(true)
+                            .Any(a => a.GetType().Name == "PatchPrefixAttribute"))
+            .Select(m => m.DeclaringType.Name + "." + m.Name)
+            .OrderBy(s => s, StringComparer.Ordinal)
+            .ToArray();
+        // Golden list. Adding a line here is the moment to ask what documented
+        // invariant assumed the patched method always runs - and to write the
+        // consequence at the SUPPRESSOR, where whoever adds the flag is
+        // standing, not at whatever benefits from it.
+        // Seven. I wrote this list from memory first and it had five - I had
+        // forgotten the brain and the async worker, which is the whole argument
+        // for reflecting the set rather than keeping one by hand.
+        var known = new[] {
+            "AICoreControllerUpdatePatch.Prefix",        // AICoreControllerClass.Update
+            "AsyncDrainPatch.Prefix",                    // the async drain
+            "AsyncWorkerFixedUpdatePatch.Prefix",        // AsyncWorker.FixedUpdate
+            "BotStandByUpdatePatch.Prefix",              // BotStandBy.Update
+            "SkipSleepingPlayerLateUpdatePatch.Prefix",  // Player.LateUpdate -> VisualPass
+            "SkipSleepingWorldTickPatch.Prefix",         // GameWorld.smethod_2
+            "SleepingBotStandByPumpPatch.Prefix",        // BotOwner.UpdateManual
+        };
+        // Two controls. Non-empty, so a broken reflection query cannot pass by
+        // matching nothing; and strictly fewer than ALL prefixes, so the bool
+        // filter is actually discriminating rather than waving everything
+        // through. Without the second, a filter that ignored return type would
+        // pass the moment someone pasted the full list into `known`.
+        int allPrefixes = asm.GetTypes()
+            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic
+                                          | BindingFlags.Static | BindingFlags.Instance
+                                          | BindingFlags.DeclaredOnly))
+            .Count(m => m.GetCustomAttributes(true)
+                         .Any(a => a.GetType().Name == "PatchPrefixAttribute"));
+        Check("the reflected set is non-empty (control)", suppressors.Length > 0, true);
+        Check("...and the bool filter excludes void prefixes (control)",
+              allPrefixes > suppressors.Length, true);
+        Check("suppressing prefixes match the reviewed list",
+              string.Join(" ", suppressors), string.Join(" ", known));
+
         Console.WriteLine(bad == 0 ? "\nall cases pass (against shipped IL)" : $"\n{bad} FAILURES");
         return bad == 0 ? 0 : 1;
     }
