@@ -137,12 +137,22 @@
     as handled.
 
     That paragraph used to end "the dangerous case is not an unstamped binary".
-    Both cases are dangerous and the unstamped one has now been MEASURED: Alpha's
-    census puts 22 of 25 logs in the corpus at commit:"" - every log before this
-    gate existed - so most of what we have measured cannot be tied to a binary at
-    all, and every cross-log comparison drawn from them compares a known build
-    against an unknown one. An unstamped deploy is refused below for that reason
-    and no other.
+    Both cases are dangerous, and most of the corpus - 52 of 55 logs across two
+    installs - carries commit:"" and cannot be tied to a build at all.
+
+    BUT DO NOT READ THIS GATE AS THE FIX FOR THOSE 52. A blank commit in a log
+    has TWO causes and they are not distinguishable from the log:
+
+      1. the assembly was never stamped - Framesaver-20260728-0027 carries a
+         bare "0.1.0", so SourceLink was not producing a sha at all; and
+      2. the assembly WAS stamped but the telemetry header did not yet read it -
+         only the two 20260728-header-* artifacts emit a "commit" field, so
+         every earlier binary wrote a header that could not carry one.
+
+    Both landed on 2026-07-28, hours apart. This gate prevents (1) only. (2) was
+    fixed by the header work and no build check could have caught it. Verified by
+    reading ProductVersion and the #US heap of the artifacts themselves rather
+    than inferred from the dates.
 
     -p:AllowUnverifiedDeploy=true is the escape hatch, so someone building
     without git types one flag and knows precisely what they gave up. An
