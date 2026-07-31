@@ -1,4 +1,18 @@
-"""What the mod actually buys: animator cost per awake bot, fitted WITHIN each map across arms.
+"""SUPERSEDED 2026-07-31 by `alpha-animator-aggregate.py`. Kept for the history, not the number.
+
+Every fit here regresses on `bots.awake`, which is an INSTANTANEOUS sample read once at the window
+boundary, against a window aggregate - so all of it is attenuated by an unknown factor. Replacing
+that regressor with the frame-weighted aggregate that was already in the log raises the within-arm
+slopes by a median factor of **1.81** and lifts r from -0.02 to 0.88 on Streets. Use the other file.
+
+What survives from this one is the reasoning, and one thing worth keeping: the pre-registered
+prediction recorded below as FAILED did not fail. It was tested with a broken regressor and comes
+out confirmed on aggregates. Left in place rather than edited, because a prediction that appeared to
+fail and then held is a more useful record than a tidy one.
+
+---
+
+What the mod actually buys: animator cost per awake bot, fitted WITHIN each map across arms.
 
 THE FINDING THIS FILE EXISTS FOR. Framesaver is an AI-stutter mod, and the AI scheduling is not
 where its frame time comes from. Two measurements, both per awake bot per frame:
