@@ -413,6 +413,100 @@ def live(w, use_dead):
     return max(ms, 0.0), max(calls, 0)
 
 
+def denominator_calibration(wins):
+    """Does `awakeCalls / frames` really mean "mean awake bots this window"?
+
+    THE REASON THIS EXISTS. Alpha needs a per-window AGGREGATE awake count:
+    `bots.awake` is one instantaneous sample at the window boundary
+    (`CountBots` has a single call site, immediately before the sample line is
+    built) while `phases[...].avg` is a mean over every frame, so regressing
+    one on the other attenuates the slope by an unknown factor. Their two fits
+    disagreed 0.091 within-arm against 0.211 cross-arm, and attenuation
+    predicts that direction and roughly that size.
+
+    No new field is needed. `BotsClass.UpdateByUnity` iterates every bot with
+    no BotState filter, so UpdateManual runs once per bot per frame and
+    `awakeCalls / frames` IS the frame-weighted mean. Better still,
+    `UpdateManualTiming.ResetWindow()` and `_phases[i].Reset()` sit in the same
+    reset block, so it covers exactly the frames `phases[...].avg` covers.
+
+    BUT THE DENOMINATOR IS NOT SETTLED, AND I WILL NOT GUESS IT. `frames` is
+    `_periodSamples`; `n` is `_frame.Count`; nothing guarantees they agree, and
+    `Block()` emits avg/min/max with no `n` of its own so the phase means carry
+    no denominator at all. Picking one and being wrong scales every per-bot
+    coefficient by a constant that would never show up as an error.
+
+    So: solve for it. On a window where NOTHING MOVED -- no transitions, no
+    deaths, and the same awake and total counts as the window before it -- the
+    awake count was constant across the whole window, so
+
+        awakeCalls / D == bots.awake
+
+    and D is the true frame count. Compare it against both candidates. One
+    check settles the denominator, the once-per-frame assumption, and any duty
+    cycle at once; a D matching neither means UpdateManual is throttled and the
+    aggregate needs a scale factor before anyone quotes a slope from it.
+
+    Corpses are deliberately NOT subtracted here. `deadCalls` is a subset of
+    `awakeCalls` and `bots.awake` counts corpses too, so the raw ratio compares
+    like with like. Subtracting one side only would manufacture a duty cycle
+    out of the corpse count.
+
+    Prints and returns nothing on no candidates, which is the honest outcome
+    and not a pass -- a corpus with no quiet window cannot calibrate anything.
+    """
+    prev = {}
+    cands = []
+    for w in wins:
+        key = leg_key(w)
+        before = prev.get(key)
+        prev[key] = w
+        tr = w.get('standByTransitions') or {}
+        if before is None or not tr:
+            continue
+        moved = ((tr.get('woken') or 0) + (tr.get('slept') or 0)
+                 + (tr.get('diedAwake') or 0) + (tr.get('diedAsleep') or 0))
+        b, pb = w.get('bots') or {}, before.get('bots') or {}
+        if moved or b.get('awake') != pb.get('awake'):
+            continue
+        if b.get('total') != pb.get('total') or not b.get('awake'):
+            continue
+        calls = um(w).get('awakeCalls')
+        if not calls:
+            continue
+        cands.append((w, calls / float(b['awake'])))
+
+    print('  denominator calibration  %d quiet window(s)' % len(cands))
+    if not cands:
+        print('    no window had zero transitions AND an unchanged roster, so')
+        print('    awakeCalls/frames is UNCALIBRATED. Do not quote a per-bot')
+        print('    slope from it yet - this is a missing check, not a pass.')
+        return
+
+    hits = {'frames': 0, 'n': 0, 'neither': 0}
+    for w, implied in cands:
+        for name in ('frames', 'n'):
+            got = w.get(name)
+            # 2% covers a frame landing either side of the boundary; a real
+            # duty cycle would be a ratio like 0.5, not a rounding difference.
+            if got and abs(implied - got) / float(got) <= 0.02:
+                hits[name] += 1
+                break
+        else:
+            hits['neither'] += 1
+    print('    implied frame count matches: frames %d, n %d, neither %d'
+          % (hits['frames'], hits['n'], hits['neither']))
+    if hits['neither']:
+        med = sorted(i for _, i in cands)[len(cands) // 2]
+        ex = cands[0][0]
+        print('    ! UpdateManual is NOT once per bot per frame, or the window')
+        print('      is misaligned. Median implied frame count %.1f against'
+              % med)
+        print('      frames=%s n=%s. Every per-bot slope from awakeCalls needs'
+              % (ex.get('frames'), ex.get('n')))
+        print('      a scale factor before it is quoted.')
+
+
 def main(argv):
     if len(argv) < 2:
         print(__doc__)
@@ -448,6 +542,8 @@ def main(argv):
     if unstamped:
         print('    ! our prefix was skipped on %d calls - those samples were dropped, not' % unstamped)
         print('      mis-timed, but HarmonyPriority.First is no longer holding.')
+
+    denominator_calibration(wins)
 
     # THE CENSUS AND THE CALL RATE COUNT DIFFERENT POPULATIONS, and section 3
     # divides one by the other. `updateManual` counts every bot whose

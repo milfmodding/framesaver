@@ -28,9 +28,10 @@ PAUSED_BOTS = 20
 PAUSED_MS_PER_CALL = 0.000188
 
 
-def win(i, dead=True, corpses=CORPSES, live_bots=LIVE_BOTS, census_dead=None):
-    live_calls = live_bots * FRAMES
-    dead_calls = corpses * FRAMES
+def win(i, dead=True, corpses=CORPSES, live_bots=LIVE_BOTS, census_dead=None,
+        transitions=None, duty=1.0):
+    live_calls = int(live_bots * FRAMES * duty)
+    dead_calls = int(corpses * FRAMES * duty)
     um = {
         "awakeMs": round(live_calls * LIVE_MS_PER_CALL
                          + dead_calls * DEAD_MS_PER_CALL, 4),
@@ -45,14 +46,30 @@ def win(i, dead=True, corpses=CORPSES, live_bots=LIVE_BOTS, census_dead=None):
     bots = {"awake": live_bots + corpses, "total": 40}
     if census_dead is not None:
         bots["deadAwake"] = census_dead
-    return {"type": "sample", "state": "raid", "window": i, "raidElapsed": 200.0 + 60 * i,
-            "frames": FRAMES, "cfg": {"standBy": True, "deactivateSleeping": False},
-            "bots": bots, "updateManual": um}
+    out = {"type": "sample", "state": "raid", "window": i, "raidElapsed": 200.0 + 60 * i,
+           "frames": FRAMES, "n": FRAMES,
+           "cfg": {"standBy": True, "deactivateSleeping": False},
+           "bots": bots, "updateManual": um}
+    # Omitted entirely unless asked for, so every case written before the
+    # denominator calibration existed keeps the inputs it was verified on.
+    if transitions is not None:
+        out["standByTransitions"] = transitions
+    return out
 
 
 def run(name, windows, grep):
     path = os.path.join(HERE, "um-%s.ndjson" % name)
     with open(path, "w", encoding="utf-8") as fh:
+        # THE HEADER IS LOAD-BEARING AND ITS ABSENCE KILLED THIS WHOLE FILE.
+        # read-updatemanual partitions with by_start=True, which needs a
+        # resolvable window length; these synthetics carried none, so every
+        # window was refused and all 8 cases had been exiting on "GATE FAILED
+        # - no eligible window carries updateManual" since the day the harness
+        # was committed. They ran, printed, and tested NOTHING. It survived
+        # because the check applied to it was "no traceback" -- an absence, on
+        # the one file whose README says a case that cannot fail reports a
+        # pass. windowSeconds is TOP LEVEL on the header, not under `config`.
+        fh.write(json.dumps({"type": "header", "windowSeconds": 60.0}) + "\n")
         for w in windows:
             fh.write(json.dumps(w) + "\n")
     print("=" * 70)
@@ -91,3 +108,28 @@ run("turnover", [win(i, census_dead=1) for i in range(6)], KEYS)
 #    the one-shot roster sample at window close catches none. deadAwake == 0
 #    is the PREDICTED value and must not read as "no contamination".
 run("transient", [win(i, census_dead=0) for i in range(6)], KEYS + ["EXPECTED", "roster"])
+
+
+# ---- Denominator calibration -------------------------------------------
+#
+# Does awakeCalls/frames really mean "mean awake bots"? These decide whether
+# Alpha can quote a per-bot slope off it or only a bracket.
+CAL = KEYS + ["calibration", "quiet", "implied", "UNCALIBRATED", "scale factor"]
+QUIET = {"woken": 0, "slept": 0, "diedAwake": 0, "diedAsleep": 0}
+
+# I: once per bot per frame, nothing moving -> implied count IS `frames`.
+run("cal_clean", [win(i, transitions=QUIET) for i in range(6)], CAL)
+
+# J: UpdateManual throttled to every other frame. The counts stay internally
+#    consistent and every other section still reads fine -- which is the point:
+#    without this check a duty cycle is invisible and halves every slope.
+run("cal_duty", [win(i, transitions=QUIET, duty=0.5) for i in range(6)], CAL)
+
+# K: transitions present but the roster is churning, so NO window is quiet.
+#    Must say UNCALIBRATED rather than fall through to a pass.
+run("cal_busy", [win(i, transitions={"woken": 3, "slept": 2, "diedAwake": 0,
+                                     "diedAsleep": 0}) for i in range(6)], CAL)
+
+# L: the block is absent entirely -- every log before it shipped. Absent is not
+#    quiet, and must not be scored as a calibration.
+run("cal_absent", [win(i) for i in range(6)], CAL)

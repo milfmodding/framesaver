@@ -3,7 +3,7 @@
 Synthetic-input harnesses for the pre-registered readers in `analysis/`. Run
 them from this directory:
 
-    python um-crashtest.py     # read-updatemanual.py, 8 cases
+    python um-crashtest.py     # read-updatemanual.py, 12 cases
     python bw-crashtest.py     # read-botwindow.py, 7 cases
     python ac-crashtest.py     # read-animcull.py, 11 cases
 
@@ -40,6 +40,18 @@ conclusion — only that a branch runs and says what it claims to say. The one
 exception is stated in each file: `um-crashtest` builds a case whose true
 per-live-call cost is 0.02 ms by construction, so the corpse subtraction can be
 checked against a known answer. That tests arithmetic, not a claim about raids.
+
+**And once, the harness itself was dead.** `read-updatemanual` moved to
+`by_start=True`, which needs a resolvable window length; the `um-crashtest`
+synthetics carried no header, so every window was refused and all 8 cases had
+been exiting on `GATE FAILED - no eligible window carries updateManual` from the
+day this directory was committed. They ran, printed, and tested nothing.
+
+It survived because the check applied to it was **"0 tracebacks"** — an absence,
+on the one file whose whole subject is that an absence of complaint is not a
+verification. So: **assert a case's exit code and at least one line it must
+PRINT.** A harness needs a positive control as much as the code it tests, and
+this one is now the example.
 
 **Write the boring cases.** The slope-0 case felt too dull to bother with and is
 the one that found the silent-null defect. A case that cannot fail for the
