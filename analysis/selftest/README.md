@@ -51,7 +51,20 @@ is what lets it catch a defect in the join itself.
 
 The corollary is structural rather than about care: **all three catches came
 from outside whoever built the thing.** Same conclusion as reviewer-separate-
-from-builder, arriving from a different direction. The one
+from-builder, arriving from a different direction.
+
+But structural facts are not instructions, and the actionable half is the other
+one: **the outsider has to be told where to stand.** All three catches followed
+a disclosure precise enough to check the neighbourhood — a retraction naming the
+file and the key, so the next reader saw the stale claim three lines above it on
+the way past. *"Fixed a bug in the extractor"* would have produced nothing. The
+first half is a property of teams; the second is a choice each write-up makes,
+which is why it is the one to write down.
+
+And one on timing, from a defect found in the branch beside a freshly fixed one:
+**when a defect is in one of a pair, the fix commit is the moment you are least
+likely to check the sibling**, because the defect now feels handled. Two of the
+day's bugs were siblings of something already repaired. The one
 exception is stated in each file: `um-crashtest` builds a case whose true
 per-live-call cost is 0.02 ms by construction, so the corpse subtraction can be
 checked against a known answer. That tests arithmetic, not a claim about raids.
