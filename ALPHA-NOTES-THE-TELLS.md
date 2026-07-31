@@ -131,6 +131,33 @@ This is the same conclusion as "the reviewer must not be the builder", arriving 
 not because builders are careless, but because deliberate care is demonstrably not protective against
 this particular shape.
 
+## 6b. "We reached it independently" is worth almost nothing if you both read the same sentence
+
+A refinement of 6, and Beta's, correcting me in the same document where I had recorded the weaker
+version.
+
+We both concluded that vanilla already handled far-away bots cheaply, so the animator cull was
+landing on bots that cost nothing. I wrote that up as *two people reaching the same wrong premise
+independently, which felt like corroboration.* Beta's correction is narrower and worse:
+
+> **It is not two people agreeing; it is one comment being read twice.**
+
+We had both been reasoning from a single sentence in a class comment **he wrote** — that
+`CullUpdateTransforms` "skips retarget, IK and transform writes while the renderers are off screen."
+That sentence is true. Neither of us checked whether *cheaper* meant *cheap*. So the two
+"independent" derivations shared their entire upstream, and the agreement carried no information at
+all.
+
+**Tell:** before treating convergence as evidence, ask what each party **read**, not just what each
+concluded. On a small team the corpus of shared artefacts is tiny — one comment, one doc, one
+handoff — so genuine independence is much rarer than it feels. The operator broke it in one line,
+because her evidence came from outside every document we had.
+
+And the thing that actually refuted it was a measurement, not an argument: `factory4_day` fits
+0.253 ms per animating bot at r 0.97, and Factory's 85 m spread puts essentially every bot on the
+supposedly-cheap path. The steepest slope of any map came from the population we had both written
+off.
+
 ## 8c. Three people can quote the same corpus for a week and mean three different things
 
 Gamma's, and it is the best population instance the project produced, because nothing looked wrong
