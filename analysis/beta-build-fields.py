@@ -270,13 +270,17 @@ def main():
     json.dump({
         "generatedBy": "analysis/beta-build-fields.py",
         "semantics": {
-            "fields": "identifier-shaped strings in the image. ABSENT is "
-                      "structural and is the only direction to read. PRESENT "
-                      "means the string exists, not that it is a field - "
-                      "deliberately over-collected, because the earlier "
-                      "quoted-only scan produced FALSE ABSENCES for every "
-                      "block emitted through a helper (aiTotal, ambientLight, "
-                      "asyncDrained).",
+            "fields": "identifier-shaped strings in the image. ABSENT MEANS "
+                      "'NOT FOUND IN THE IMAGE', WHICH IS NOT 'STRUCTURAL'. "
+                      "This entry claimed structural until it was checked "
+                      "against Base's 30 logs, where 46 keys that binary "
+                      "demonstrably emitted are absent from its image "
+                      "(brainsTicked, poolSize, worldUpdate, spikes, "
+                      "worstCallback...). Some names are never string literals "
+                      "at all - an exact #US heap parse misses them too - so no "
+                      "static scan can be complete. PRESENT means the string "
+                      "exists, not that it is a field. See fieldsObservedInLogs "
+                      "on each record for the only source that proves emission.",
             "fieldsAsJsonKeys": "complete \"name\": literals - definitely "
                                 "emitted as a key, but INCOMPLETE, so never "
                                 "read its absence for anything",
@@ -285,7 +289,7 @@ def main():
                              "where present - both prove emission. NEGATIVE: "
                              "there is NO set here that proves a field is "
                              "impossible. Absence from fieldsUnion is evidence, "
-                             "not proof, and is measurably wrong 49 times for "
+                             "not proof, and is measurably wrong 46 times for "
                              "the one binary we can check. State it as 'not "
                              "found in any image' and let the reader decide.",
             "join": "directory -> binary is sound for Base (one binary "
