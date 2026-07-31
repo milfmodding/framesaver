@@ -178,3 +178,32 @@ def pooled(name, extra_args, want):
 
 pooled("pool_refused", [], 2)          # two directories, no opt-in
 pooled("pool_optin", ["--pool"], 0)    # same inputs, explicitly pooled
+
+
+# ---- cullAllBots tri-state ---------------------------------------------
+#
+# Beta's decoupled cull culls a population that is not `Sleeping`, so a
+# decoupled arm and an ordinary cull arm are different experiments. The arm key
+# carries it, and ABSENT stays distinct from FALSE.
+#
+# THE POINT OF THIS CASE IS THE CRASH THAT ISN'T. sorted() over the raw arm
+# tuples raises TypeError the moment one element is None, because None and bool
+# are not orderable in Python 3 - and every log that exists today has it
+# absent, so nothing in the real corpora or in any case above would have found
+# it. It would have arrived on the first decoupled log instead.
+#
+# per_arm=12 so all six arms clear MIN_WINDOWS and the case reaches the
+# delivery section instead of stopping at the window-count refusal. The sort
+# runs either way, but a case that halts two sections early is the `partial`
+# mistake again: it would still have caught the crash and nothing else.
+mixed_mode = []
+for w in abab(20, 0, per_arm=12):
+    if w.get("type") == "sample" and (w.get("cfg") or {}).get("cullSleeping") is not None:
+        idx = w.get("window") or 0
+        if idx >= 16:
+            w["cfg"]["cullAllBots"] = True
+        elif idx >= 8:
+            w["cfg"]["cullAllBots"] = False
+        # below 8: key omitted entirely - a build predating the flag
+    mixed_mode.append(w)
+run("cullall_tristate", mixed_mode, ["cullAll"])

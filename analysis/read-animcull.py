@@ -250,17 +250,47 @@ def build_can_emit(field, paths):
 
 
 def arm_of(w):
-    """(cullSleeping, skipLate) for this window, or None if unresolvable.
+    """(cullSleeping, skipLate, cullAllBots) or None if unresolvable.
 
     None is a REFUSAL. A window whose arm cannot be established is not a
     control window; treating an absent flag as false would silently fill the
     control arm with windows that never declared one.
+
+    `cullAllBots` is the THIRD dimension and it is deliberately tri-state.
+    Beta's decoupled cull (aeec0d4) culls a population that is not `Sleeping`,
+    so a decoupled arm and an ordinary cull arm are different experiments that
+    would otherwise share a key and be differenced against each other.
+
+    Absent stays None rather than collapsing to False. Every log written before
+    that commit lacks the key, and the two are not the same thing: False is a
+    build that has the mode and declined it, None is a build that could not
+    have had it. They happen to behave alike because the flag defaults off --
+    which is an inference about a default, and inferring a default is how a
+    field's absence gets read as a measurement. Kept distinct and shown as `-`
+    so a run mixing them is visible rather than silently pooled.
     """
     cfg = w.get('cfg') or {}
     cull, skip = cfg.get('cullSleeping'), cfg.get('skipLate')
     if cull is None or skip is None:
         return None
-    return (bool(cull), bool(skip))
+    all_bots = cfg.get('cullAllBots')
+    return (bool(cull), bool(skip),
+            None if all_bots is None else bool(all_bots))
+
+
+def arm_sort(arm):
+    """Sortable key. `sorted()` on the raw tuples raises once cullAllBots is
+    tri-state, because None and bool are not orderable in Python 3 -- a crash
+    that would arrive on the first decoupled log rather than in any test."""
+    return tuple(-1 if v is None else int(v) for v in arm)
+
+
+def arm_label(arm):
+    """`-` for a build that predates cullAllBots, never `false`."""
+    cull, skip, all_bots = arm
+    return ('cull=%-5s skipLate=%-5s cullAll=%-5s'
+            % (str(cull).lower(), str(skip).lower(),
+               '-' if all_bots is None else str(all_bots).lower()))
 
 
 def median(xs):
@@ -356,10 +386,9 @@ def main(argv):
         by_arm[arm_of(w)].append(w)
 
     print('2. ARMS, counted before any verdict')
-    for arm in sorted(by_arm):
-        cull, skip = arm
-        print('   cull=%-5s skipLate=%-5s  %3d window(s)%s'
-              % (str(cull).lower(), str(skip).lower(), len(by_arm[arm]),
+    for arm in sorted(by_arm, key=arm_sort):
+        print('   %s  %3d window(s)%s'
+              % (arm_label(arm), len(by_arm[arm]),
                  '' if len(by_arm[arm]) >= MIN_WINDOWS else '   (not scored)'))
     scored = {a: ws for a, ws in by_arm.items() if len(ws) >= MIN_WINDOWS}
     if not scored:
@@ -371,20 +400,21 @@ def main(argv):
 
     # ---- 3. Delivery and write-landing, per arm ---------------------------
     print('3. DELIVERY (did the arm reach the engine?)')
-    for arm in sorted(scored):
-        cull, _ = arm
+    for arm in sorted(scored, key=arm_sort):
+        cull = arm[0]
         ws = scored[arm]
         asleep = median([float((w.get('bots') or {}).get('asleep') or 0)
                          for w in ws])
         engine = median([float((w['bots'])['animCulledEngine']) for w in ws])
         asked = median([float((w.get('bots') or {}).get('animCulled') or 0)
                         for w in ws])
-        print('   cull=%-5s  asleep %6.1f   animCulled %6.1f   engine %6.1f'
-              % (str(cull).lower(), asleep, asked, engine))
+        print('   %s' % arm_label(arm))
+        print('     asleep %6.1f   animCulled %6.1f   engine %6.1f'
+              % (asleep, asked, engine))
         if not asleep:
             print('             no sleeping bots in this arm, so nothing to')
             print('             deliver -- the arm is UNSCORABLE, not clean.')
-            failed.append('cull=%s has no sleeping bots' % str(cull).lower())
+            failed.append('%s has no sleeping bots' % arm_label(arm))
             continue
         if cull:
             ratio = engine / asleep
@@ -431,7 +461,7 @@ def main(argv):
         print('   purpose -- this is the protocol working, not a gap. Section')
         print('   3 is what that protocol can prove.')
     else:
-        for arm in sorted(latchable):
+        for arm in sorted(latchable, key=arm_sort):
             ws = scored[arm]
             engine = median([float((w['bots'])['animCulledEngine'])
                              for w in ws])
@@ -457,9 +487,8 @@ def main(argv):
     print('5. AWAKE COUNT ACROSS ARMS (the cull must not move it)')
     awake = {a: median([float((w.get('bots') or {}).get('awake') or 0)
                         for w in ws]) for a, ws in scored.items()}
-    for arm in sorted(awake):
-        print('   cull=%-5s skipLate=%-5s  awake %6.2f'
-              % (str(arm[0]).lower(), str(arm[1]).lower(), awake[arm]))
+    for arm in sorted(awake, key=arm_sort):
+        print('   %s  awake %6.2f' % (arm_label(arm), awake[arm]))
     vals = [v for v in awake.values() if v is not None]
     if len(vals) < 2:
         print('   one arm only, so nothing to compare.')
