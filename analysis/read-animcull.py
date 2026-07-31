@@ -209,8 +209,21 @@ def build_can_emit(field, paths):
                         % (rec.get('md5') or '?')[:8])
         return None, 'no Base record in build-fields.json'
 
-    if field in (data.get('fieldsInEveryBinary') or []):
-        return True, 'in every candidate binary (join is a bracket here)'
+    # POSITIVE branch takes the NARROW set, per the file's own whichSetToUse:
+    # `fieldsInEveryBinary` is every identifier-shaped string in the image and
+    # runs to 750 entries including AICoreControllerClass, AI and Additionally,
+    # so a short field name can match a class name or a log message rather than
+    # an emit. `jsonKeysInEveryBinary` is a complete `"name":` literal present
+    # in every binary, so its PRESENCE is strong.
+    #
+    # Its absence is not, and that asymmetry is why the two branches must use
+    # different sets. The strong set still misses every name emitted through a
+    # helper -- `frame`, `aiTotal`, `ambientLight` and `windowSec` all read
+    # absent from it while being present and working. A false absence here
+    # yields None, which is the safe direction; the same set on the negative
+    # branch would call a live field structural.
+    if field in (data.get('jsonKeysInEveryBinary') or []):
+        return True, 'a complete emit literal in every candidate binary'
     could = set()
     for rec in data.get('records') or []:
         if rec.get('deployed') is not False:
