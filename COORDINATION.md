@@ -10615,3 +10615,68 @@ more corpus arithmetic.
 — Delta
 
 ---
+
+## 2026-07-31 late — Beta handoff at compaction
+
+Everything below is committed. **Nothing is deployed.** Gate `bc90b76`, install md5
+`9c14f132…` stamping `bc90b76` and matching the gate, `bin/Release` stamps `aeec0d4` and is
+ahead by design. Suite: 205 cases green.
+
+### What shipped today
+
+- **`animCulledEngine`** (`SleepingBotAnimatorPatch.CulledEngine`) — sleeping/live bots whose
+  animator actually carries `CullCompletely` on an animator that can honour it. **Not gated on
+  any config flag**, which is its entire value: `animCulled` reports what we *asked* for and
+  drops to 0 the instant the flag flips, so a latched arm and a clean arm were otherwise
+  byte-identical. It walks the **live AI roster**, not the marked set — a latch is a bot the
+  engine still culls after we stopped asking.
+- **`Force fast body animator` REMOVED**, on Sophia's call: it breaks the game. The read-only
+  half remains — if anything else sets `UseBodyFastAnimator`, the cull is inert under it and we
+  now detect that once per raid and switch the cull off rather than shipping a no-op.
+- **The decoupled cull** (`Decouple cull from stand-by`, default **off**), `aeec0d4`. Walkthrough
+  in `DECOUPLED-CULL.md`. Waiting on `harness/RELOAD-OBSERVATION-TEST.md`.
+- **Deploy gate** now also refuses an unstamped assembly, and both build messages name the
+  install path and the stamp.
+- **`analysis/beta-build-fields.py`** — per-binary telemetry field sets, and `e6cca83` identified
+  as the binary that wrote `20260728-225956-marathon`.
+
+### Do not re-derive these
+
+- **`AnimatorCullingMode.CullCompletely` appears NOWHERE in Assembly-CSharp.** Vanilla writes only
+  `AlwaysAnimate` or `CullUpdateTransforms` (`Player.cs:1526`), so `EFTHardSettings
+  .AnimatorCullDistance` cannot produce it at any value and is **not an alternative lever**.
+- **`CullUpdateTransforms` already stops transform writes for invisible bots.** Frozen hit boxes,
+  weapon root and muzzle past 10 m are vanilla behaviour *today*. The decoupled cull does not
+  introduce them. The only genuinely new risk is state-machine evaluation stopping, so animation
+  events are never *enqueued* — which is the reload question and needs a person, not a number.
+- **`Player.VisualPass` has exactly one call site**, inside `Player.LateUpdate` (`Player.cs:1565`),
+  and it is the only thing that rewrites `cullingMode`. `Skip sleeping bot LateUpdate` therefore
+  makes the cull one-way for any bot asleep at a config change.
+- **Two playable installs.** `SPT4.0.13` (SAIN, BigBrain, Waypoints, LootingBots) is the only
+  deploy target; `F:\SPT\Base` is an older SPT version, **closed** by Sophia's ruling, never
+  pooled, not a control. Their log directories share zero filenames.
+- **`analysis/build-fields.json` cannot prove a field impossible.** 46 keys demonstrably emitted
+  by the Base binary are absent from its image; some field names are never string literals at all,
+  and an exact `#US` parse misses them too. Absence means "not found in the image", nothing more.
+
+### Waiting on raids, in Sophia's order
+
+1. **Coupled cull A/B** — `protocol-anim-cull.ini`. This is a **constraint, not just a priority**:
+   `bin/Release` now carries the decoupled flag, so deploying for the reload test destroys the A/B
+   build. Registered prediction is valid only against a coupled build.
+2. **Reload observation test** — and the procedure needs `Window seconds = 5` (the `bots.*` fields
+   are sampled once at window close, so a 6 s look-away is invisible at the 60 s default), and
+   **turn away rather than use cover** (the mechanism is renderer visibility; a bot in frustum
+   behind cover may stay "visible", and every attempt would pass vacuously).
+3. **Raid 2** needs QuestingBots installed.
+
+### The method that earned its keep, for whoever is next
+
+Three defects in one analysis tool survived crash tests, review and re-reading, and all died
+within minutes to **a task whose answer came from the far side of the join under test**. A check
+built from your own model tests the model, not the world. And **disclose defects precisely enough
+that the next person can check the neighbourhood** — three of today's catches happened because a
+retraction named the file and the key, and the reader looked at what sat next to it. The three
+rules live in `analysis/selftest/README.md`.
+
+— Beta
