@@ -106,10 +106,17 @@ def window_length(w):
     every window look like it began at its own stamp and keep everything - the
     absent-is-not-zero trap arriving in a length rather than a count.
 
-    `windowSec` is absent on 210 of the 418 in-raid windows in the corpus, not
-    present-as-zero, so the header fallback is doing half the work rather than
-    covering an edge case. Callers that strip headers must stamp
-    `_windowSeconds` onto each row, as read-updatemanual's load() does.
+    `windowSec` is absent rather than present-as-zero on much of the corpus, so
+    the header fallback is doing real work rather than covering an edge case:
+    measured 2026-07-31, 384 of SPT4.0.13's 594 in-raid windows carry it and
+    **0 of Base's 301 do**. Callers that strip headers must stamp
+    `_windowSeconds` onto each row, as read-updatemanual's load() does -- and
+    must read it from the header's TOP LEVEL, not from `header.config`, which
+    is where read-animcull.py got it wrong and lost every window in a log.
+
+    (This said "210 of the 418 in-raid windows in the corpus". Both numbers
+    were right when written and neither corpus has 418 windows now. A count
+    quoted without its date and its directory goes stale silently.)
     """
     v = w.get('windowSec')
     if v:
@@ -128,11 +135,30 @@ def past_warmup(w, warmup_s=WARMUP_S, by_start=False):
     A window stamped `e` of length `l` covers [e-l, e], so the test is
     `e - l >= WARMUP_DURATION_S`.
 
-    PROVEN EQUIVALENT ON THE EXISTING CORPUS, not assumed: 418 of 418 in-raid
-    windows agree with the legacy `raidElapsed >= 120`, zero disagreements, zero
-    with an unresolvable length. At 60 s windows `e - 60 >= 60` IS `e >= 120`.
-    At 30 s it becomes `e >= 90`, which excludes the first 60 s rather than the
-    first 90 - so a 30 s leg matches a 60 s leg instead of diverging from it.
+    NO LONGER EQUIVALENT, AND THE CLAIM THAT IT WAS HAS EXPIRED. This said
+    "PROVEN EQUIVALENT ON THE EXISTING CORPUS: 418 of 418 in-raid windows
+    agree, zero disagreements." That was measured, and it is now false --
+    re-run 2026-07-31:
+
+        SPT4.0.13   594 in-raid windows   584 agree   10 DISAGREE
+        Base        301 in-raid windows   268 agree   33 DISAGREE
+
+    Every disagreement is a window this rule KEEPS and the legacy one drops,
+    all of them at `raidElapsed` ~90 with a 30 s length (and ~75-105 at 15 s in
+    Base). Which is precisely what the paragraph below always said would
+    happen: at 60 s `e - 60 >= 60` IS `e >= 120`, at 30 s it becomes `e >= 90`.
+
+    The equivalence was never a property of the rule. It was a property of a
+    corpus that only had 60 s windows, and the corpus stopped having that.
+    Nothing here changed; the world did. That is the same shape as a docstring
+    outliving its code, arriving as a number in prose rather than as behaviour
+    - so it is not caught by any check we have, only by re-running it.
+
+    The consequence is live, not theoretical: readers on `by_start=True`
+    (read-updatemanual, read-animcull) now hold 10 windows that a legacy-rule
+    reader drops. by_start is still the BETTER rule for the reason below. It is
+    just no longer the SAME rule, so two readers quoting the same field over
+    "steady state" can now differ, and the number above is how much.
 
     Off by default only because it needs a resolvable window length, and a
     reader that strips headers without stamping `_windowSeconds` would have its
