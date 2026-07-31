@@ -29,6 +29,17 @@ only act on sleeping bots, and with stand-by off nothing sleeps. They are still 
 "moot" is a conclusion from another field being right, and the point of this file is not to chain
 conclusions.
 
+`maxDelta` IS NOT A SETTING IN THE LOG. `cfg.maxDelta` is `Time.maximumDeltaTime` - the live engine
+value, i.e. the OUTCOME. With the setting at 0 the mod writes nothing and the field reads back the
+game's own value (Unity ships 0.333), so an expected-value check against 0 fails a CORRECT baseline.
+The whole 520-window corpus reads 0.1 because the cap was applied in all of it, which means the
+untouched value has never been observed and this file must not invent one. See OUTCOME_KEYS.
+
+UNRULED KEYS ARE NAMED, NOT SKIPPED. A cfg key this table does not mention used to be ignored in
+silence, so a lever added after this file was written would ship and still read "clean" - which is
+how `forceAllRoles`, `roleSleepDist`, `roleWakeDist` and `bossGroupWake` came to be uncovered here.
+Coverage is now stated in the verdict, so a pass can never be read as wider than it is.
+
 EXIT 0 clean baseline, 1 a lever was ACTIVE, 2 REFUSED (cannot tell).
 """
 import json
@@ -48,12 +59,56 @@ LEVERS = {
     "jobBudgetMs":       (0,     True,  "job scheduler budget; 0 is off"),
     "jobSlowFrames":     (-1,    True,  "job scheduler pump; -1 leaves it alone"),
     "gcTimeSliceMs":     (0,     True,  "incremental GC slice; 0 is off"),
+    # The OUTCOME of gcTimeSliceMs rather than a second setting - GcControl sets it only when the
+    # slice was really applied. Kept as a lever with off False because it is the one field here
+    # that can contradict its own setting, which is the shape worth checking rather than trusting.
+    "gcSliceApplied":    (False, True,  "whether the GC slice was actually applied; false is off"),
     "gcDriveMs":         (0,     True,  "drives incremental GC; 0 is off"),
     "cullSleeping":      (False, False, "animator culling - only acts on sleeping bots"),
     "skipLate":          (False, False, "skips sleeping bots' LateUpdate"),
     "skipTick":          (False, False, "skips sleeping bots' world tick"),
     "deactivateSleeping": (False, False, "BotState=NonActive while paused"),
     "reclaimStandBy":    (False, False, "re-grants CanDoStandBy after another mod clears it"),
+    # All five read only INSIDE a stand-by patch, past its `if (!StandByEnabled) return` - verified
+    # in source, not assumed: BotStandByInitPointsPatch:81 gates the read of forceAllRoles at :40's
+    # role set and of RoleSleepDistance.For at :93, and BotStandByUpdatePatch:96 gates
+    # BossGroupWake.HoldsAwake at :149. Listed as moot rather than omitted, because a key this file
+    # does not name is a key it cannot clear.
+    "forceAllRoles":     (False, False, "decides which ROLES may stand by at all - the largest of "
+                                        "these; raid 1.5 slept 26 of 27 under it"),
+    "keepFighting":      (False, False, "holds bots in combat awake - only acts on sleeping bots"),
+    "bossGroupWake":     (False, False, "keeps a boss's followers awake with it"),
+    "roleSleepDist":     (0,     False, "widened sleep radius for posted roles; 0 is the rule off"),
+    "roleWakeDist":      (0,     False, "the wake half of the posted-role radius; 0 is off"),
+}
+
+# Keys the LOG reports as an OUTCOME rather than as the setting, so an equality test against the
+# off value is wrong by construction. `must_not_be` is what the field reads when the mod DID act.
+#
+# The off value cannot be asserted positively: the mod hands the field back to the engine, so the
+# clean reading is "whatever the game chose", which nothing in the corpus has ever recorded. The
+# check is therefore one-sided plus a constancy requirement - it can catch the lever being on and
+# it cannot certify a specific number. Pin OUTCOME_KEYS["maxDelta"]["vanilla"] once a clean
+# marathon log has established the value, and this becomes a two-sided check.
+OUTCOME_KEYS = {
+    "maxDelta": {
+        "must_not_be": [0.1],
+        "vanilla": None,
+        "why": "cfg.maxDelta is Time.maximumDeltaTime, not the setting. 0.1 was our cap in all "
+               "520 corpus windows; Unity's own default is 0.333",
+    },
+}
+
+# Emitted in the cfg block, and deliberately not levers: measurement, or a bare distance rather
+# than an on/off. Named so they do not show up as unruled - the list is the ruling.
+NON_LEVERS = {
+    "windowSeconds":     "the telemetry window length, not a behaviour",
+    "drainDiagnostics":  "measurement; on in both arms so a difference cancels it",
+    "sleepDistance":     "a distance, moot with stand-by off",
+    "wakeDistance":      "a distance, moot with stand-by off",
+    "checkInterval":     "stand-by re-check cadence, moot with stand-by off",
+    "sleepImmediately":  "stand-by grace period, moot with stand-by off",
+    "minBrainsPerFrame": "brain-slicing floor, moot with brainPeriod 0",
 }
 
 
@@ -75,9 +130,15 @@ UI = {
     "jobSlowFrames":      ("4. Experimental", "Job scheduler slow frames"),
     "asyncBudgetMs":      ("4. Experimental", "Async drain budget ms"),
     "suspendGc":          ("4. Experimental", "Suspend GC during completion callbacks"),
+    "gcSliceApplied":     ("4. Experimental", "(outcome of GC time slice ms, no direct key)"),
     "gcTimeSliceMs":      ("4. Experimental", "GC time slice ms"),
     "gcDriveMs":          ("4. Experimental", "Drive incremental GC ms"),
     "drainInUpdateOnly":  ("4. Experimental", "Drain completions in Update only"),
+    "forceAllRoles":      ("1. Bot stand-by", "Force for all roles"),
+    "keepFighting":       ("1. Bot stand-by", "Keep fighting bots awake"),
+    "bossGroupWake":      ("1. Bot stand-by", "Keep boss groups together"),
+    "roleSleepDist":      ("1. Bot stand-by", "Posted role sleep distance"),
+    "roleWakeDist":       ("1. Bot stand-by", "(derived from the above, no direct key)"),
 }
 
 
@@ -160,6 +221,8 @@ def main():
 
     active, absent, moot_on = [], [], []
     for key, (off, acts, why) in sorted(LEVERS.items()):
+        if key in OUTCOME_KEYS:
+            continue  # handled below - the log reports the outcome, not the setting
         vals = [c.get(key) for c in cfgs]
         if all(v is None for v in vals):
             absent.append(key)
@@ -174,10 +237,46 @@ def main():
         else:
             moot_on.append("%-18s = %s   %s" % (key, shown, why))
 
+    # Outcome fields, one-sided. An equality test here would fail a correct baseline: see the
+    # module docstring. Constancy is required as well, because a mid-raid edit would leave half the
+    # windows capped and a single-value report would hide it.
+    for key, spec in sorted(OUTCOME_KEYS.items()):
+        vals = [c.get(key) for c in cfgs]
+        if all(v is None for v in vals):
+            absent.append(key)
+            continue
+        distinct = sorted(set(v for v in vals if v is not None), key=repr)
+        if len(distinct) > 1:
+            active.append("%-18s = %s   NOT CONSTANT across windows - %s"
+                          % (key, ", ".join(repr(v) for v in distinct), spec["why"]))
+        elif distinct[0] in spec["must_not_be"]:
+            active.append("%-18s = %r   this is the value the mod IMPOSES - %s"
+                          % (key, distinct[0], spec["why"]))
+        elif spec["vanilla"] is not None and distinct[0] != spec["vanilla"]:
+            active.append("%-18s = %r   expected the established vanilla %r - %s"
+                          % (key, distinct[0], spec["vanilla"], spec["why"]))
+        else:
+            print("  outcome %-18s = %r   constant, and not the value the mod imposes."
+                  % (key, distinct[0]))
+            if spec["vanilla"] is None:
+                print("           - the untouched value has never been recorded, so this run")
+                print("             ESTABLISHES it. Pin it in OUTCOME_KEYS to make the check")
+                print("             two-sided; until then a wrong-but-not-0.1 value would pass.")
+
+    # Keys present in the log that this file has no ruling on. Reported loudly because the silent
+    # version of this is how four levers came to be uncovered: a checker that ignores what it does
+    # not recognise reports "clean" for a run it never examined.
+    ruled = set(LEVERS) | set(NON_LEVERS)
+    unruled = sorted(set(k for c in cfgs for k in c) - ruled)
+
     for line in active:
         print("  ACTIVE  %s" % line)
     for line in moot_on:
         print("  moot    %s" % line)
+    if unruled:
+        print("  UNRULED %s" % ", ".join(unruled))
+        print("           - emitted by this build and not covered by this check. NOT cleared:")
+        print("             each needs a ruling on whether it acts with stand-by off.")
     if absent:
         print("  not emitted by this build: %s" % ", ".join(absent))
         print("           - absent is NOT off. A lever this build cannot report is a lever this")
@@ -221,7 +320,11 @@ def main():
               % len(active))
         print("buys, in the direction that flatters us. Do not quote it to testers.")
         return 1
-    print("Clean mod-off baseline: every lever at its off value, telemetry on.")
+    print("Clean mod-off baseline: every lever this file rules on was at its off value, telemetry")
+    print("on. Coverage: %d lever(s) ruled, %d outcome field(s), %d non-lever(s) named, %d UNRULED."
+          % (len(LEVERS) - len(OUTCOME_KEYS), len(OUTCOME_KEYS), len(NON_LEVERS), len(unruled)))
+    if unruled:
+        print("The unruled keys above are not part of this clean result.")
     if moot_on:
         print("(%d sleeping-bot lever(s) left on, which cannot act with stand-by off - reported"
               % len(moot_on))

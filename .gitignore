@@ -31,3 +31,4 @@ TestResults/
 
 # Rollback copies taken before a deploy. Useful on disk, not history.
 artifacts/rollback/
+harness/t.ndjson
