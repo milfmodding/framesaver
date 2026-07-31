@@ -129,6 +129,79 @@ def load(paths):
     return rows
 
 
+def build_can_emit(field, paths):
+    """(verdict, note) for whether the BINARY behind these logs could emit it.
+
+    True / False / None, where None is "the join does not reach an answer" and
+    must never be collapsed into either. This is the third state beside absent
+    and zero: a field the build could not emit is absent for reasons no raid,
+    map or config could change, and reading that as evidence about the game is
+    the mistake this whole file exists to prevent.
+
+    Read straight out of Beta's `build-fields.json` rather than inferred from a
+    commit. `read-animcull` used to assert "every log before 86a13bb is in this
+    state", which was a claim about an ancestry I had reasoned about and never
+    measured.
+
+    THE JOIN IS SOUND FOR ONE DIRECTORY AND NOT THE OTHER, and that asymmetry
+    is Beta's, stated in the file's own `semantics.join`:
+
+      Base        one binary wrote all 30 logs (md5 b6bd3927), so directory ->
+                  binary resolves and the answer is exact.
+      SPT4.0.13   the INSTALLED binary is not the one that wrote most of its
+                  logs, so directory -> binary does not resolve. All that is
+                  available is a bracket: `fieldsInEveryBinary` (every
+                  candidate could emit it) and `fieldsUnion` (none could).
+                  Between the two the honest answer is None.
+
+    `present` is an upper bound -- the emit code exists, not that it fired --
+    so a True here never licenses "this field should have had a value".
+
+    AND THE BRACKET IS WIDER THAN IT NEEDS TO BE, deliberately. `fieldsUnion`
+    spans every binary Beta could reach, including `bin/Release` and artifacts
+    that never wrote a log at all, so the middle state can say "unknown" where
+    the true answer is False -- `animCulledEngine` is the live example: it
+    exists only in a build newer than every SPT4.0.13 log, yet lands in the
+    union and therefore in the bracket. Narrowing it means joining binary
+    mtimes to log dates, which is another unproven join, and the error here is
+    in the safe direction: it refuses to claim rather than claiming wrongly.
+    Worth knowing before anyone reads "unknown" as "possibly present".
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        'build-fields.json')
+    try:
+        with open(path, 'r', encoding='utf-8') as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return None, 'build-fields.json unreadable; no build-side answer'
+
+    installs = set()
+    for p in paths:
+        low = os.path.abspath(p).lower()
+        for name in ('base', 'spt4.0.13'):
+            if (os.sep + name + os.sep) in low:
+                installs.add(name)
+    if len(installs) != 1:
+        return None, 'cannot tell which install these logs came from'
+    install = installs.pop()
+
+    if install == 'base':
+        for rec in data.get('records') or []:
+            if (rec.get('install') or '').lower() == 'base':
+                return (field in (rec.get('fields') or []),
+                        'Base, one binary (md5 %s) wrote all its logs'
+                        % (rec.get('md5') or '?')[:8])
+        return None, 'no Base record in build-fields.json'
+
+    if field in (data.get('fieldsInEveryBinary') or []):
+        return True, 'in every candidate binary (join is a bracket here)'
+    if field not in (data.get('fieldsUnion') or []):
+        return False, 'in no known binary at all'
+    return None, ('SPT4.0.13: the installed binary did not write most of these '
+                  'logs, and this field is in some candidate binaries and not '
+                  'others - the join does not reach an answer')
+
+
 def arm_of(w):
     """(cullSleeping, skipLate) for this window, or None if unresolvable.
 
@@ -203,9 +276,21 @@ def main(argv):
     print('   animCulledEngine present in %d of %d window(s)'
           % (len(have), len(windows)))
     if not have:
+        emit, note = build_can_emit('animCulledEngine', paths)
         print('   REFUSED. No window carries the field, which is absent and')
-        print('   NOT zero. Every log before 86a13bb is in this state and')
-        print('   exit 1 here is the correct answer, not a defect.')
+        print('   NOT zero.')
+        if emit is False:
+            print('   AND THE BUILD COULD NOT EMIT IT: %s.' % note)
+            print('   So this is structural, not a fact about any raid - no')
+            print('   config, map or arm could have produced a value here.')
+        elif emit is True:
+            print('   BUT THE BUILD COULD EMIT IT (%s),' % note)
+            print('   so the absence IS about these raids and is worth')
+            print('   explaining rather than filtering away.')
+        else:
+            print('   Build-side answer UNAVAILABLE: %s.' % note)
+            print('   Do not read this absence as either structural or real.')
+        print('   exit 1 either way; refusing is the correct answer here.')
         return 1
     if len(have) < len(windows):
         print('   PARTIAL. The field appeared mid-corpus, so any comparison')
