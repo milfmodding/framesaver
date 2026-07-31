@@ -216,11 +216,29 @@ def build_can_emit(field, paths):
     if install == 'base':
         for rec in data.get('records') or []:
             if (rec.get('install') or '').lower() == 'base':
-                found = field in (rec.get('fields') or [])
-                return found, ('%s the one image (md5 %s) that wrote all 30 '
-                               'Base logs'
-                               % ('found in' if found else 'not found in',
-                                  (rec.get('md5') or '?')[:8]))
+                # GROUND TRUTH FIRST. Base is the one install whose logs join
+                # 1:1 to a single image, so `fieldsObservedInLogs` is not
+                # inference -- the key appeared, therefore the binary emits it.
+                #
+                # This branch used to answer from `fields` alone, which is the
+                # wide identifier set, and that was wrong in BOTH directions:
+                # a positive could match a class name or a log message, and a
+                # negative was flatly false for the ~46 keys this binary
+                # demonstrably emits without their names appearing in its
+                # image. `brainsTicked` is the live example - observed in the
+                # logs, absent from the image, and this returned False for it.
+                obs = rec.get('fieldsObservedInLogs')
+                md5 = (rec.get('md5') or '?')[:8]
+                if obs and field in obs:
+                    return True, ('observed in Base\'s own logs, which join 1:1 '
+                                  'to image %s' % md5)
+                if field in (rec.get('fields') or []):
+                    return None, ('the string is in image %s but no Base log '
+                                  'carries the key - the wide set cannot tell '
+                                  'an emit from a class name' % md5)
+                return False, ('not found in image %s, and not among the %d '
+                               'keys its 30 logs ever carried'
+                               % (md5, len(obs or [])))
         return None, 'no Base record in build-fields.json'
 
     # POSITIVE branch takes the NARROW set, per the file's own whichSetToUse:
