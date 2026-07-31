@@ -337,6 +337,54 @@ One more find, relevant to the sniper exemption: `SpawnPointAIPlayerBotLimitPatc
 the per-player spawn limit entirely. Snipers are already a special case upstream, which supports treating
 them as one in the stand-by system.
 
+## Why the animator cull is coupled to stand-by, and what decoupling it would cost
+
+**The coupling is incidental, not deliberate.** Recording that because everyone who finds it will assume the
+opposite, and the assumption is load-bearing: most of this document is about the compatibility surface of
+stand-by, and the animator cull inherits every bit of it for no reason anyone chose.
+
+The cull was built on top of stand-by because stand-by already maintained a per-bot eligibility set
+(`SleepingBotAnimatorPatch.Sleeping`, filled from the `BotStandBy.StandByType` setter). Not because the cull
+needs one.
+
+What each mechanism is worth, measured:
+
+| mechanism | what it changes | measured |
+| --- | --- | --- |
+| stand-by gating `BotOwner.UpdateManual` | the bot stops **thinking** | ~0.011 ms per bot |
+| `AnimatorCullingMode.CullCompletely` | the bot stops being **animated** | ~0.3 ms per bot |
+
+So the 0.011 ms mechanism is the one that fights QuestingBots, needs `keepFightingBotsAwake`, needs the
+posted-role widening, and produced all three of the mid-raid latches documented in `COORDINATION.md`. The
+0.3 ms mechanism only changes how a bot is drawn, and rides along behind all of it.
+
+### What decoupling would look like, if anyone picks this up
+
+Not a distance check. **Unity keys `CullCompletely` on renderer visibility, not distance** — our marking only
+decides which bots are *eligible*, and the engine culls whichever of those are invisible. So the eligible set
+can be "every AI player", which removes the `Sleeping` dictionary, any distance measure of ours, and the
+role-exemption problem in one move: a sniper engaging you from 200 m is either on your screen and not culled,
+or off it and already frozen by vanilla.
+
+Two facts that make this less alarming than it sounds, both from the game's own source:
+
+- `CullCompletely` appears **nowhere in Assembly-CSharp**. Vanilla only ever writes `AlwaysAnimate` or
+  `CullUpdateTransforms` ([Player.cs:1526](../../Src/Assembly-CSharp/Assembly-CSharp/EFT/Player.cs:1526)), so
+  `EFTHardSettings.AnimatorCullDistance` cannot produce it at any value and is not an alternative lever.
+- `CullUpdateTransforms` **already stops transform writes for invisible bots**. Frozen hit boxes, weapon root
+  and muzzle past 10 m are vanilla behaviour today, not something culling would introduce.
+
+### The one risk that is genuinely new, and is not settled
+
+`CullCompletely` stops state-machine evaluation, so animation events stop being **enqueued** —
+`AnimationEventsStateBehaviour.OnStateEnter/OnStateExit` fills the queue that `EmitEvents()` drains, and the
+drain then finds nothing. Harmless for a paused bot, which is not reloading. **Unknown for an awake bot that
+leaves your screen mid-reload.** If animation-driven weapon operations stall, decoupled culling makes bots go
+passive whenever you look away — a behavioural bug invisible to every performance metric we have, and obvious
+to a player within one raid.
+
+That question needs someone watching a raid, not a number. Until it is answered, the coupling stays.
+
 ## Source-dump version skew
 
 The decompile at `F:\SPT\Src\Assembly-CSharp` is older than the SPT HEAD these mods build against. The drift

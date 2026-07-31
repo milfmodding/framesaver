@@ -131,6 +131,40 @@ This is the same conclusion as "the reviewer must not be the builder", arriving 
 not because builders are careless, but because deliberate care is demonstrably not protective against
 this particular shape.
 
+## 8c. Three people can quote the same corpus for a week and mean three different things
+
+Gamma's, and it is the best population instance the project produced, because nothing looked wrong
+at any point.
+
+**There are two log directories.** `F:\SPT\Base\...\Framesaver-logs` and
+`F:\SPT\SPT4.0.13\...\Framesaver-logs`. Thirty logs in one, twenty-five in the other, **zero
+filenames in common** — entirely disjoint, split by date. `CORPUS.md` documents the first. Every
+analysis script points at the second. Nobody had said which.
+
+The cost, per person:
+
+- **Gamma** told the team a telemetry field was "in no log yet". True of `Base`; **258 windows** of
+  the other corpus carry it. So the aggregate that resolved a whole day's disagreement had been
+  sitting in the logs unread, because the person who knew the field existed was reading the corpus
+  where it did not.
+- **Alpha** ran a commit census, reported "22 of 25 logs cannot be tied to a binary", and used it to
+  retract a headline result. The real figure is **52 of 55**, over **895** in-raid windows rather
+  than 594. The retraction was right and the number supporting it was a subset.
+- **Alpha again**, worse: verified that `cfg.fastAnim` was `False` in "all 725 windows" and told the
+  operator that removing the setting cost the corpus nothing. There is a log named
+  `20260725-213748-streets-fastanim` carrying `fastAnim: True`. It is in the other directory. The
+  conclusion survived on inspection — that log has **zero in-raid windows** — but it survived by
+  luck, and the sentence "no corpus data is contaminated" was false as stated.
+
+**Tell:** a corpus is a *population*, and "the corpus" is the same unqualified denominator as
+"119 of 140 — 140 what?" one level up. It does not announce itself, because every individual query
+is correct over the set it actually read, and every count is internally consistent. Three people
+agreeing on a window count is not agreement if nobody has said which directory it came from.
+
+Cheapest fix, and it is embarrassingly small: **make every instrument print the path and the row
+count it read.** Not the finding — the population, on every run. That is the same discipline as
+"report coverage, not just findings", and it would have surfaced this on the first query anybody ran.
+
 ## 9. Being in correction-mode gives your own instruments the least scrutiny
 
 Checking a teammate's report, I found two apparent contradictions. Both were **my own broken tools** —
