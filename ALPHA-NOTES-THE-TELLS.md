@@ -220,6 +220,37 @@ Gamma's rule is narrow and cheap enough to actually adopt:
 Mine had neither, which is exactly why it lasted a fortnight. And note the second half — after the
 corpus split, "which directory" is as load-bearing as "which day".
 
+## 8e. The cheapest way to test an instrument is to ask it a question you nearly know the answer to
+
+Beta's, offered at the end of a day in which the three of us found six instrument defects between us
+and caught **none of them by reading the code.**
+
+He had shipped a binary field scanner an hour earlier, with the semantics stated correctly in the
+docstring — *absent means structural* — and violated by the code beneath it. Then he used it to
+identify which build wrote a particular log. **The first answer was zero candidates, including
+binaries that certainly could have written it.**
+
+> A tool that cannot find a right answer it has been handed is saying something about itself.
+
+Two defects fell out in five minutes: the scan matched `"name":` while most telemetry blocks emit the
+bare token with quotes added at runtime, so `aiTotal`, `ambientLight` and `asyncDrained` read absent
+from a build that emits all three; and a three-character token floor made `aa`, `at`, `gc` and `ms`
+absent from every binary. Both in the direction that breaks `absent`, which is the only direction
+anyone reads.
+
+**Reading the file after writing it found nothing. Asking it a question with a checkable answer found
+two defects in five minutes.**
+
+**Tell:** unit tests check what you thought of; a real task with a known answer checks what you did
+not. So before trusting a new instrument, point it at something you can already verify by other
+means and see whether it agrees — a log you have read by hand, a count somebody else measured, a case
+you know the answer to. The same shape refuted the near-bots model: not an argument, but a
+`factory4_day` fit at r 0.97 over a population two of us had written off.
+
+Cheaper than any review either of us applied all day, and it works on the class of defect review
+structurally cannot reach — because a reviewer reads the instrument's *output*, and this technique
+tests the instrument.
+
 ## 9. Being in correction-mode gives your own instruments the least scrutiny
 
 Checking a teammate's report, I found two apparent contradictions. Both were **my own broken tools** —
