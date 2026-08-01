@@ -65,9 +65,16 @@ Both wait on within-raid contrasts on identified builds.
    and needed no new telemetry: `(awakeCalls − deadCalls) / frames` for live non-paused,
    `(awakeCalls + pausedCalls − deadCalls) / frames` for all live. Denominator verified: `D / frames`
    median 1.000 over 44 quiet windows, `frames == n` throughout.
-3. **Lighthouse `[default]` is 17.40 ms / 57.5 fps and FAILS the 60 fps gate.** The pooled figure mixes
-   arms. `alpha-fps-percentiles.py` now splits three arms — `default`, `forceAll`, `standbyOff` — because
-   it previously knew only about `forceAllRoles` and pooled the mod-off marathon into `default`.
+3. **Lighthouse `[default]` is 17.40 ms / 57.5 fps at p75.** The pooled figure mixes arms.
+   `alpha-fps-percentiles.py` now splits three arms — `default`, `forceAll`, `standbyOff` — because it
+   previously knew only about `forceAllRoles` and pooled the mod-off marathon into `default`.
+
+   **AND THAT SENTENCE USED TO SAY "FAILS THE 60 FPS GATE", WHICH WAS THE WRONG GATE.** Sophia revised
+   goal 1 to a **p50 floor of 60 fps** on 2026-07-28 and said in terms not to quietly restore the old
+   bar. A p75 bar had crept back into this file — the failure mode the revision was written to prevent,
+   committed by the file that exists to prevent failure modes. At p50 over n=49, Lighthouse `[default]`
+   is **15.19 ms / 65.8 fps and PASSES.** The gate is **p50 ≥ 60 fps, 100 aspirational, plus the goal-2
+   event criterion**; p75 is an internal stress reading and must be labelled as one wherever it appears.
 
 ## SETTLED BY SOPHIA
 
