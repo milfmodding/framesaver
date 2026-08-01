@@ -65,16 +65,23 @@ Both wait on within-raid contrasts on identified builds.
    and needed no new telemetry: `(awakeCalls − deadCalls) / frames` for live non-paused,
    `(awakeCalls + pausedCalls − deadCalls) / frames` for all live. Denominator verified: `D / frames`
    median 1.000 over 44 quiet windows, `frames == n` throughout.
-3. **Lighthouse `[default]` is 17.40 ms / 57.5 fps at p75.** The pooled figure mixes arms.
-   `alpha-fps-percentiles.py` now splits three arms — `default`, `forceAll`, `standbyOff` — because it
-   previously knew only about `forceAllRoles` and pooled the mod-off marathon into `default`.
+3. **Lighthouse `[default]` is 17.40 ms / 57.5 fps at p75 and FAILS the 60 fps gate.** The pooled figure
+   mixes arms. `alpha-fps-percentiles.py` splits three arms — `default`, `forceAll`, `standbyOff` —
+   because it previously knew only about `forceAllRoles` and pooled the mod-off marathon into `default`.
 
-   **AND THAT SENTENCE USED TO SAY "FAILS THE 60 FPS GATE", WHICH WAS THE WRONG GATE.** Sophia revised
-   goal 1 to a **p50 floor of 60 fps** on 2026-07-28 and said in terms not to quietly restore the old
-   bar. A p75 bar had crept back into this file — the failure mode the revision was written to prevent,
-   committed by the file that exists to prevent failure modes. At p50 over n=49, Lighthouse `[default]`
-   is **15.19 ms / 65.8 fps and PASSES.** The gate is **p50 ≥ 60 fps, 100 aspirational, plus the goal-2
-   event criterion**; p75 is an internal stress reading and must be labelled as one wherever it appears.
+   **THE GATE IS p75 WITH A p99 GUARD. This entry was flipped to p50 on 2026-08-01 and flipped back the
+   same day; do not flip it a third time without reading this paragraph.** The p50 claim came from a
+   memory file dated 2026-07-29 recording Sophia's 2026-07-28 revision to a p50 floor. That revision was
+   real *and was later superseded by her move to p75*, which is recorded in two contemporaneous places —
+   `harness/check-fields.py:409` ("Sophia moved the gate to p75 with a p99 guard") and
+   `analysis/alpha-fps-percentiles.py:3` ("SOPHIA ASKED FOR p75 AND IT IS NOT IN THE TELEMETRY"). The
+   ordering is datable from the corpus rather than recalled: **`framePct.p75` appears in exactly one of
+   25 logs**, the 2026-07-31 marathon, and in none of the 22 before it — so the field was added for that
+   request between 2026-07-29 21:56 and 2026-07-31 11:27, after the p50 revision.
+
+   The lesson is the one this file exists to carry: **a memory file has no *as-of* marker and the code
+   does.** Prefer the dated artefact over the undated sentence, including when the undated sentence is
+   your own and reads like an instruction.
 
 ## SETTLED BY SOPHIA
 
