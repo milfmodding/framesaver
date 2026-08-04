@@ -741,13 +741,28 @@ class P {
         Check("ShootData.OnTriggerPressed backing field still exists",
               backing.GetValue(null) != null, true);
 
-        // bots.deadAwake needs a live roster to count, so what is checkable
-        // here is that the field ships. It is the term that makes `awake`
-        // subtractable - corpses keep StandByType_1 == active and stay on the
-        // roster, so they have been inside `awake` in all 24 logs.
+        // bots.standByRefused needs a live roster to count, so what is checkable
+        // here is that the field ships. It is the OBSERVED consequence beside
+        // `exempt`'s declared property - which bots the pump actually refused,
+        // against which roles say no.
+        //
+        // This line asserted `,"deadAwake":` until 2026-08-04 and FAILED on the
+        // commit that removed it, which is the assertion working. That counter
+        // is gone rather than fixed: BotSpawner.BotDied sets IsDead and calls
+        // Bots.Remove in one call, so the state it counted is unreachable and it
+        // could only ever read 0. updateManual.deadCalls answers the same
+        // question and harness/check-fields.py now FAILS on a non-zero.
         foreach (var lit in new[] { ",\"awakeAge\":", "{\"toS\":", ",\"triggerSubsMax\":",
-                                    ",\"deadAwake\":" })
+                                    ",\"standByRefused\":" })
             Check($"emits {lit}", inUs(lit), true);
+        // BOTH retired names must be GONE from the assembly, not merely unused.
+        // `standByBlocked` was a good name for what standByRefused now carries
+        // and is deliberately not reused: five days of logs hold a hard zero
+        // under it, so a reader spanning the build boundary would mix a
+        // structural zero with real data and could not tell which era a window
+        // came from. Absence is what makes a stale reader break instead of lie.
+        foreach (var lit in new[] { ",\"deadAwake\":", ",\"standByBlocked\":" })
+            Check($"retired {lit} is gone", inUs(lit), false);
 
         // ---- Animator cull: the instrument guarding the main mechanism ----
         //

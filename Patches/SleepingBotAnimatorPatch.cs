@@ -261,12 +261,20 @@ namespace Framesaver.Patches
         }
 
         /// <summary>
-        /// Of the bots we marked, how many Unity is ACTUALLY culling - the
-        /// ones off screen. `CulledLastFrame` counts what we asked for; this
-        /// counts what the engine honoured, and nobody has measured the
-        /// difference. **Read them as a pair**: the ratio is the fraction of
-        /// the feature that is real, and if it is small then the saving is
-        /// smaller than every number we have quoted for it.
+        /// Of the bots we marked, how many are OFF SCREEN - which is a fact
+        /// about the camera, not about the engine. `CulledLastFrame` counts
+        /// what we asked for; this counts how many of those Unity was in a
+        /// position to honour, and it is an UPPER BOUND on the saving rather
+        /// than a measurement of it. **Read them as a pair**: the ratio is the
+        /// fraction of the marking that could have paid off, and if it is small
+        /// then the saving is smaller than every number we have quoted.
+        ///
+        /// **This does NOT count what the engine honoured**, and the docstring
+        /// said it did until 2026-08-04. What the engine honoured is
+        /// `cullingMode == CullCompletely`, which is `CulledEngine` below and a
+        /// different field over a different population. The distinction is the
+        /// whole reason `CulledEngine` was written: off-screen is a precondition
+        /// for the cull paying off, not evidence that the write landed.
         ///
         /// **`Player.OnScreen` is the right predicate. `IsVisibleToCamera`
         /// would have been a disaster.** OnScreen resolves through
@@ -353,7 +361,22 @@ namespace Framesaver.Patches
         /// the old version read 0 no matter what the engine was doing. That is
         /// exactly the configuration the reload observation test runs in.
         ///
-        /// Read as a triple with the two above: asked / honoured / off screen.
+        /// Read as a triple with the two above, IN EMIT ORDER, which is not the
+        /// order this comment used to give:
+        ///
+        ///     animCulled           asked         CulledLastFrame
+        ///     animCulledOffScreen  off screen    CulledOffScreen
+        ///     animCulledEngine     reached the engine   (this)
+        ///
+        /// The old wording was "asked / honoured / off screen", which lands
+        /// `animCulledEngine` on "off screen" - the opposite of what it is, and
+        /// exactly backwards for anyone mapping the prose onto the log.
+        ///
+        /// **And the three are NOT over one population.** `CulledLastFrame` and
+        /// `CulledOffScreen` walk `Marked()`, which is `Sleeping` in the coupled
+        /// arm; this walks the whole live AI roster. They coincide in the
+        /// decoupled arm and diverge in the coupled one, so a ratio between them
+        /// is only a ratio when the arm makes it one.
         /// </summary>
         public static int CulledEngine
         {

@@ -34,7 +34,7 @@ which do not exist yet -- awake-and-far is the control group this contrast lacks
 
 A THIRD DEFLATOR, AND THIS ONE SUBTRACTS EXACTLY. Corpses tick UpdateManual and
 read as awake: `BotsClass.UpdateByUnity` has no liveness test and the guard is
-inside the method, past the postfix. `deadCalls`/`deadMs` (26fb3d6, Beta) are a
+inside the method, past the postfix. `deadCalls`/`deadMs` (86407a4, Beta) are a
 SUBSET of `awakeCalls`/`awakeMs`, not a fourth bucket, so live-awake is a
 subtraction rather than a model -- and it replaces the estimate for the part of
 the dilution it covers. Corpses sit in `bots.awake` as well, so the section 3
