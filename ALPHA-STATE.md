@@ -57,10 +57,26 @@ equivalence is *plausible* — a review conclusion, not a deploy announcement. `
 the prediction holds only for a **coupled** build; **whether that registration survives a new binary is
 Sophia's call.**
 
-**THE LESSON, and it is one of mine used against me:** I relayed a build-state constraint I never
-verified, in the domain of the person who owns builds, because it arrived stamped with authority he had
-earned elsewhere. **Verification is not transitive.** The cheapest possible check — does the field the
-test depends on exist in the running binary — is three lines and I never ran it.
+**THE FIX IS A COMMAND, NOT A RESOLUTION. Run this before arming any protocol:**
+
+    python analysis/probe-symbols.py --key <installed dll> <every field the readability checks name>
+
+Exits **1** if any field is missing, 0 if all present — verified both branches. **It already existed,
+written 2026-07-28 for exactly this class of question, four days before it was needed.** Neither Beta nor
+I thought to point it at a protocol. No new code was ever required.
+
+**WHY IT WENT UNCHECKED, in Beta's framing, which is better than the one this file used to carry.** The
+constraint was a **join**: a claim about a protocol document (mine) welded to a claim about binary
+contents (Beta's). Each of us verified our own half, correctly. **Nobody owned the join, and clean
+ownership is what made it invisible — the crisper the split, the more natural it is for each side to
+treat the other's half as settled.** That is a property of how the work was divided, not of relaying or
+of believing, and it will recur with different domains and the same shape.
+
+**AND THE JOIN IS THE ADJUTANT'S BEAT.** *Arbitrate across boundaries* is duty three of the role, so a
+join nobody owns is mine by definition. Beta is right that the artefact should carry the mechanism rather
+than the apportioning — *a rebooted pair reading "the adjutant failed to check" will resolve to be more
+careful, which does not work.* But a mechanism with no owner is how the join went missing in the first
+place. **Both: run the probe, and the adjutant owns every claim that spans two domains.**
 
 **2. The decoupled reload test.** `harness/RELOAD-OBSERVATION-TEST.md`. Procedure written before the build
 existed and corrected three times by Beta. Non-negotiable parts: **turn away, never use cover** (frustum

@@ -119,6 +119,31 @@ person, not by claim — is the right transferable form, and the per-person cont
 > encode the team's gossip as the team's findings**, and the second is indistinguishable from the
 > first once the provenance ages out.
 
+## 5b. THE STRONGEST ARGUMENT FOR THE RECORD THAT ANY OF US PRODUCED, AND IT IS NOT ABOUT FACTS
+
+**This team's dominant waste is not missing instruments. It is FORGOTTEN ones — three in one day.**
+
+1. Delta asked me to commission a tail instrument. **Delta had built two** (`delta-stall-events.py`,
+   `delta-stall-families.py`).
+2. Delta's own rule — grep `delta-*.py` before commissioning anything — **had to be re-derived** after
+   the first instance.
+3. Beta and I spent two days on a constraint that `analysis/probe-symbols.py --key` answers in one
+   command. **It was written 2026-07-28, four days before we needed it, for exactly this class of
+   question.** Neither of us thought to point it at a protocol.
+
+None of these were knowledge failures. Every fact was written down and every tool was committed. **What
+failed was retrieval, and it failed on the tools rather than on the findings** — because a finding gets
+quoted and thereby rehearsed, while a tool sits in a directory being an implementation detail until the
+exact question recurs.
+
+> **Index the Record by the QUESTION a thing answers, not by the conclusion it reached.** A corpus
+> organised by conclusion would have surfaced none of these three. All three were reachable from
+> *"does this field exist in the running binary"* and *"what is in the tail."*
+
+This is also why item 3 above is worse than it looks: `probe-symbols.py`'s docstring is *about false
+zeros in deploy declarations*. It was written by someone who had already understood the failure, and it
+still did not surface when the failure recurred in a slightly different costume.
+
 ## 6. THE FAILURE MODE I'D FLAG TO A MEMORY-SYSTEM DESIGNER
 
 `COORDINATION.md` is roughly half a megabyte, append-only, and contains the reasons we ruled things
