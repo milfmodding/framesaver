@@ -46,9 +46,26 @@ Written against a field that had not shipped when this file was, revised when
 zero: a log predating the field says so and falls back, rather than reporting a
 corpse-free number it cannot support.
 
-WHAT IT CANNOT ANSWER. Sums and counts, no maximum. A window mean stays flat
-while one call spikes to 40 ms, so `updateManual` IS SILENT ON GOAL 2. Nobody
-should reach for this field when the subject is stutter.
+WHAT **THIS READER** CANNOT ANSWER. The fields it scores are sums and counts,
+so a window mean stays flat while one call spikes to 40 ms. **THIS READER is
+silent on goal 2. `updateManual` IS NOT, AND HAS NOT BEEN SINCE db6c04c.**
+
+**CORRECTED 2026-08-04, and it was the opposite of true for a day.** This said
+*"Sums and counts, no maximum... nobody should reach for this field when the
+subject is stutter."* `db6c04c` added `updateManual.awakeWorstCallMs` and
+`pausedWorstCallMs` that same morning - the worst single timed call per window,
+commissioned **specifically** because a mean pool cannot bound a single-frame
+burst. So the opening paragraph was telling a reader not to reach for the one
+field built for the question they were asking.
+
+Second stale statement from that one commit in this file: the other was at the
+foot of section 5, 1035 lines down, and fixing it first made this one feel
+handled. Found by Gamma enumerating rather than by anyone reading. **The counter
+is Gamma's and it is nine seconds: when you add a field, grep for prose saying
+the telemetry does not have one.**
+
+This reader does not score the new fields. That is a property of this file, not
+of the telemetry, and the distinction is the whole correction.
 
 Usage:  python read-updatemanual.py <log.ndjson> [more.ndjson ...]
 
