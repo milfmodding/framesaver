@@ -37,6 +37,34 @@ PATHS = [a for a in sys.argv[1:] if not a.startswith("--")]
 # hard failures rather than notes.
 VSYNC_KEYS = ("vSyncCount", "targetFrameRate")
 
+# Telemetry keys retired at a known build, and WHAT THEY ACTUALLY HELD before it.
+#
+# check-modoff.py has a RETIRED table and it is the right pattern - but it
+# iterates against `cfgs`, so it matches CONFIG keys only. Putting `bots.*`
+# telemetry in it prints "absent, as expected" on every log forever while
+# matching nothing: a check that cannot fail, inside the guard added to
+# record a retirement. Beta found that by trying to use it. Hence a second,
+# telemetry-scoped table here rather than a shared one.
+#
+# RETIRED MEANS RENAMED, NOT VOID, and that is the load-bearing half. A
+# future reader meeting a retired key must not discard the column: five days
+# of `deadAwake` are the only measurements of stand-by-blocking anyone has,
+# and the map-structure result rests on them. The failure this table exists
+# to prevent is losing good data to tidiness.
+RETIRED_BOTS = {
+    "deadAwake": (
+        "carried the !StandBy.CanDoStandBy count - stand-by-BLOCKED, never a death "
+        "count. Transposed at the CountBots call site from 2026-07-30 (7e254c0, "
+        "cb47968) until the rename. REAL, USABLE DATA UNDER A WRONG NAME: do not "
+        "discard the column. Superseded by bots.standByRefused."),
+    "standByBlocked": (
+        "carried the TRUE dead-awake count, which is 0 in every window ever "
+        "recorded because BotSpawner.BotDied removes a bot from the ticked roster "
+        "in the same call that flags it dead. The name and the contents were "
+        "swapped with deadAwake. Not superseded - the quantity is unreachable and "
+        "updateManual.deadCalls is the tripwire for it."),
+}
+
 fails, notes, refusals = [], [], []
 _blocks_reported = set()
 
@@ -391,9 +419,14 @@ def main():
         #
         # PRESENCE-ONLY WHERE A ZERO IS THE SUCCESS CASE, and that distinction is the whole
         # reason these are separated from the probes above. Gamma's warning: under
-        # `Force for all roles`, `standByBlocked` reading 0 means the flag is working - so a
+        # `Force for all roles`, `standByRefused` reading 0 means the flag is working - so a
         # checker that treats 0 as degenerate would fail the run that worked. Same for
         # `bossGroups.linked`, which is legitimately 0 when no garrison spawned.
+        #
+        # The key here was `standByBlocked` until the rename. It is now
+        # `standByRefused`, and the rule is unchanged because the QUANTITY is
+        # unchanged - `!StandBy.CanDoStandBy` is what the old key was always
+        # meant to hold. See RETIRED_BOTS below for what it actually held.
         #
         # This is the mirror of the defect this file exists to catch. Elsewhere a 0 that
         # should have been a value reads as measured-and-zero; here a 0 IS the value, and
@@ -420,7 +453,7 @@ def main():
         # mirror of the defect already fixed in this file, where a missing block reported
         # once per key and turned 6 problems into 12: same failure to separate the block
         # from its contents, inverted.
-        for block, keys in (("bots", ("standByBlocked",)),
+        for block, keys in (("bots", ("standByRefused",)),
                             ("bossGroups", ("linked", "heldAwake")),
                             ("standByTransitions", ("woken", "slept", "diedAwake"))):
             have = [w[block] for w in raid if isinstance(w.get(block), dict)]
@@ -478,7 +511,7 @@ def main():
         # counted separately, a partial emission fails rather than averaging, and
         # absent follows this file's contract: a failure by default because the
         # deployed build is current by construction, a note under --tolerant where
-        # the build may legitimately predate 26fb3d6.
+        # the build may legitimately predate 86407a4.
         if not um:
             note("deadCalls unchecked - updateManual is absent (reported above). An "
                  "unchecked tripwire is not a passing one.")
@@ -487,7 +520,7 @@ def main():
             if not carrying:
                 (note if TOLERANT else fail)(
                     "updateManual.deadCalls ABSENT from all %d windows - the corpse tripwire is "
-                    "not armed here. Builds before 26fb3d6 predate the field; a current build "
+                    "not armed here. Builds before 86407a4 predate the field; a current build "
                     "reaching this line has dropped it." % len(um))
             elif len(carrying) < len(um):
                 fail("updateManual.deadCalls absent from %d of %d windows - partial emission, so "
@@ -507,6 +540,38 @@ def main():
                     note("updateManual.deadCalls 0 in all %d windows (TRIPWIRE ARMED: 0 is the "
                          "correct reading and any non-zero is an alarm - the mirror of the "
                          "presence-only fields above)" % len(carrying))
+
+        # ---- retired bots.* keys: present means this build predates the rename ----
+        #
+        # Direction is the opposite of every other check here. Elsewhere ABSENT is
+        # the failure because the deployed build is current by construction. For a
+        # retired key, PRESENT is the failure for exactly the same reason - a
+        # current build still emitting it means the removal regressed.
+        #
+        # Under --tolerant, present is expected and the note says what the key
+        # actually held, because a reader opening an old log is the person most
+        # likely to take the name at face value. That note is the whole point of
+        # the table: the era is discriminable from the key set alone, with no
+        # build sha and no date, BECAUSE both names were retired rather than one
+        # being reused.
+        bots_blocks = [w["bots"] for w in raid if isinstance(w.get("bots"), dict)]
+        if not bots_blocks:
+            note("no bots block in any raid window - retired-key check did not run, "
+                 "which is not the same as passing")
+        else:
+            for key, meant in sorted(RETIRED_BOTS.items()):
+                seen = sum(1 for b in bots_blocks if key in b)
+                if not seen:
+                    note("bots.%s absent from all %d windows, as expected after the rename"
+                         % (key, len(bots_blocks)))
+                elif TOLERANT:
+                    note("bots.%s present in %d of %d windows - PRE-RENAME LOG. That key %s"
+                         % (key, seen, len(bots_blocks), meant))
+                else:
+                    fail("bots.%s present in %d of %d windows - RETIRED, and this build should "
+                         "not emit it. Either the removal regressed, or this is an older log "
+                         "and wants --tolerant. That key %s"
+                         % (key, seen, len(bots_blocks), meant))
 
         cfgs = [w["cfg"] for w in raid if isinstance(w.get("cfg"), dict)]
         if not cfgs:
