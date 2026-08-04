@@ -212,6 +212,11 @@ a point**, until `AddDead` works.
 Alpha is right that these are the highest-value items precisely because no artefact carries them.
 Each is a bet, not a finding.
 
+> **Two of these are now duplicated into `ALPHA-STATE.md`'s odds table (`05adb7d`) — revise both or
+> neither.** Recorded here rather than left to be discovered, because the duplication is deliberate
+> (odds have no re-derivation path, so a single copy is a single point of loss) and because a claim
+> quietly forked into two files is exactly how the two stale counts in my own shared file expired.
+
 - **The `deadCalls` mechanism is a property of `IsDead`, ~70/30 over anything in our code.** Five
   code-side explanations died today; none of the property-side ones has been touched.
 - **`framePct.p999` and `p99` are probably not worth carrying at 30 s at all**, and the reason to
