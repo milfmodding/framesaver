@@ -61,6 +61,7 @@ import os
 import re
 import subprocess
 import sys
+import urllib.request
 from datetime import datetime, timezone
 
 MOD = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -148,8 +149,64 @@ def product_version(path):
 # exist without one, and artifacts are taken AT deploy time - so the record is
 # incomplete and `deployed` has three values for that reason and not for
 # tidiness.
+#
+# THESE ARE READ FROM THE AKHASHIC RECORD, NOT FROM DISK (Sophia, 2026-08-04:
+# the Record is canonical, the filesystem is a cache). The previous version
+# read them from MOD and SKIPPED any that were missing, silently - which turned
+# "the documents moved" into `deployed: null` on builds that had certainly
+# shipped, wearing the message "no record found, and the record is known to be
+# incomplete". A wrong answer that arrives pre-excused by its own tool is worse
+# than a crash, so a document that cannot be fetched is now a REFUSAL.
 DEPLOY_RECORD = ["COORDINATION.md", "FINDINGS.md", "TESTING.md",
                  "COMPATIBILITY.md", "README.md"]
+DEPLOY_RECORD_PREFIX = "framesaver/shared/docs/"
+
+
+def refuse(reason):
+    """First line names it, exit code carries it. Neither half suffices alone:
+    18 exit-2 sites in this tree print no distinctive token, and errno text
+    from a real refusal is indistinguishable from CPython failing to find the
+    script at all. 86 sits in the unclaimed band and nothing wraps to it.
+    """
+    print("REFUSED: %s" % reason, file=sys.stderr)
+    sys.exit(86)
+
+
+def fetch_document(path):
+    """Read one document from the Record. Raises on anything unexpected.
+
+    The token is per-agent and comes from the environment; it is deliberately
+    not in this file, so the script is the same for every seat that runs it.
+    """
+    token = os.environ.get("RECORD_TOKEN")
+    url = os.environ.get("RECORD_URL")
+    if not token or not url:
+        # NOT a fallback to .mcp.json. A fallback here would reintroduce the
+        # exact defect this function was written to remove: a run that quietly
+        # sources different bytes than the operator believes it did.
+        refuse("RECORD_TOKEN and RECORD_URL must both be set in the "
+               "environment; refusing to guess where the Record is")
+
+    payload = json.dumps({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "read_document", "arguments": {"path": path}},
+    }).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, method="POST", headers={
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+    })
+    with urllib.request.urlopen(req, timeout=120) as response:
+        body = json.loads(response.read().decode("utf-8"))
+    if "error" in body:
+        raise RuntimeError(json.dumps(body["error"])[:300])
+    doc = json.loads(body["result"]["content"][0]["text"])
+    text = doc.get("body")
+    if text is None:
+        # `found: false` and FORBIDDEN are different answers and the Record
+        # says which. Either way this script has no business continuing.
+        raise RuntimeError("no body at %s: %s" % (path, json.dumps(doc)[:200]))
+    return text
 
 
 def deploy_status(path, md5, install, docs):
@@ -218,9 +275,14 @@ def record(path, install=None, docs=None):
 def main():
     docs = {}
     for name in DEPLOY_RECORD:
-        full = os.path.join(MOD, name)
-        if os.path.exists(full):
-            docs[name] = open(full, encoding="utf-8", errors="ignore").read().lower()
+        path = DEPLOY_RECORD_PREFIX + name.lower()
+        try:
+            docs[name] = fetch_document(path).lower()
+        except Exception as exc:
+            # EVERY name in DEPLOY_RECORD is load-bearing: an md5 found in any
+            # one of them is what makes `deployed` true. Continuing without one
+            # produces a clean, well-formed, wrong corpus, so this stops.
+            refuse("cannot read %s from the Record: %s" % (path, exc))
 
     records = []
     for name, path in sorted(INSTALLS.items()):
