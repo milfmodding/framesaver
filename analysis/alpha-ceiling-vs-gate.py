@@ -1,4 +1,20 @@
-"""THE FEASIBILITY QUESTION, as arithmetic: can Framesaver's mechanism reach 60 fps on
+"""SUPERSEDED 2026-08-01 by `alpha-feasibility.py`, AND ITS HEADLINE CONCLUSION IS WRONG.
+Kept for the reasoning, never for the verdict. Do not quote this file's output.
+
+It concluded TarkovStreets was unreachable by arithmetic - 12.24 ms p75 deficit against a
+6.70 ms pool, 55% cover. The error is in the premise, not the arithmetic: it prices the
+mechanism at the phases it OCCUPIES, and the mechanism's effect propagates into phases it
+never appears in (bone writes, skinning, cloth, transform propagation). Measured leverage is
+a median 2.8x, so this file understates the ceiling by roughly that factor. The corpus already
+held the refutation - Streets matched at 21.5 vs 22.0 bots runs 11.63 ms faster mod-on from
+pools differing by 4.10 ms.
+
+The gate it uses is also wrong: p75 is correct, but this file was written believing p50 was
+the bar. See ALPHA-STATE.md for why that flipped twice in one day.
+
+Original docstring follows.
+
+THE FEASIBILITY QUESTION, as arithmetic: can Framesaver's mechanism reach 60 fps on
 each map even in the limit of a PERFECT implementation?
 
 Asked by Sophia 2026-08-01: "given everything you've seen, what is possible? Are we stuck
