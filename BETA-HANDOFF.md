@@ -11,13 +11,40 @@ hours that produced it, so the next person re-runs those hours or, worse, re-pro
 
 ## 0. The one live constraint, before anything else
 
-**`bin/Release` currently contains the decoupled-cull flag.** The coupled A/B
+~~**`bin/Release` currently contains the decoupled-cull flag.** The coupled A/B
 (`protocol-anim-cull.ini`) needs its data **before** anything is deployed for the reload test.
 Its registered prediction is only valid against a coupled build. Deploy first and you have
-destroyed the A/B build and will run the protocol twice.
+destroyed the A/B build and will run the protocol twice.~~
 
-This is the first thing a reboot will break, because deploying is the obvious first move and
-nothing in the build system stops it.
+**Withdrawn 2026-08-03, hours after it was written, and inverted. Left in place because the way
+it failed is more useful than the correction.**
+
+**The A/B cannot be run readably on the installed build, so it needs a deploy rather than
+needing to precede one.** `protocol-anim-cull.ini`'s first readability check reads
+`animCulledEngine`, introduced in `86a13bb` — *after* the gate `bc90b76`. Verified three ways:
+the literal is absent from the installed DLL and present in `bin/Release`; **zero of 25 logs
+contain it**; the protocol itself postdates the gated build.
+
+Checks 2 and 3 survive. Check 1 does not, and it is the one the protocol says certifies **arm
+delivery** — *"the cull arm actually reached the engine, not just the config."* Without it the
+A/B rests on `animCulled`, **which is our intent**, and cannot separate "the cull worked" from
+"the config flipped and nothing happened."
+
+Same build, same cause: it still contains `Force fast body animator` (removed in `299fd86`),
+while the protocol's reasoning assumes it is gone. Not armed today — `Force fast body animator
+= false` on disk — but a stray flip silently voids the cull, and the inert detection that would
+catch it is also undeployed. Two guards for one failure, neither of them running.
+
+**What to do:** build off `aeec0d4`, and have **Delta** review the coupled-path diff first —
+`SleepingBotAnimatorPatch.cs` is +304 lines since the gate, so equivalence is plausible and
+**not certified**. `f218743` registered the prediction against a coupled build; whether it
+survives a new binary is Sophia's call.
+
+**Why this is still the first section.** I held the inverted version for two days, wrote it as
+the thing most likely to break, and it broke the other way. It survived my own review, a
+handoff, and being restated to Sophia by Alpha. It died in four minutes to a peer saying a
+neighbouring claim was *"cheap to check on data we have"* — so I checked, and the data did not
+exist. **The reflex that caught it was not care. It was a zero that needed a reason.**
 
 ---
 
@@ -221,7 +248,10 @@ that I knew, which is a biased sample of what I know, in exactly the direction t
 
 So the more useful thing I can leave is a prediction of where a fresh Beta goes wrong first:
 
-1. **Deploys before the coupled A/B has its data.** §0. Most likely failure, and it costs a raid.
+1. **Runs the coupled A/B on whatever is installed.** §0. Most likely failure, and it costs a
+   raid — the arm-delivery check has no instrument in the gated build. Note that I predicted
+   this slot correctly and got the *direction* wrong, which is its own lesson: the place you
+   expect to be bitten is worth re-deriving, not just restating.
 2. **Reads `bin/Release` as "what ran".** §5. Second most likely, and it wastes an evening
    rather than a raid.
 3. **Quotes a number without its population.** Every measurement error we had was a population
