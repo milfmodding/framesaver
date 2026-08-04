@@ -283,28 +283,69 @@ def force_all_roles_arm_took_effect(groups):
     in place nothing we run revisits it.
 
     So stop inferring from which mod is installed and read the outcome instead.
-    `bots.standByBlocked` counts the bots the pump actually refused. If the flag
+    `bots.standByRefused` counts the bots the pump actually refused. If the flag
     varies across windows and that count does not follow it, the arm did not
     take effect - true regardless of which mods are present, and it does not
     depend on anyone's reading of a third party's source.
+
+    **THIS CHECK COULD NEVER REPORT SUCCESS UNTIL 2026-08-04, AND IT IS ERA-
+    AWARE FOR THAT REASON.** It read `bots.standByBlocked`, which from 7e254c0 +
+    cb47968 (2026-07-30) until 3ad1b55 carried the TRUE DEAD-AWAKE count through
+    a transposed call site - identically 0 in 205 of 205 windows. So `on` and
+    `off` were both 0, `abs(0-0) > 0.5` was False, and the function reported
+    "the arm did not take effect" every time it ran. An arm-delivery check that
+    can only ever say NO, printing a loud and specific instruction - *"THESE ARE
+    NOT ALTERNATING ARMS. Do not difference across them."* - about arms that
+    were fine.
+
+    **The era is read off the KEY SET, which needs no sha and no date** (Gamma's,
+    and it is a property of retiring BOTH names rather than reusing the good one):
+
+        standByRefused present  -> new era, the value means !CanDoStandBy
+        standByBlocked present  -> OLD era, and the key is a LIAR
+        neither                 -> predates both, genuinely absent
+
+    A log cannot carry both, because a log is a SESSION (832498f) and the binary
+    does not change mid-session.
+
+    **The old era is REFUSED rather than computed, and the refusal is not only
+    about the transposition.** Every window that key ever appeared in is one
+    mod-off marathon - 205 windows, one session, `cfg.standBy` false throughout.
+    So even reading it as the dead-awake count it actually held, there is no
+    mod-on observation to contrast against. A reader who fixes the label and
+    then trusts the numbers has solved half of it.
+
+    Returns (verdict, detail) where detail carries `era`, so a caller can tell
+    "cannot determine" apart from "the key present here does not mean what its
+    name says".
     """
     per_arm = {}
+    saw_retired = False
     for key, ws in groups.items():
         far = key[2]
         if far is None:
             continue
-        vals = [(w.get('bots') or {}).get('standByBlocked') for w in ws]
-        vals = [v for v in vals if v is not None]
-        if vals:
-            per_arm.setdefault(bool(far), []).extend(vals)
+        for w in ws:
+            bots = w.get('bots') or {}
+            if bots.get('standByBlocked') is not None:
+                saw_retired = True
+            v = bots.get('standByRefused')
+            if v is not None:
+                per_arm.setdefault(bool(far), []).append(v)
+
+    # Checked BEFORE the count, deliberately: an old-era log has no
+    # `standByRefused` at all, so it would otherwise fall out of the branch
+    # below as an ordinary "absent" and lose the reason that matters.
+    if saw_retired and not per_arm:
+        return None, {'era': 'retired'}
     if len(per_arm) < 2:
-        return None, per_arm
+        return None, {'era': 'current' if per_arm else 'absent'}
     on = st.median(per_arm[True])
     off = st.median(per_arm[False])
-    # `forceAllRoles` on should drive standByBlocked toward zero; off should let
+    # `forceAllRoles` on should drive standByRefused toward zero; off should let
     # it rise to the exempt-role population. Indistinguishable medians mean the
     # flip did not reach the bots.
-    return (abs(on - off) > 0.5), {'on': on, 'off': off}
+    return (abs(on - off) > 0.5), {'on': on, 'off': off, 'era': 'current'}
 
 
 def force_all_roles_is_latched(ws):
@@ -693,19 +734,35 @@ def main(argv):
         took, detail = force_all_roles_arm_took_effect(groups)
         _latched, mods = force_all_roles_is_latched(wins)
         print()
-        if took is None:
-            print('  ! forceAllRoles varies but bots.standByBlocked is absent, so whether')
+        if took is None and detail.get('era') == 'retired':
+            print('  ! REFUSED. This log is from the bots.standByBlocked ERA, and that')
+            print('    key does not mean what its name says. A transposed CountBots call')
+            print('    site (7e254c0 + cb47968, 2026-07-30, repaired in 3ad1b55) put the')
+            print('    DEAD-AWAKE count under it - identically 0 in 205 of 205 windows -')
+            print('    and the stand-by-refused count under bots.deadAwake.')
+            print()
+            print('    Until 2026-08-04 this check read that key and therefore compared')
+            print('    0 against 0, so it reported "the arm did not take effect" on EVERY')
+            print('    run. If you have such a verdict recorded from this tool, it was')
+            print('    not a measurement.')
+            print()
+            print('    AND RELABELLING IS NOT ENOUGH. Every window that key ever appeared')
+            print('    in is ONE mod-off marathon - 205 windows, one session, cfg.standBy')
+            print('    false throughout. There is no mod-on observation to contrast')
+            print('    against, so this question is not answerable from this era at all.')
+        elif took is None:
+            print('  ! forceAllRoles varies but bots.standByRefused is absent, so whether')
             print('    the flip reached the bots CANNOT be determined. The strata are')
             print('    labelled arms, not demonstrated ones.')
         elif not took:
-            print('  ! forceAllRoles varies and bots.standByBlocked DOES NOT FOLLOW IT')
+            print('  ! forceAllRoles varies and bots.standByRefused DOES NOT FOLLOW IT')
             print('    (median %.1f on, %.1f off). The flag changed and the population'
                   % (detail['on'], detail['off']))
             print('    did not: the grant is applied once per bot at activation and')
             print('    nothing revokes it, so a later window inherits the earlier arm.')
             print('    THESE ARE NOT ALTERNATING ARMS. Do not difference across them.')
         else:
-            print('  forceAllRoles arm took effect: standByBlocked median %.1f on,'
+            print('  forceAllRoles arm took effect: standByRefused median %.1f on,'
                   % detail['on'])
             print('    %.1f off - the flip reached the population.' % detail['off'])
         if mods:
@@ -1018,11 +1075,19 @@ def main(argv):
     print('=' * 78)
     print('5. WHAT THIS FIELD CANNOT ANSWER')
     print('=' * 78)
-    print('  No maximum is emitted, by design. A flat window mean is consistent with one')
-    print('  40 ms call, so updateManual is SILENT ON GOAL 2 and cannot support or refute')
-    print('  any claim about stutter. It answers "what does an awake bot cost on average".')
+    print('  A flat window mean is consistent with one 40 ms call, so the fields THIS')
+    print('  reader scores are SILENT ON GOAL 2 and cannot support or refute any claim')
+    print('  about stutter. They answer "what does an awake bot cost on average".')
     print('  Cost-of-awake still needs awake-population distance buckets for its control')
     print('  group, and per-frame aiMs to separate removal from relocation.')
+    print()
+    print('  CORRECTED 2026-08-04: this said "no maximum is emitted, by design" until')
+    print('  db6c04c added updateManual.awakeWorstCallMs and pausedWorstCallMs - the')
+    print('  worst single timed call per window, commissioned precisely because a mean')
+    print('  pool cannot bound a single-frame burst. THIS READER DOES NOT SCORE THEM')
+    print('  YET, so the limitation above still describes what you are reading; it is')
+    print('  no longer a property of the telemetry. No log carries them until a raid')
+    print('  runs on a build at db6c04c or later.')
 
     if failed:
         print()
