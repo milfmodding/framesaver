@@ -27,9 +27,32 @@ class P {
         Console.WriteLine($"  {(ok ? "ok  " : "FAIL")}  {what,-46} got {got}  expect {expect}");
     }
 
-    static int Main() {
+    static int Main(string[] args) {
         AppDomain.CurrentDomain.AssemblyResolve += Resolve;
-        var asm = Assembly.LoadFrom(@"F:\SPT\Mods\Framesaver\bin\Release\Framesaver.dll");
+
+        // ONE resolution of the assembly under test. It was two - a hardcoded
+        // absolute path here, and a FindUp below feeding the version-stamp and
+        // raw-image sections - so the suite could reflect over one binary while
+        // reading bytes from another and nothing would say so.
+        //
+        // The optional argument exists because running this suite USED to
+        // require a build into bin/Release, and bin/Release is SHARED STATE: on
+        // 2026-08-04 one seat's compile-check overwrote another seat's binary,
+        // which was the only copy of a build being reasoned about. Build to a
+        // private -p:OutputPath and point this at it instead.
+        //
+        // Refusing on absence rather than skipping: the floor check at the
+        // bottom of this file complains that half these sections sit behind an
+        // `if` - "a null dll" is the first example it names - so a missing
+        // binary quietly cost its checks and the run still printed green.
+        string dll = args.Length > 0 ? args[0] : FindUp("bin/Release/Framesaver.dll");
+        if (dll == null) {
+            Console.WriteLine("REFUSED: no Framesaver.dll found. Pass its path as the first "
+                              + "argument, or build bin/Release/Framesaver.dll first.");
+            return 86;
+        }
+        Console.WriteLine($"assembly under test: {dll}");
+        var asm = Assembly.LoadFrom(dll);
 
         var tel = asm.GetType("Framesaver.Telemetry");
         var unwrap = tel.GetMethod("Unwrap", BindingFlags.NonPublic | BindingFlags.Static);
@@ -105,8 +128,11 @@ class P {
         // fail on any build older than the newest commit - normal, constant, and the fast
         // way to teach everyone to ignore a red line.
         Console.WriteLine("\nBuild stamp the log header reads");
-        string dll = FindUp("bin/Release/Framesaver.dll");
-        Check("bin/Release/Framesaver.dll found", dll != null, true);
+        // The "dll found" assertion that used to sit here is gone, not lost: it
+        // could no longer fail, because Main now refuses on a null dll before
+        // any section runs. A tautological assertion is worse than none - it
+        // reports coverage it does not have. The `if` is kept so this section
+        // reads the same as the others; it is simply always taken now.
         if (dll != null) {
             // Same string Plugin's static constructor reads: the SDK writes
             // AssemblyInformationalVersion into the Win32 ProductVersion too.
@@ -173,10 +199,18 @@ class P {
         reset.Invoke(null, null);
         var sb2 = new System.Text.StringBuilder();
         append.Invoke(null, new object[] { sb2 });
+        // WHOLE-STRING, not Contains, and that is load-bearing: it is the only
+        // assertion here that fires when a field is ADDED. Gamma's two worst-call
+        // fields (db6c04c) landed after this literal was written and it failed on
+        // the next run - which is the check doing its job, and is also the
+        // evidence that their window reset covers them. Both read 0 after the
+        // reset; if either had missed ResetWindow it would be a session
+        // high-water mark, and this line is what would say so.
         Check("ResetWindow zeroes every field",
               sb2.ToString(), "{\"awakeMs\":0,\"awakeCalls\":0,\"pausedMs\":0,"
                               + "\"pausedCalls\":0,\"unstampedCalls\":0,"
-                              + "\"deadCalls\":0,\"deadMs\":0}");
+                              + "\"deadCalls\":0,\"deadMs\":0,"
+                              + "\"awakeWorstCallMs\":0,\"pausedWorstCallMs\":0}");
 
         // The point of this block is one field: forcedButExcluded must be null when either
         // half was not observed, and [] only when both were and the answer really is empty.
@@ -891,6 +925,45 @@ class P {
         Check("and says so in the log of the raid it spoiled",
               inUs("UseBodyFastAnimator is ON"), true);
 
+        // The line above asserts the string is in the assembly. It passed while
+        // the guard fired on a RISING EDGE - `if (Inert && !wasInert)` - which,
+        // because Inert is static and a log is a session (832498f), logged in
+        // raid 1 and was silent in raids 2..n. Delta found that by reading the
+        // code, not by running this suite: the assertion could not fail either
+        // way, which is worse than no assertion because it reports coverage.
+        //
+        // WHAT THIS PROVES, precisely: the rising-edge form has to read `Inert`
+        // TWICE - once to save the previous value, once to test it - and the
+        // correct form reads it once. It is a proxy for "does not compare
+        // against a saved previous value", not a direct test of it. If a future
+        // change legitimately needs two reads, do not just bump the number:
+        // check that neither read is a carried-over previous value.
+        Func<MethodInfo, string, int> countsReadsOf = (m, field) => {
+            byte[] il = m?.GetMethodBody()?.GetILAsByteArray();
+            if (il == null) return -1;
+            var mod = m.Module;
+            int n = 0;
+            for (int i = 0; i + 5 <= il.Length; i++) {
+                if (il[i] != 0x7E && il[i] != 0x7B) continue;   // ldsfld / ldfld
+                try {
+                    if (mod.ResolveField(BitConverter.ToInt32(il, i + 1)).Name == field) n++;
+                } catch { }
+            }
+            return n;
+        };
+        Check("the inert guard fires on the STATE, not the edge",
+              countsReadsOf(detect, "Inert"), 1);
+        // A count of 1 means nothing from a scanner that cannot reach 2.
+        // ApplyIfSleeping reads Sleeping three times, by inspection.
+        Check("...and the read counter can count past one (control)",
+              countsReadsOf(sba.GetMethod("ApplyIfSleeping",
+                                          BindingFlags.NonPublic | BindingFlags.Static),
+                            "Sleeping") >= 2, true);
+        // The other direction: a scanner that matched everything would pass
+        // both lines above. This is a field that method provably never reads.
+        Check("...and does not match a field that is not there (control)",
+              countsReadsOf(detect, "Sleeping"), 0);
+
         // ---- Every protocol file on disk, against the shipped settings ----
         //
         // An unknown key refuses the WHOLE protocol at raid start, so a typo
@@ -901,8 +974,13 @@ class P {
         // Every protocol-*.ini, not a named list: a file added later is exactly
         // the one nobody thought to check.
         Console.WriteLine("\nProtocol files resolve against the shipped settings");
-        string root = Path.GetDirectoryName(dll ?? "");
-        root = Path.GetFullPath(Path.Combine(root ?? ".", "..", ".."));
+        // The REPO root, found from a marker, not walked back from the assembly
+        // under test. It used to be `dirname(dll)/../..`, which silently found
+        // nothing the moment the dll lived outside the tree - as it now can,
+        // since the path is overridable. That cost the whole protocol section
+        // and the floor check is what caught it, exactly as advertised.
+        string csproj = FindUp("Framesaver.csproj");
+        string root = csproj == null ? "." : Path.GetDirectoryName(csproj);
         var inis = Directory.GetFiles(root, "protocol-*.ini");
         Check("protocol files found", inis.Length > 0, true);
         foreach (var ini in inis) {

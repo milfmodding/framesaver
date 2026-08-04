@@ -445,7 +445,6 @@ namespace Framesaver.Patches
         /// </summary>
         private static void DetectInertAnimator()
         {
-            bool wasInert = Inert;
             Inert = false;
 
             try
@@ -460,7 +459,13 @@ namespace Framesaver.Patches
                 // disagree with animCulled if the write is landing nowhere.
             }
 
-            if (Inert && !wasInert)
+            // EVERY raid it is true, not the raid it becomes true. `Inert` is
+            // static and survives a raid, so a rising edge fires once per
+            // SESSION - and a log is a session (832498f). Someone reading back
+            // raid 7 of a marathon would find a clean log for a raid in which
+            // the cull was dead throughout. Reads as log spam and is not: the
+            // line is absent from every raid that was fine.
+            if (Inert)
             {
                 Plugin.LogSource.LogError(
                     "Framesaver: UseBodyFastAnimator is ON, so animator culling cannot work - "
