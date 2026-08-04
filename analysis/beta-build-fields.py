@@ -280,7 +280,15 @@ def main():
                       "at all - an exact #US heap parse misses them too - so no "
                       "static scan can be complete. PRESENT means the string "
                       "exists, not that it is a field. See fieldsObservedInLogs "
-                      "on each record for the only source that proves emission.",
+                      "on each record for the only source that proves emission. "
+                      "A SECOND known-false-absence class, found 2026-08-03 by "
+                      "attribute-log.py: TOKEN requires two characters, so the "
+                      "single-char keys n, t, x, y and z are absent from every "
+                      "record while appearing in the logs. Widening the regex "
+                      "would admit every stray letter in the image and buy "
+                      "nothing, since absence is already not proof - so callers "
+                      "exclude names shorter than two characters from any join "
+                      "rather than reading them as structural.",
             "fieldsAsJsonKeys": "complete \"name\": literals - definitely "
                                 "emitted as a key, but INCOMPLETE, so never "
                                 "read its absence for anything",
