@@ -306,7 +306,15 @@ def main(argv):
     print('  If read-botwindow finds a non-zero awake-age slope, this contrast is')
     print('  CONFOUNDED by activation-time composition and both must be read together.')
     print('  Registered before either ran, so the reading cannot be chosen after.')
-    print('  And these are sums and counts with no maximum: silent on goal 2.')
+    # "no maximum" is a property of THESE ROWS, not of the telemetry. Since
+    # db6c04c `updateManual` carries awakeWorstCallMs, a genuine per-call
+    # maximum built for exactly this question - it is simply not in the
+    # per-bot rows and this reader does not score it. Stated the narrow way
+    # because the wide way is now false, and a reader who generalises from
+    # here would conclude the log cannot answer goal 2 at all.
+    print('  And these rows are sums and counts with no maximum, so THIS reading is')
+    print('  silent on goal 2. The telemetry is not: updateManual.awakeWorstCallMs')
+    print('  is a per-call max, in a different block, unscored here.')
     return 0
 
 

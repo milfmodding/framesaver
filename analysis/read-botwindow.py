@@ -343,8 +343,15 @@ def main(argv):
     print('  near her longer, has a longer path history and more accumulated state - so')
     print('  age here is a proxy for several things at once and this cannot separate')
     print('  them. It answers "does cost move with age", never "because of age".')
-    print('  It is also silent on goal 2: these are window sums and counts, no maximum,')
-    print('  so a flat mean is consistent with one 40 ms call.')
+    # Same correction as read-botarm: the limit belongs to THIS READING, not
+    # to the telemetry. db6c04c added updateManual.awakeWorstCallMs, which is
+    # the per-call maximum this paragraph says does not exist. The awake-age
+    # buckets genuinely have no maximum of their own, so the sentence is kept
+    # and narrowed rather than deleted.
+    print('  THIS reading is also silent on goal 2: these are window sums and counts')
+    print('  with no maximum, so a flat mean is consistent with one 40 ms call. The')
+    print('  telemetry is not silent - updateManual.awakeWorstCallMs is a per-call')
+    print('  max since db6c04c - but it is not bucketed by age and is unscored here.')
     return 0
 
 
