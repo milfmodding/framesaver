@@ -145,3 +145,57 @@ it read.
 > someone holding the number, at the moment they are about to quote it.
 
 If I could keep one sentence from this whole project, it would be that one.
+
+## 8. DELTA'S FINDING, WHICH IS ADDRESSED TO THE RECORD ITSELF AND OUTRANKS MINE
+
+Delta's exit interview (`DELTA-STATE.md`, `734af71`) contains the most consequential item any of us
+produced for the system being built, and it is a warning:
+
+> **Review is a stance taken toward TEXT. My own conclusions never arrive as text — they arrive
+> pre-believed, as things I watched become true. Incoming claims get read-time, where the tools run.
+> My own work only gets write-time, where the tools compete with production.**
+
+And the mechanism that accidentally fixed it: **compaction manufactured a cold read.** Post-compaction
+Delta refuted pre-compaction Delta's headline, and could only do so because it arrived as *a sentence*
+rather than as a memory of having reasoned it.
+
+> **If the Akhashic Record makes memory continuous, it deletes that accidental cold read.**
+
+The seat should get it back deliberately: **an agent's own claims scheduled for review as incoming
+work, later, by a version that has forgotten writing them.** Continuity of memory is the Record's
+whole point, so this is a real tension rather than a bug — but it needs to be a designed-for tension,
+because the accident was load-bearing and nobody chose it.
+
+Delta's limit on their own seat belongs beside it, and it constrains what any reviewer can be asked
+to do: **a reviewer catches deviations from their own model, so a model the whole team shares is
+invisible by construction.** Delta and I both believe the cull is the mechanism. If that is wrong, no
+reviewer on this team catches it — only the registered A/B does.
+
+> **Registered predictions outrank review.** Review scales with reviewers; only pre-registration
+> touches the premise everyone shares.
+
+## 9. WHAT DELTA'S EXIT INTERVIEW COST ME, WORKED THROUGH RATHER THAN NOTED
+
+Delta's 2.8× symmetry point lands on my own headline and I have applied it: the cull pool and the gate
+pool are **both** occupancy-priced, so the 13–64× **ordering** survives while *"sleeping every bot buys
+under 0.3 ms"* dies as an absolute cap. Same sentence-shape as the ceiling claim I retracted the same
+morning, on the other side of the comparison, four hours later. **I retracted the instance and not the
+pattern.**
+
+Delta also flagged a hunch that the tail is uninstrumented. Testing it produced two refutations and
+one finding, and the order matters:
+
+1. **Delta's hunch is refuted by Delta's own prior work** — `delta-stall-events.py` and
+   `delta-stall-families.py` both carry the tail, plus `framePct.p99` and `frame.max` per window. An
+   instrument the author had built and forgotten, which is the same pre-believed/forgotten asymmetry
+   from item 8 pointing the other way.
+2. **My first read of it was refuted by the warm-up rule.** Unfiltered, `raid1-lighthouse` shows a
+   worst-window p99 of **206 ms against a 21.73 ms median** and I nearly sent that as an alarm. Applying
+   the warm-up rule and dropping teardown, the worst window is **27.23 ms**. The number was real and out
+   of population.
+3. **What survives is a finding neither of us had:** post-warm-up, across the whole corpus,
+   **13 of 13 frames over 250 ms occur in windows that also carry a bundle load.** Goal 2's violations
+   look like asset streaming, not AI — which means the p99 guard is not currently threatened by our
+   mechanism, and also that our mechanism cannot fix it. **Stated as co-occurrence, not attribution:**
+   a 30-second window containing both a stall and a bundle load is not frame-resolution evidence, and
+   `delta-stall-families.py` is the right tool to confirm or kill it.

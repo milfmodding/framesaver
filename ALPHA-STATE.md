@@ -34,10 +34,20 @@ once at window close and a 6 s look-away would usually be missed at 30 s.
 
 **Defensible:**
 
-- **The cull is the mechanism; stand-by only picks its targets.** Read off two directly measured POOLS per
-  map — `updateManual.awakeMs / frames` is 0.056–0.298 ms/frame, the animator phase is 1.14–6.25 ms/frame.
-  **13× to 64× on every one of nine maps.** A ceiling comparison from sums the log already carries: no
-  regression, no lever arm, no attenuation. **Quote this, not a coefficient.**
+- **The cull is the mechanism; stand-by only picks its targets — AS AN ORDERING, NOT AS A CAP.** Read off
+  two directly measured POOLS per map — `updateManual.awakeMs / frames` is 0.056–0.298 ms/frame, the
+  animator phase is 1.14–6.25 ms/frame. **13× to 64× on every one of nine maps.** No regression, no lever
+  arm, no attenuation.
+
+  **BOTH POOLS ARE OCCUPANCY-PRICED AND THE CORRECTION IS SYMMETRIC (Delta, 2026-08-01).** I found on
+  2026-08-01 that pricing the *cull* at the phases it occupies understates it by a median 2.8×, because
+  its effect propagates into phases it never appears in. Delta pointed out the same cut lands on the
+  *gate* side: a suppressed brain tick also suppresses pathfinding and targeting that never appear in
+  `UpdateManual`'s phase. So:
+  - **The ORDERING survives** — trivially under a symmetric 2.8×, and under an asymmetric 5× on most maps.
+  - **"Sleeping every bot buys under 0.3 ms" IS DEAD as an absolute cap**, and it is the same
+    sentence-shape as the ceiling claim I retracted the same morning. Quote the ratio; do not quote
+    either pool as a bound on what its mechanism can buy.
 - **The mod adds sleepers nearly everywhere vanilla does not** — Customs 3→19, Lighthouse 2→17, Woods
   12→21, Reserve 2→10. The game *grants* `CanDoStandBy` on Ground Zero and Factory (100%) and Streets
   (62%); vanilla's trigger simply never fires.
@@ -121,6 +131,18 @@ Both wait on within-raid contrasts on identified builds.
 - **Also Gamma's**: `standByTransitions` counters live inside the disabled pump, so mod-off logs read
   `slept ≡ woken ≡ 0` structurally. That was one of my two supports for the Factory conclusion and it was
   vacuous; Factory stands on `bots.asleep = 0` from the census, which is valid.
+- **UNOWNED AND POSSIBLY SHIP-BLOCKING — raised by Delta 2026-08-01, assign this before the A/B.** Delta's
+  real line on the raid-1 UpdateManual ramp is not the ramp: it is that on `646c45dd` the **LEVEL started
+  3× high as well**, which content does not explain. **If raid 2 reproduces that on the current build it is
+  ship-blocker material and nobody owns it.** Raid 2 also needs QuestingBots installed, so the two are one
+  errand. Also flagged by Delta as read only on that anomalous build: the honoured-fraction 1.00.
+- **Delta retracts limb 2 of their own claim C.** `deadCalls ≡ 0` was read as "corpses never reach
+  `UpdateManual`"; given Gamma's discrepancy that reading is **exactly tied** with "the counter cannot
+  count", because one `IsDead` expression answers differently in two contexts. C survives on limbs 1 and 3;
+  **treat the limb-2 sentence as unproven until Gamma's item closes.** Delta's note on their own miss is
+  the general rule: they had "distrust an instrument that returns its success value when the mechanism is
+  absent" two entries up, and did not apply it to the counter that was agreeing with them.
+- **Warm-up insensitivity is proven FOR MEDIANS ONLY** (Delta) and will not transfer to the p99 guard.
 - **Unowned**: 8 of 13 posted roles have never appeared in 25 logs — `bossKojaniy`/`followerKojaniy`
   (Shturman, and Woods was its one chance), `bossKillaAgro`, and all five Cultist roles. Spawn-chance
   gated, so replaying the marathon does not fix it.
