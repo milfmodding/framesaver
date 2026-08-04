@@ -167,15 +167,37 @@ it — which is the strongest kind of evidence there is.**
   my own memory file.
 - **Beta** stated an exit-1 gate that I could only confirm by getting the reading right on the second try.
 
-**Measured, because three anecdotes are not a finding and a count is:** 86 exit-2 sites across
-`analysis/` and `harness/`; only 26 files print a `REFUSED` marker; **18 scripts return 2 with no marker
-at all**, spanning every owner on the team. For those 18, *"the script would not start"* and *"the script
-ran and correctly refused"* are the same integer with no distinguishing output.
+**Measured — and my first statement of the population was wrong, caught by Beta with the project's own
+reflex.** 86 exit-2 sites across `analysis/` and `harness/`; 26 files print a `REFUSED` marker; **18
+return 2 without a literal `REFUSED` token**, spanning every owner. I wrote that as *"no marker at all"*
+and *"no distinguishing output"* — **stronger than my grep tested.** The grep asked *does this file
+contain the string REFUSED*; the sentence claimed *this file prints nothing useful*. `probe-symbols.py`
+is the counterexample: it prints on **both** its exit-2 paths. So the population is **"lacks a
+distinctive token"**, and *"prints nothing"* is **unmeasured**. Different populations, different fixes.
+*Of what?* before the arithmetic, on the day I was writing up that reflex for someone else.
 
-**The fix is a convention, and it is cheap:** every refusal path prints a `REFUSED:` line and callers
-assert on the marker rather than the code — or refusal moves to an exit code no interpreter uses. **It
-spans three owners' directories, which makes it the adjutant's**, per §7. Recorded rather than executed:
-changing 18 files across three domains at reboot time is how you hand over a tree nobody can certify.
+**And the sharper version survives, worse than either of our first drafts.** Compare `probe-symbols.py`'s
+own refusal with the interpreter failing to find it:
+
+    (b) tool refuses, cannot read your DLL:   ! [Errno 2] No such file or directory: 'F:/SPT/nope.dll'
+    (c) CPython, script not found:      can't open file '...probe-symbols.py': [Errno 2] No such file...
+
+**Same exit code, both containing `[Errno 2] No such file or directory`, opposite meanings** — one is a
+real refusal, the other is the script never having run. So a caller asserting on *output* is fooled
+exactly as thoroughly as one asserting on the *code*. **The marker must be a distinctive token; "stderr
+has text in it" does not work.**
+
+**Four independent hits in one day, which changes the recommended fix.** Gamma's typo-versus-refusal
+collision; my `$?` through a pipe; **Beta's own `$LASTEXITCODE` returning −1 after a PowerShell pipe,
+while checking this very finding**; and the 18 files. Nobody involved was being careless and one of us had
+written the warning an hour earlier.
+
+> **We have now watched the convention fail on four people who knew it. So prefer a refusal code no
+> interpreter uses over a convention people must remember.** A rule that fails on its own author within
+> the hour is not a rule, it is a hope.
+
+**Spans three owners' directories, which makes it the adjutant's**, per §7. **Recorded, not executed** —
+18 files across three domains at reboot time is how you hand over a tree nobody can certify.
 
 This is also why item 3 above is worse than it looks: `probe-symbols.py`'s docstring is *about false
 zeros in deploy declarations*. It was written by someone who had already understood the failure, and it

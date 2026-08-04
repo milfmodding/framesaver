@@ -331,15 +331,24 @@ If they hit one, the gap is in this file and not in them.
   **vanilla-relative** phrasing. Lighthouse, which binds, carries four mod-on events — three on the
   unidentified `225956` build, one on `646c45dd`. **Whether our mechanism threatens or helps the tail is
   established in neither direction.**
-- **MINE, BECAUSE IT SPANS EVERY DIRECTORY — the exit-2 collision.** `86` exit-2 sites across `analysis/`
-  and `harness/`; only 26 files print a `REFUSED` marker; **18 return 2 with no marker at all**
-  (`alpha-headroom`, `alpha-wake-cost`, `beta-build-fields`, `probe-symbols`, `delta-ai-ceiling`, all six
-  `read-*`, and more). CPython also exits 2 for *"can't open file"*, so on those 18 **"it would not start"
-  and "it ran and correctly refused" are the same integer with no distinguishing output.** Found
-  independently by Gamma, Beta and me in one day, which is why it is a finding and not three anecdotes.
-  **Fix: every refusal path prints `REFUSED:` and callers assert on the marker, not the code** — or move
-  refusal to a code no interpreter uses. Not executed: 18 files across three owners at reboot time is how
-  you hand over a tree nobody can certify.
+- **MINE, BECAUSE IT SPANS EVERY DIRECTORY — the exit-2 collision.** 86 exit-2 sites across `analysis/`
+  and `harness/`; 26 files print a `REFUSED` marker; **18 return 2 without a literal `REFUSED` token**,
+  spanning every owner. **STATE THE POPULATION EXACTLY: that is "lacks a distinctive token", NOT "prints
+  nothing".** I wrote the stronger version first and Beta caught it — `probe-symbols.py` prints on both
+  its exit-2 paths, so *"prints nothing"* is unmeasured.
+
+  **The real defect is that output does not separate them either.** `probe-symbols.py` refusing to read a
+  DLL prints `! [Errno 2] No such file or directory: 'F:/SPT/nope.dll'`; CPython failing to find the
+  script prints `can't open file '...': [Errno 2] No such file or directory`. **Same code, same errno
+  text, opposite meanings** — one is a real refusal, the other is the script never running. A caller
+  asserting on output is fooled as thoroughly as one asserting on the code.
+
+  **FIX: move refusal to an exit code no interpreter uses.** Not a convention — **four of us hit this in
+  one day** (Gamma's typo-vs-refusal, my `$?` through a pipe, Beta's `$LASTEXITCODE` of −1 after a
+  PowerShell pipe *while checking this finding*, and the 18 files), nobody was careless, and one of us had
+  written the warning an hour before. **A rule that fails on its own author within the hour is a hope, not
+  a rule.** Recorded, not executed: 18 files across three owners at reboot time is how you hand over a
+  tree nobody can certify.
 - **BEFORE ARMING ANY PROTOCOL** — `probe-symbols.py --key <installed dll> <every field its readability
   checks name>`. This is in the procedure rather than in anyone's memory on purpose; see the A/B section.
 - **Unowned**: 8 of 13 posted roles have never appeared in 25 logs — `bossKojaniy`/`followerKojaniy`
