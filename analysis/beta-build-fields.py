@@ -172,8 +172,8 @@ def refuse(reason):
     sys.exit(86)
 
 
-def fetch_document(path):
-    """Read one document from the Record. Raises on anything unexpected.
+def call_record(tool, args):
+    """One JSON-RPC call to the Record. Raises on anything unexpected.
 
     The token is per-agent and comes from the environment; it is deliberately
     not in this file, so the script is the same for every seat that runs it.
@@ -189,7 +189,7 @@ def fetch_document(path):
 
     payload = json.dumps({
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-        "params": {"name": "read_document", "arguments": {"path": path}},
+        "params": {"name": tool, "arguments": args},
     }).encode("utf-8")
     req = urllib.request.Request(url, data=payload, method="POST", headers={
         "Authorization": "Bearer " + token,
@@ -200,7 +200,11 @@ def fetch_document(path):
         body = json.loads(response.read().decode("utf-8"))
     if "error" in body:
         raise RuntimeError(json.dumps(body["error"])[:300])
-    doc = json.loads(body["result"]["content"][0]["text"])
+    return json.loads(body["result"]["content"][0]["text"])
+
+
+def fetch_document(path):
+    doc = call_record("read_document", {"path": path})
     text = doc.get("body")
     if text is None:
         # `found: false` and FORBIDDEN are different answers and the Record
@@ -209,15 +213,53 @@ def fetch_document(path):
     return text
 
 
-def deploy_status(path, md5, install, docs):
+def fetch_deploys():
+    """Deploys recorded on purpose, as register rows. Returns {id: haystack}.
+
+    THE CONVENTION, and it is the whole interface: a deploy is a DECISION row
+    whose summary carries the binary's full 32-character md5. A decision is the
+    right kind because a deploy already has to answer what the register demands
+    of one - why it shipped, and the command that puts the old binary back - and
+    those are written BEFORE the deploy rather than reconstructed after it.
+
+    Why this beats grepping prose, which is what it supersedes: the register is
+    append-only and scoped, so a row cannot be quietly edited or tidied away,
+    and `at`/`by` come from the store rather than from whoever remembered to
+    type them. The prose search stays for everything deployed before this
+    existed - history cannot be backfilled honestly, so it is not.
+    """
+    rows = call_record("read_register", {"kind": "decision"}).get("entries")
+    if rows is None:
+        raise RuntimeError("read_register returned no entries list")
+    # `why` and `undo` are searched too: a row naming the md5 only in its undo
+    # command ("copy <md5>.dll back") is still a deploy somebody recorded, and
+    # refusing to see it would be pedantry that costs a true positive.
+    return {r["id"]: " ".join(str(r.get(f) or "")
+                              for f in ("summary", "why", "undo", "artefact"))
+            for r in rows}
+
+
+def deploy_status(path, md5, install, docs, deploys):
     """Was this binary ever in an install, and how do we know.
 
     Gamma asked for `wroteLogs`. This says `deployed`, because that is what is
     measurable - whether anyone then PLAYED a raid on it is recorded nowhere,
     so `wroteLogs` would be an inference wearing a measurement's name.
+
+    THREE SOURCES, IN DESCENDING ORDER OF WHAT THEY PROVE. The install is the
+    binary itself. The register is a row somebody wrote ON PURPOSE at deploy
+    time. The prose is an md5 that happens to appear in a document, which is
+    why it was always evidence rather than proof.
     """
     if install:
         return True, "currently installed in %s" % install
+    registered = [rid for rid, row in deploys.items() if md5 in row]
+    if registered:
+        # Full md5 only. The prose search below also accepts the 8-character
+        # prefix because that is how humans wrote it in running text; a
+        # register row is written by procedure and has no excuse for a short
+        # form, and 8 hex characters would collide across a long enough corpus.
+        return True, "registered deploy " + ", ".join(sorted(registered))
     named = [d for d in docs if md5[:8] in docs[d] or md5 in docs[d]]
     if named:
         return True, "md5 named in " + ", ".join(sorted(named))
@@ -242,11 +284,11 @@ def observed_keys(pattern):
     return keys
 
 
-def record(path, install=None, docs=None):
+def record(path, install=None, docs=None, deploys=None):
     blob = open(path, "rb").read()
     ver = product_version(path)
     deployed, why = deploy_status(path, hashlib.md5(blob).hexdigest(),
-                                  install, docs or {})
+                                  install, docs or {}, deploys or {})
     return {
         "dll": path,
         "install": install,
@@ -284,19 +326,28 @@ def main():
             # produces a clean, well-formed, wrong corpus, so this stops.
             refuse("cannot read %s from the Record: %s" % (path, exc))
 
+    try:
+        deploys = fetch_deploys()
+    except Exception as exc:
+        # Same rule as the documents. An unreachable register is not an empty
+        # one, and treating it as empty would silently demote every deploy
+        # recorded since the procedure changed - the identical defect this
+        # script was just repaired for, one source along.
+        refuse("cannot read the register from the Record: %s" % exc)
+
     records = []
     for name, path in sorted(INSTALLS.items()):
         if os.path.exists(path):
-            records.append(record(path, install=name, docs=docs))
+            records.append(record(path, install=name, docs=docs, deploys=deploys))
         else:
             print("missing install binary: %s" % path, file=sys.stderr)
 
     for path in sorted(glob.glob(os.path.join(MOD, "artifacts", "*.dll"))):
-        records.append(record(path, docs=docs))
+        records.append(record(path, docs=docs, deploys=deploys))
 
     built = os.path.join(MOD, "bin", "Release", "Framesaver.dll")
     if os.path.exists(built):
-        records.append(record(built, docs=docs))
+        records.append(record(built, docs=docs, deploys=deploys))
 
     if not records:
         print("no binaries reachable - refusing to emit an empty corpus",
