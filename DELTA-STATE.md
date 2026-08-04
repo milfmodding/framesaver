@@ -21,6 +21,14 @@ It does not record selection, and selection is most of the seat. In order:
    endpoint samples regressed on window aggregates (attenuation), first readings of new
    instruments, counters that read zero. A claim resting on one of those types goes to the
    front of the queue regardless of whose it is or how careful its prose reads.
+   Added 2026-08-03 (Alpha's naming, earned against my own probe): **an environment
+   behaviour has a population too** — "through a pipe" is as unqualified a denominator as
+   "the corpus". I verified exit-86 through ONE PowerShell pipe and generalised; true as
+   stated only because mine happened to be non-terminating. `Select-Object -First` kills
+   the upstream process and NO exit code survives it; Git Bash `$?` after a pipe is the
+   tail's, use `${PIPESTATUS[0]}`. Measurements in Alpha's b335e8c entry: two defects,
+   86 fixes only the first — the second is fixed by no code, only by capturing the status
+   before any pipe.
 3. **Attack the agreed claim first.** A claim with a dissenter has already been reviewed
    once. Consensus removes the natural check — the awake-age ramp survived three sessions
    precisely because everyone, me included, liked it.
