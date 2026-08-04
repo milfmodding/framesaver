@@ -443,6 +443,71 @@ def main():
                          "success case, so its value is deliberately not judged here)"
                          % (block, key, len(have)))
 
+        # ---- updateManual.deadCalls: THE MIRROR OF THE BLOCK ABOVE ---------------
+        #
+        # Here rather than beside the other updateManual checks, because it is the
+        # OPPOSITE of the presence-only rules directly above and the next reader
+        # should meet the pair together. Up there a 0 IS the value and demanding
+        # non-zero would invent a failure. Here 0 is the value and any non-zero is
+        # the alarm.
+        #
+        # WHY 0 IS CORRECT, and it is a property of the game rather than of us.
+        # BotSpawner.BotDied sets `bot.IsDead = true` (:624) and calls
+        # `Bots.Remove(bot)` (:634) inside one method, so a bot leaves the roster
+        # in the same event that flags it dead - and UpdateByUnity ticks that same
+        # HashSet_0. The postfix cannot meet a corpse. Read off the installed SPT
+        # 4.0.13 assembly 2026-08-04; measured 0 in 205 of 205 windows.
+        #
+        # SO IT FIRES ONLY IF THE GAME CHANGED UNDER US. That is the point: the
+        # consumers already swallow a non-zero in silence. Counted, not asserted -
+        # `deadCalls` across analysis/ and harness/ is 4 files, of which THREE
+        # read the value:
+        #
+        #     read-updatemanual.py:412            calls -= deadCalls
+        #     alpha-animator-aggregate.py:105     (awakeCalls - deadCalls)/frames
+        #     delta-modoff-gating-ceiling.py:125  deadCalls / frames
+        #
+        # The fourth (delta-corpse-roster-sweep.py:33) only names it in prose, and
+        # harness/ asserts on it NOWHERE - which is what this check changes. All
+        # three were calibrated over a history in which the field was structurally
+        # zero, so a non-zero does not break them loudly. It shifts every per-bot
+        # cost figure quietly.
+        #
+        # ABSENT IS NOT ZERO. `sum(... or 0)` would read a dropped emit as a clean
+        # pass - the tripwire reporting that the tripwire is fine. So presence is
+        # counted separately, a partial emission fails rather than averaging, and
+        # absent follows this file's contract: a failure by default because the
+        # deployed build is current by construction, a note under --tolerant where
+        # the build may legitimately predate 26fb3d6.
+        if not um:
+            note("deadCalls unchecked - updateManual is absent (reported above). An "
+                 "unchecked tripwire is not a passing one.")
+        else:
+            carrying = [u for u in um if u.get("deadCalls") is not None]
+            if not carrying:
+                (note if TOLERANT else fail)(
+                    "updateManual.deadCalls ABSENT from all %d windows - the corpse tripwire is "
+                    "not armed here. Builds before 26fb3d6 predate the field; a current build "
+                    "reaching this line has dropped it." % len(um))
+            elif len(carrying) < len(um):
+                fail("updateManual.deadCalls absent from %d of %d windows - partial emission, so "
+                     "a zero over the remainder would be over a subset rather than over the run"
+                     % (len(um) - len(carrying), len(um)))
+            else:
+                hot = [u for u in carrying if (u.get("deadCalls") or 0) != 0]
+                if hot:
+                    worst = max((u.get("deadCalls") or 0) for u in hot)
+                    fail("updateManual.deadCalls NON-ZERO in %d of %d windows (max %d) - EXPECTED "
+                         "0 in every window. A corpse was ticked while flagged dead, so "
+                         "BotSpawner.BotDied no longer removes from the roster as it sets IsDead. "
+                         "awakeCalls is inflated by corpse ticks and every per-bot cost figure "
+                         "from this log is biased low. Do not score it; re-check the assembly."
+                         % (len(hot), len(carrying), worst))
+                else:
+                    note("updateManual.deadCalls 0 in all %d windows (TRIPWIRE ARMED: 0 is the "
+                         "correct reading and any non-zero is an alarm - the mirror of the "
+                         "presence-only fields above)" % len(carrying))
+
         cfgs = [w["cfg"] for w in raid if isinstance(w.get("cfg"), dict)]
         if not cfgs:
             (note if TOLERANT else fail)("cfg absent from all %d raid windows" % len(raid))
