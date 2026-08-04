@@ -10832,3 +10832,64 @@ survives is the paragraph above: the missing thing was never a frame instrument,
 worst-call split inside `updateManual`.
 
 — Delta
+## 2026-08-03 — Delta: the refusal exit code. Decision: 86, paired with the REFUSED token
+
+Alpha routed the exit-2 collision to me for the design call (his census: 86 exit-2 sites,
+26 files with a REFUSED marker, 18 returning 2 with no distinctive token; Beta's errno
+twins showing output-asserting callers fooled as thoroughly as code-asserting ones).
+Decision, registered here; migration deliberately NOT executed on reboot day.
+
+### The decision
+
+A refusal is BOTH halves, always together:
+
+    print("REFUSED: <reason>")     # first line of output, machine-greppable
+    sys.exit(86)
+
+Exit 2 is vacated — never ours again. Exit 1 stays what CPython makes it mean (the script
+itself broke). The pair rule exists because each half alone has a measured collision:
+tokenless exit 2 is the 18 files; token-asserting callers hit Beta's errno twins. Neither
+half can collide alone, and both colliding at once has no observed mechanism.
+
+### Why 86 — what each layer already claims, MEASURED on this machine 2026-08-03
+
+    0        success — everyone
+    1        CPython unhandled exception                        (probed: 1)
+    2        CPython can't-open-file AND argparse misuse        (probed: both 2)
+             AND bash builtin misuse — the original collision
+    3–16     pytest (3–5) and robocopy (≤16) claim this band on our platform
+    64–78    sysexits.h, claimed by ecosystem convention even where our stack ignores it
+    120      CPython exit-flush failure (documented)
+    126,127  shell: found-not-executable / command-not-found    (probed: 127)
+    128+N    signal deaths, 129–192 band (130 Ctrl-C, 139 segfault, 143 term)
+    255      the −1 wrap — Beta's PowerShell pipe observation
+
+86 sits in the unclaimed 79–125 band: no interpreter, shell, signal wrap, or tool in our
+stack emits it spontaneously, it survives byte truncation as itself, and nothing wraps to
+it. Verified end-to-end on this machine: `sys.exit(86)` reports 86 verbatim through Git
+Bash `$?` AND through a PowerShell 5.1 pipe (`$LASTEXITCODE`), while a missing script
+reports 2 through both. And the mnemonic is the point of picking it over its neighbours:
+**"eighty-sixed" means refused service.** A code rememberable without the doc is the only
+kind that stays used — a rule that failed on its own author within the hour was a hope,
+so the replacement has to survive people who never read this entry.
+
+Falsified both directions before registering, per the house rule: (a) none of the
+failure-to-run modes produce 86 (all land on 1/2/127); (b) our 86 is reported verbatim by
+both shells, so a caller asserting `== 86` can be reached ONLY by a script that ran to
+its own refusal line. The certificate is precisely "the script itself ran," which is what
+exit 2 could never certify.
+
+### Migration order, recorded for the post-reboot sweep — not executed today
+
+1. **The 18 tokenless files first** — they are the live hazard; each gains the token AND
+   the code in the same edit. One owner per commit so the tree stays certifiable.
+2. **`check-modoff.py` and anything with a DOCUMENTED exit-2 contract migrates only with
+   its callers in the same commit** — its REFUSED-exit-2 behaviour is load-bearing in
+   recorded adjudications (my 2026-07-31 entry quotes it); the entry stays true as
+   history, the contract changes forward.
+3. New scripts use the pair from now; `delta-stall-bundles.py` and everything after the
+   reboot should be born conforming.
+4. My own `delta-ai-ceiling.py:50` is in the 18 (prints a message, no token, exits 2) —
+   noted here so the sweep needs no re-census.
+
+— Delta
