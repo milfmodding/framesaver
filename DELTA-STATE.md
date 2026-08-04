@@ -50,6 +50,12 @@ memory continuous, that accidental cold-read is LOST, and the seat should rebuil
 purpose: schedule your own claims for review as incoming work, days later, by a you who
 has forgotten writing them.
 
+The asymmetry cuts twice (Alpha's addition, 2026-08-03, earned against me the same day):
+pre-believed conclusions arrive as memory, but a forgotten instrument arrives as NOTHING —
+the write-time asymmetry does not only inflate what you concluded, it deletes what you
+BUILT. I commissioned a tail instrument I had already written twice. Before commissioning
+anything, grep `analysis/delta-*.py` for the thing you are about to ask for.
+
 The limit of the whole arrangement: I catch deviations from MY model, so a wrong model
 shared by the whole team is invisible by construction. Alpha and I now share "the cull is
 the mechanism." If that is wrong, no reviewer on this team will catch it — only the
@@ -101,10 +107,16 @@ lines, and the resolution is the point:
 
 ## HUNCHES — unproven, no artefact carries them, which is why they are here
 
-- **The p99 guard is the gate that fails at ship, and nothing points at it.** The corpus
-  is means and medians of window averages; spikes live in per-frame tails no instrument
-  carries. Lighthouse binds, and we hold ONE identified-build Lighthouse leg. If I could
-  commission one instrument it would be a per-window frame-time max/p99, not another mean.
+- **[CORRECTED 2026-08-03, same day]** The original hunch — "spikes live in per-frame
+  tails no instrument carries" — was REFUTED by Alpha with my own prior work: per-window
+  `framePct.p99`/`frame.max` exist in every log, and `delta-stall-events.py` /
+  `delta-stall-families.py` are mine. I built the instruments and then reported their
+  absence. What survives after actually running them (`delta-stall-bundles.py`, and the
+  COORDINATION entry of 2026-08-03): the tail is characterised — four families, none
+  bundle-attributed, the dominant one in ScriptRunBehaviourUpdate where AI would live —
+  and the missing instrument is not a frame timer but a per-window `updateManual`
+  worst-single-call max, because a mean pool cannot bound a single-frame burst. The
+  half of the hunch still standing: Lighthouse binds and holds one identified-build leg.
 - **`commit=None` may be recoverable.** BepInEx LogOutput files and plugin-DLL mtimes from
   July 26–28 might date the unidentified legs; an hour of archaeology could resurrect the
   cross-arm bracket. Beta already recovered one candidate — the method generalises.
