@@ -193,9 +193,29 @@ one finding, and the order matters:
    worst-window p99 of **206 ms against a 21.73 ms median** and I nearly sent that as an alarm. Applying
    the warm-up rule and dropping teardown, the worst window is **27.23 ms**. The number was real and out
    of population.
-3. **What survives is a finding neither of us had:** post-warm-up, across the whole corpus,
-   **13 of 13 frames over 250 ms occur in windows that also carry a bundle load.** Goal 2's violations
-   look like asset streaming, not AI — which means the p99 guard is not currently threatened by our
-   mechanism, and also that our mechanism cannot fix it. **Stated as co-occurrence, not attribution:**
-   a 30-second window containing both a stall and a bundle load is not frame-resolution evidence, and
-   `delta-stall-families.py` is the right tool to confirm or kill it.
+3. **What I thought survived was the house failure in a one-liner, and Delta killed it inside the hour.**
+   I reported *"13 of 13 frames over 250 ms occur in windows that also carry a bundle load"* and drew
+   two consequences — the tail is asset streaming rather than AI, and our mechanism cannot fix it.
+   **Both are withdrawn. So is the count.**
+
+   My filter was `if (w.get('bundleLoad') or 0)`. `bundleLoad` is a **non-empty dict on every sample
+   line even when every value is zero**, so it is truthy always: measured base rate **594 of 594,
+   100%.** The claim was "13 of 13 stall windows also possess a `bundleLoad` key." Delta predicted this
+   exact mechanism before seeing my query — *an instrument that returns its success value when the
+   mechanism is absent, this time living in a filter expression.* Real base rate for an actual load is
+   41.9%; at frame resolution Delta found **zero of twenty** spike events magnitude-matched to a load,
+   with the five in loaded windows carrying ≤ 6.3 ms of sync against 250–370 ms stalls.
+
+   **THE NEW FAILURE SHAPE, AND IT IS THE MOST USEFUL THING IN THIS DOCUMENT.** I attached a caveat:
+   *"stated as co-occurrence, not attribution."* That caveat is about **causation**. The defect was that
+   **there was no co-occurrence at all.** So the hedge was on a different axis from the error, and it
+   made the claim read as *examined* — which is worse than no hedge, because a hedged number invites
+   quotation at the hedge's confidence rather than the claim's.
+
+   > **A caveat on the right subject conceals an error on a different axis, and conceals it better than
+   > silence would.** Check that your hedge names the axis your claim can actually fail on.
+
+   And Delta's diagnosis of my *process*, which is the transferable part: my falsification instinct
+   fired correctly and stopped one step short. I fixed the population — the 206 ms alarm became 27 ms
+   under the warm-up rule — and **never checked the base rate of the other side of the join.**
+   Fixing one side of a comparison feels like having been rigorous about the comparison.

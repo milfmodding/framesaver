@@ -285,6 +285,36 @@ If they hit one, the gap is in this file and not in them.
   the general rule: they had "distrust an instrument that returns its success value when the mechanism is
   absent" two entries up, and did not apply it to the counter that was agreeing with them.
 - **Warm-up insensitivity is proven FOR MEDIANS ONLY** (Delta) and will not transfer to the p99 guard.
+- **THE TAIL: WITHDRAWN AND REPLACED (Delta, `3e24631`, `analysis/delta-stall-bundles.py`).** My
+  *"13 of 13 stalls co-occur with a bundle load"* was a vacuous filter — `bundleLoad` is a non-empty dict
+  on every line, base rate **594/594**. **Do not let "the tail is streaming, not AI" reach testers; it is
+  unsupported, and so is "our mechanism cannot fix it."** At frame resolution: **zero of twenty** spike
+  events magnitude-matched to a load. What the tail actually is, by dominant child phase:
+  1. **`Update/ScriptRunBehaviourUpdate` bursts, 225–471 ms, eight events, mostly mod-off.** Main-thread
+     script — **which is exactly where bot AI lives**, so "not AI" is not merely unsupported: the dominant
+     family sits in AI's own phase and is **undecidable at current instrument depth.**
+  2. The known Streets out-of-loop family — four events plus one Lighthouse, sync counters ~0.
+  3. **NEW: `TimeUpdate/WaitForLastPresentationAndUpdateTime`, 223–359 ms, three events**, Shoreline and
+     Reserve mod-off. Present-wait, GPU/swapchain-shaped, and **no CPU mechanism of ours addresses it.**
+  4. One `ScriptRunDelayedTasks` event on Reserve, 228 ms, in the single window that also carries loads —
+     the only place a streaming story has any purchase, and it is one event.
+- **COMMISSIONED, does not exist (Delta grepped first): a worst-single-call max inside `updateManual`,
+  beside the existing sum.** Delta's own ceiling caveat is why — **mean pools cannot bound single-frame
+  tails.** A 470 ms `UpdateManual` burst moves a 30 s window's `awakeMs/frames` by ~0.016 ms, i.e. is
+  invisible. **The ceiling argument and the goal-2 tail are independent questions and nothing in any
+  docket bounds AI's contribution to spikes.** With that one field, family 1 becomes decidable in one
+  marathon.
+- **FOR BETA — POSSIBLY OURS, AND UP TO 708 ms.** Outside the gate population, **nine further stalls
+  ≥ 250 ms sit at exactly each map's first window boundary** — spike `t` equals the previous window's
+  close, once per map, never at later boundaries. Warm-up excludes them so no gate number moves, but the
+  alignment pattern-matches **our own first-window-close path (census + flush)**. One falsification
+  settles it: **log the flush duration.**
+- **GOAL 2 NEEDS RE-PHRASING AND THAT IS SOPHIA'S CALL.** The tail exists **mod-off**: twelve of twenty
+  kept events are in the mod-off marathon (Woods, Reserve, Shoreline, Streets), so **vanilla violates an
+  absolute 250 ms gate on at least four maps** and the criterion is unmeetable as stated. It needs a
+  **vanilla-relative** phrasing. Lighthouse, which binds, carries four mod-on events — three on the
+  unidentified `225956` build, one on `646c45dd`. **Whether our mechanism threatens or helps the tail is
+  established in neither direction.**
 - **Unowned**: 8 of 13 posted roles have never appeared in 25 logs — `bossKojaniy`/`followerKojaniy`
   (Shturman, and Woods was its one chance), `bossKillaAgro`, and all five Cultist roles. Spawn-chance
   gated, so replaying the marathon does not fix it.
