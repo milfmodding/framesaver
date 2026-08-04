@@ -64,6 +64,62 @@ once at window close and a 6 s look-away would usually be missed at 30 s.
 
 Both wait on within-raid contrasts on identified builds.
 
+## THE ODDS, BECAUSE THE TABLE ABOVE IS A BINARY AND THE BINARY IS LOSSY
+
+**Added at Gamma's instruction, 2026-08-01, and they were right that this was the one thing missing:**
+*a rebooted Alpha will read defensible/not-defensible as the resolution rather than as the current line
+— and unlike a conclusion, a betting line has no re-derivation path.* Evidence can be recomputed from
+the corpus. Odds cannot. So these are the odds, and they are the most perishable thing in this file.
+
+| claim | my line | note |
+| --- | --- | --- |
+| The cull is the mechanism, as an **ordering** | near-certain | Two routes agree. Delta stakes their seat on the divisor identity and ~90% on the ordering itself. |
+| The 2.8× leverage is a property of **the transition measured**, not a rate | high | Extrapolating it onto the residual overshoots; the residual includes player animation, never cullable. **Most misusable number we hold.** |
+| 100 fps on Streets by this mechanism | won't happen | Sophia has accepted this. |
+| The within-raid A/B comes in **smaller** than the between-marathon figures | likely, unsized | Every gain figure compares different days, routes and builds. **The optimism in this file is not discounted for it.** |
+| Reserve's regression is real, not artefact | I'd bet on it | Sign replicates across two instruments over different populations. **No mechanism, therefore no finding.** |
+| The decoupled cull passes the reload test | **~45/55, moved down** | See the disagreement below. Was 60/40 in favour. |
+| `deadCalls` is a property of `IsDead`, not of our code | Gamma's 70/30 | Six code-side explanations dead, zero property-side touched. |
+| `p999`/`p99` ever separate an arm at 30 s | Gamma bets against | Kept for continuity, not expected use. |
+
+**THE ONE PLACE THE TEAM'S TWO CLOSEST READERS DISAGREE, REGISTERED BEFORE THE TEST:**
+
+> **Beta is ~60/40 AGAINST the reload test resolving benign. I was ~60/40 FOR.**
+
+Beta's reason is better than mine and I have moved to **~45/55**, i.e. roughly a coin flip leaning
+against. The argument: the vanilla precedent everyone reaches for is `CullUpdateTransforms`, which
+freezes transforms for invisible bots and **does not stop state-machine evaluation** — and
+`CullCompletely` does. Animation events are enqueued by state callbacks and drained separately, so the
+precedent does not cover our case. Plus the cheapest signal available: **BSG never used
+`CullCompletely` anywhere in Assembly-CSharp**, and "they never noticed" is the optimistic reading of
+that.
+
+**Do not let this resolve into one number before the raid.** Two independent lines in opposite
+directions is the honest state, and per Delta: *a model the whole team shares is invisible to every
+reviewer, so registered predictions outrank review.* This is the registration.
+
+**Beta's second bet, checkable and consequential if true:** the cull's saving tracks **off-screen
+fraction**, not roster size, because Unity decides eligibility per renderer per frame. If that holds,
+Lighthouse is not an incidental gate — an open map with long sightlines is the **worst case** and the
+right thing to gate on.
+
+## WHERE A FRESH ALPHA GOES WRONG FIRST — ranked, and falsifiable
+
+**Beta's format, and it is better than the inventory the exit interview asked for:** *four predictions
+is a test; four inventories is a filing cabinet.* If a rebooted Alpha avoids these, the handoff worked.
+If they hit one, the gap is in this file and not in them.
+
+1. **Quotes a per-map fps gain.** The withdrawn figures are arithmetically recoverable from the corpus
+   and read as findings. They are between-marathon, single-leg against single-leg. **Withdrawn, not
+   caveated.**
+2. **Reconciles the estimator disagreement into one coefficient.** 0.09–0.34 is a bracket with signable
+   biases. Resolving it feels like synthesis and is the signature failure of this seat.
+3. **Trusts an undated sentence over a dated artefact** — including their own memory files. This one
+   already happened, twice in one day, once while I was describing it to Sophia as a hazard.
+4. **Retracts an instance and leaves the pattern standing.** I fixed occupancy-pricing on the cull side
+   and left it on the gate side, same document, four hours apart. Delta caught it. **After any
+   retraction, grep for the sentence-shape, not the sentence.**
+
 ## THE THREE NUMBERS MOST LIKELY TO BE QUOTED WRONG
 
 1. **`aiTotal` IS NOT WHAT STAND-BY GATES.** It is `BotsController.method_0` and does not contain
@@ -71,6 +127,23 @@ Both wait on within-raid contrasts on identified builds.
    it describes a slice stand-by does not touch. The right field is `updateManual.awakeMs / awakeCalls`
    ≈ **0.011 ms per awake bot**, against paused at 0.0002–0.0005.
 2. **`bots.*` are INSTANTANEOUS samples** at window close (`CountBots`, one call site, `Telemetry.cs:1314`).
+
+   **THE GENERAL RULE, from Gamma 2026-08-01 — this supersedes memorising individual fields.**
+   `Telemetry.ResetWindow()` (`Telemetry.cs:2145`) **is the manifest.** Three categories, not
+   interchangeable, and checkable in one command that does not require trusting anybody:
+   `grep -n 'ResetWindow()\|\.Reset()' Telemetry.cs`
+   - named in the reset block → **window aggregate**, covering the frames since the last flush
+   - computed in the emit path from live game state → **instantaneous point sample at window close**
+   - **a static with no reset partner → session-cumulative**, whose per-window meaning is a *difference*
+     nobody computes for you
+
+   **The third row is the trap and it has already bitten.** `animCulled` was session-cumulative with no
+   raid reset, which is the whole reason it exceeded the bot population from raid 2 on. `CORPUS.md`
+   records that as a data defect; it is **a classification error wearing a data defect's clothes.**
+   And the corollary that costs statistics rather than sanity: **category is a property of storage, not
+   of name.** `awakeCalls` and `bots.awake` read as one quantity in two units and are an aggregate and a
+   point sample — regressing one on the other attenuates toward zero, so **the failure mode is a real
+   effect reported as a null.** That is exactly `alpha-animator-slope.py`.
    Regressing a window aggregate on them attenuates the slope. The frame-weighted aggregates already exist
    and needed no new telemetry: `(awakeCalls − deadCalls) / frames` for live non-paused,
    `(awakeCalls + pausedCalls − deadCalls) / frames` for all live. Denominator verified: `D / frames`
@@ -121,8 +194,20 @@ Both wait on within-raid contrasts on identified builds.
 
 ## OPEN, NOT MINE
 
-- **Beta**: whether the remaining unattributed builds are recoverable. `20260728-225956-marathon` came out
-  as `e6cca83` — the *only surviving candidate*, not proven, since 7 artifacts have no deploy record.
+- **Beta — CLOSED, and the attribution is THINNER than this file used to say.** `analysis/attribute-log.py`
+  (`3e46ffb`) now reproduces the identification of `e6cca83` for `20260728-225956-marathon`, exits non-zero
+  on ambiguity, and carries the reasoning rather than the answer. **Writing it down changed what Beta
+  believed about it**, which is the argument for asking: it is *not* a broad statistical match. The header
+  line alone suffices, and within it **`deferToAiMods` eliminates 20 of 21 candidates by itself.** The
+  identification is a **two-sided bracket on shipping dates** — no `commit` key means built before that
+  field shipped, `deferToAiMods` present means built after that flag shipped — and it is unique only
+  because those two dates happen to be adjacent. **Real identification, and thin. Anyone quoting it says
+  so.** Build time eliminates nothing and is the weakest leg: `mtime` is the artifact file's last-write
+  time, not the PE TimeDateStamp, so for a copied artifact it is an upper bound.
+- **Also Beta's, affecting anyone reading `build-fields.json`:** a **fifth false-absence class** — the
+  extractor's two-character minimum means `n`, `t`, `x`, `y`, `z` are absent from every record while
+  appearing in every log. Named in `semantics.fields` and the JSON regenerated, output diffed on disk
+  rather than trusted.
 - **Gamma**: `updateManual.deadCalls` is identically 0 across 205 windows while `bots.deadAwake` is > 0 in
   65 of them — twelve corpses on the Streets roster for six consecutive windows. Both call sites read the
   same `bot.IsDead` on `BotOwner`, so it is one expression answering differently in two contexts, not two
@@ -131,6 +216,23 @@ Both wait on within-raid contrasts on identified builds.
 - **Also Gamma's**: `standByTransitions` counters live inside the disabled pump, so mod-off logs read
   `slept ≡ woken ≡ 0` structurally. That was one of my two supports for the Factory conclusion and it was
   vacuous; Factory stands on `bots.asleep = 0` from the census, which is valid.
+
+  **AND THE DEFECT IS WORSE THAN THAT — THE BLOCK IS SPLIT ALONG SUB-COUNTER LINES** (Gamma, verified at
+  source 2026-08-01). `woken`/`wokenMs`/`slept`/`sleptMs` are **our pump**
+  (`BotStandByUpdatePatch.cs:222,389`) and are identically zero when it is off; `diedAwake`/`diedAsleep`
+  are **ungated** (`BotLogPatches.OnDead:242`) and live in every arm. **So a reader sanity-checking the
+  block sees nonzero numbers and concludes the zeros are real — the liveness check passes on a different
+  sub-counter, inside one JSON object where nothing marks the six numbers as having different
+  provenance.** My vacuous support was the visible cost; this is the mechanism that produces the next one.
+  General form: **a counter living inside the feature it measures cannot distinguish "feature off" from
+  "feature on, nothing happened."** `AwakeAge` is the counter-example and the reason it is fixable — its
+  spans are driven from the `StandByType` *setter*, so they see every transition whatever caused it.
+- **`deadCalls`: THE NEXT MOVE IS NOT ANOTHER LOG QUERY** (Gamma). Six mechanisms are eliminated,
+  including Gamma's own leading hypothesis (Unity fake-null on a destroyed `BotOwner`, killed because the
+  census applies the same null guard at `Telemetry.cs:1801` and would be blind too, so `deadAwake > 0`
+  refutes it). What remains is a property of `BotOwner.IsDead` itself. **Every instinct says query harder
+  and the corpus has said everything it can** — decompile `BotOwner.IsDead` in the 4.0.13 assembly, or
+  add a second death predicate *beside* `deadCalls`, never instead.
 - **UNOWNED AND POSSIBLY SHIP-BLOCKING — raised by Delta 2026-08-01, assign this before the A/B.** Delta's
   real line on the raid-1 UpdateManual ramp is not the ramp: it is that on `646c45dd` the **LEVEL started
   3× high as well**, which content does not explain. **If raid 2 reproduces that on the current build it is
