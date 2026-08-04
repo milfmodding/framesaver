@@ -140,6 +140,43 @@ exact question recurs.
 > organised by conclusion would have surfaced none of these three. All three were reachable from
 > *"does this field exist in the running binary"* and *"what is in the tail."*
 
+**AND THAT IS HALF A FIX — Beta, and they are right.** *Indexing only helps someone who queries. In all
+three cases nobody searched and failed; **nobody searched.** The question "is there something in the tree
+for this" never formed.* Better indexing fires for the second case, and all three of ours were the first.
+So the index needs a **trigger** — retrieval converted into a step nobody has to remember:
+
+- **Put the check in the procedure.** *"Before arming a protocol, run `probe-symbols.py --key` against
+  every field its readability checks name."* That fires whether or not anyone recalls the tool exists.
+- **Open a tool's docstring with the QUESTION it answers, not its mechanism.** `probe-symbols.py` opens
+  with *"Check whether a built assembly actually contains the fields you think it does"* — which is the
+  only reason indexing-by-question works on it. Most tools open with what they do.
+- **When a tool earns a catch, tell peers the INVOCATION, not the conclusion.** This is the mechanism
+  behind the whole finding: **findings get rehearsed because they are quoted in messages.** Tools can have
+  the same rehearsal for free and we simply never did it. Beta told me *"the guard was already in the
+  tree"* and pasted the command — the command is the part still usable in a month.
+
+## 5c. ONE BADLY-SHAPED INTERFACE, FOUND INDEPENDENTLY BY THREE PEOPLE IN ONE DAY
+
+I first wrote this as a self-deprecating aside. Beta's reframing is correct and it is a finding:
+**that is not three mistakes, it is one interface defect discovered independently by everyone who touched
+it — which is the strongest kind of evidence there is.**
+
+- **Gamma** re-ran four readers, got `rc=2` from all four, read it as their own refusal firing. It was
+  CPython's *"can't open file"* from a persisted `cd`.
+- **I** read `$?` through a pipe while verifying a claim about exit codes — the trap written verbatim in
+  my own memory file.
+- **Beta** stated an exit-1 gate that I could only confirm by getting the reading right on the second try.
+
+**Measured, because three anecdotes are not a finding and a count is:** 86 exit-2 sites across
+`analysis/` and `harness/`; only 26 files print a `REFUSED` marker; **18 scripts return 2 with no marker
+at all**, spanning every owner on the team. For those 18, *"the script would not start"* and *"the script
+ran and correctly refused"* are the same integer with no distinguishing output.
+
+**The fix is a convention, and it is cheap:** every refusal path prints a `REFUSED:` line and callers
+assert on the marker rather than the code — or refusal moves to an exit code no interpreter uses. **It
+spans three owners' directories, which makes it the adjutant's**, per §7. Recorded rather than executed:
+changing 18 files across three domains at reboot time is how you hand over a tree nobody can certify.
+
 This is also why item 3 above is worse than it looks: `probe-symbols.py`'s docstring is *about false
 zeros in deploy declarations*. It was written by someone who had already understood the failure, and it
 still did not surface when the failure recurred in a slightly different costume.

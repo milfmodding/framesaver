@@ -331,6 +331,17 @@ If they hit one, the gap is in this file and not in them.
   **vanilla-relative** phrasing. Lighthouse, which binds, carries four mod-on events — three on the
   unidentified `225956` build, one on `646c45dd`. **Whether our mechanism threatens or helps the tail is
   established in neither direction.**
+- **MINE, BECAUSE IT SPANS EVERY DIRECTORY — the exit-2 collision.** `86` exit-2 sites across `analysis/`
+  and `harness/`; only 26 files print a `REFUSED` marker; **18 return 2 with no marker at all**
+  (`alpha-headroom`, `alpha-wake-cost`, `beta-build-fields`, `probe-symbols`, `delta-ai-ceiling`, all six
+  `read-*`, and more). CPython also exits 2 for *"can't open file"*, so on those 18 **"it would not start"
+  and "it ran and correctly refused" are the same integer with no distinguishing output.** Found
+  independently by Gamma, Beta and me in one day, which is why it is a finding and not three anecdotes.
+  **Fix: every refusal path prints `REFUSED:` and callers assert on the marker, not the code** — or move
+  refusal to a code no interpreter uses. Not executed: 18 files across three owners at reboot time is how
+  you hand over a tree nobody can certify.
+- **BEFORE ARMING ANY PROTOCOL** — `probe-symbols.py --key <installed dll> <every field its readability
+  checks name>`. This is in the procedure rather than in anyone's memory on purpose; see the A/B section.
 - **Unowned**: 8 of 13 posted roles have never appeared in 25 logs — `bossKojaniy`/`followerKojaniy`
   (Shturman, and Woods was its one chance), `bossKillaAgro`, and all five Cultist roles. Spawn-chance
   gated, so replaying the marathon does not fix it.
