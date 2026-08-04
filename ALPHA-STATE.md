@@ -17,10 +17,50 @@ needs resisting is sweeping a reader or re-checking a population with no new dat
 **1. The coupled cull A/B first.** `protocol-anim-cull.ini`. ABABAB, 120 s boxes, both sleep-skips pinned
 false in every arm.
 
-**THIS IS A CONSTRAINT, NOT A PRIORITY.** `bin/Release` now contains the decoupled-cull flag, so the
-moment Beta deploys for the reload test **the A/B build is gone**. A/B needs its data first or we deploy
-twice. If there is time for only one thing, it is the A/B — it answers the release question; decoupling
-improves a mechanism we have not yet sized.
+**⚠ THE CONSTRAINT THAT USED TO BE HERE WAS BACKWARDS. Beta found it 2026-08-01; I had relayed it four
+times including to Sophia, and it survived into a handoff as the item most likely to break.**
+
+It read: *`bin/Release` contains the decoupled-cull flag, so the moment Beta deploys the A/B build is
+gone — A/B needs its data first or we deploy twice.* **The truth is the reverse: the A/B needs a deploy
+to be readable at all.**
+
+`protocol-anim-cull.ini`'s check #1 reads **`animCulledEngine`**, the field that certifies *arm delivery*
+— that the cull arm reached the engine rather than only the config. **It does not exist in the installed
+build.** Verified three independent ways, each with a positive control:
+
+- UTF-16 literal **absent** from the installed DLL (`bc90b76`), **present** in `bin/Release` (`aeec0d4`).
+  Control: `animCulled` and `animCulledOffScreen` present in both, so the encoding and the probe work.
+- **0 of 594 in-raid windows across 25 logs carry it.** Control: `animCulled` in 594 of 594.
+- Introduced in `86a13bb`, after the gate — as was the protocol itself (`919204c`).
+
+Check #3 (`animCulledOffScreen`) *is* installed and check #2 (`bots.awake`) is fine, so it is one of
+three — but it is the one that distinguishes **"the cull worked"** from **"the config flipped and nothing
+happened."** Without it the A/B falls back on `animCulled`, which is *our intent*, which is the
+instrument-reads-intent flaw `animCulledEngine` was written to fix. **Running the A/B on the installed
+build yields a clean-looking, uninterpretable result.** Deploying twice was never the risk.
+
+**SECOND HAZARD ON THE SAME BUILD.** The installed build still carries the user-facing setting
+**`Force fast body animator`** — removal is `299fd86`, also after the gate. Verified at descriptor
+resolution: the string is present in the installed DLL and absent from `bin/Release`. The protocol's
+reasoning explicitly assumes it is gone. Live config has it `false`, so it is **not armed**, but on this
+binary a stray flip silently voids the cull *and* the inert-detection guard that would catch it
+(`aeec0d4`) is also undeployed. **Two guards for that failure, neither in the running binary.**
+
+**THE ORDER, RESTATED.** Build a candidate off `aeec0d4`; **Delta reviews the coupled-path diff before it
+ships** (`SleepingBotAnimatorPatch.cs` is +304 lines between the gate and `aeec0d4`). Then the A/B, then
+the reload test. Cost of doing it right: one review, no raid. Cost of not: the A/B runs and its
+arm-delivery check has no instrument.
+
+**Beta will not certify behavioural equivalence on the coupled path and has not claimed it.** The
+decoupled flag defaults off and the fast-animator removal deletes a path Sophia says breaks the game, so
+equivalence is *plausible* — a review conclusion, not a deploy announcement. `f218743` registered that
+the prediction holds only for a **coupled** build; **whether that registration survives a new binary is
+Sophia's call.**
+
+**THE LESSON, and it is one of mine used against me:** I relayed a build-state constraint I never
+verified, in the domain of the person who owns builds, because it arrived stamped with authority he had
+earned elsewhere. **Verification is not transitive.** The cheapest possible check — does the field the
+test depends on exist in the running binary — is three lines and I never ran it.
 
 **2. The decoupled reload test.** `harness/RELOAD-OBSERVATION-TEST.md`. Procedure written before the build
 existed and corrected three times by Beta. Non-negotiable parts: **turn away, never use cover** (frustum
