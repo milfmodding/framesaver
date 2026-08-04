@@ -261,3 +261,30 @@ So the more useful thing I can leave is a prediction of where a fresh Beta goes 
 
 Test the prediction rather than the summary: if a fresh Beta avoids those four, the handoff
 worked, and if they do not, the gap is here and not in them.
+
+### The gap that produced §0, which is not a person's fault and will recur
+
+Worth more than the apportioning of blame that followed it. **The inverted constraint was not
+checkable inside either owner's domain.** It was a claim about a *protocol document* (Alpha's)
+joined to a claim about *binary contents* (mine), and the check that settles it — does the field
+this test depends on exist in the running binary — belongs to neither of us. So each of us
+verified our own half, correctly, and the join went unexamined for two days.
+
+Alpha's read is that a hub stops looking at the boundary it trusts, and that is true. But the
+sharper form is that **nobody owned the join**, and clean ownership is what made it invisible:
+the more crisply the domains are split, the more natural it is for each side to treat the other's
+half as settled.
+
+Concretely, and cheaply — **and the tool already exists, so this needs no new code**:
+
+```
+python analysis/probe-symbols.py --key <installed dll> <every field the readability checks name>
+```
+
+On the gated build that prints `MISSING animCulledEngine — in neither heap` and exits 1. It was
+sitting in `analysis/` the whole time, written for exactly this class of question, and neither of
+us thought to point it at a protocol. **Run it before arming any protocol.** It is the only guard
+here that does not depend on someone choosing to look across a boundary.
+
+The reasoning on both sides of that boundary was right. What went unchecked was the thing tying
+it to this machine — which is the general shape of every expensive error on this project.
