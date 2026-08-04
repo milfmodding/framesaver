@@ -10,15 +10,55 @@ THIS FILE DOES NOT FIT ANYTHING. The contrast is
 alpha-animator-slope.py. What is missing is anything that says the run was
 INTERPRETABLE before that fit runs, and the animator cull is the one lever where
 the guard field returned its own success value: `animCulled` is
-`CulledLastFrame`, `Plugin.CullSleepingBotAnimators.Value ? Sleeping.Count : 0`,
-so it reports what we ASKED for and drops to 0 the instant the flag flips
-whether or not the engine let go.
+`CulledLastFrame`, which is `Marked().Count` -- the `Sleeping` set under
+`CullSleepingBotAnimators`, the whole live roster under `CullAllBotAnimators`,
+and empty otherwise. So it reports what we ASKED for and drops to 0 the instant
+the flag flips whether or not the engine let go.
 
-WHAT `animCulledEngine` ADDS, AND THE PART THAT IS EASY TO OVERSTATE. It walks
-the same `Sleeping` set as its two neighbours -- same population, same
-denominator -- but is not gated on the config flag, so its zero does not follow
-from the feature being off. That buys three different things depending on the
-arm, and only two of them are available in `protocol-anim-cull.ini`:
+WHAT `animCulledEngine` ADDS, AND THE PART THAT IS EASY TO OVERSTATE.
+
+**CORRECTED 2026-08-04. THIS PARAGRAPH ASSERTED A FALSE PREMISE FROM 383f6f0
+UNTIL TODAY** -- that the field "walks the same `Sleeping` set as its two
+neighbours, same population, same denominator." It does not, and has not since
+`aeec0d4`, which widened it deliberately and said so at
+`SleepingBotAnimatorPatch.cs:347`. `git log -S "AppendLiveBots(bots)"` names
+that commit and no other. The reader was never updated; the emitter documented
+the change; both are ancestors of HEAD. Found by Gamma, 2026-08-04.
+
+`CulledEngine` walks the WHOLE LIVE AI ROSTER -- `AllAlivePlayersList` filtered
+by `IsLiveBot` -- and never touches `Sleeping`. So the populations are
+ARM-DEPENDENT, and the arm this protocol tests is the row where they differ:
+
+  coupled cull (Sleeping)   animCulled = Sleeping subset, engine = live roster
+  decoupled  (CullAll)      both = live roster
+  both off                  animCulled = empty,           engine = live roster
+
+They coincide in VALUE in the coupled arm only while nothing carries
+`CullCompletely` that we did not mark -- which is exactly the latch. So the one
+condition that separates the populations is the one the field exists to detect.
+
+**AND SECTION 3 CANNOT SEE IT. MEASURED, NOT ARGUED, 2026-08-04.** Both cull-arm
+tests are lower bounds (`>= DELIVERY_MIN`), so a ratio above 1 passes trivially;
+`<= CONTROL_MAX` guards the CONTROL arm only. Fabricated coupled-arm windows
+through this reader, with a positive control proving it can fail:
+
+    engine = 0.0 x marked -> engine/animCulled 0.000  FAIL, exit 1   (control)
+    engine = 1.0 x marked -> engine/animCulled 1.000  ok,   exit 0
+    engine = 3.0 x marked -> engine/animCulled 3.000  ok,   exit 0
+
+Three times the marked population still culled by the engine reads `ok` and
+`Readable`. Section 4 then abstains, because the protocol pins `skipLate` off
+and a latch "CANNOT occur" -- so the signal has two places to surface and
+neither carries it. **A PASS HERE MEANS THE WRITE LANDED AT LEAST 90% OF WHAT WE
+MARKED. IT DOES NOT MEAN THE CULL IS CLEAN.** Do not quote it as more.
+
+An upper bound on `engine/asked` is deliberately NOT added in this commit: it is
+a behaviour change to a pre-registered gate hours before it runs, and the last
+guard added to a shipping file here refused every good case and was caught only
+by a real run. It needs a negative control, which means an actual clean A/B.
+
+That buys three different things depending on the arm, and only two of them are
+available in `protocol-anim-cull.ini`:
 
   ARM DELIVERY   cull on  -> engine count tracks `bots.asleep`
                  cull off -> engine count near 0
