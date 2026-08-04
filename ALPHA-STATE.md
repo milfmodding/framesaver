@@ -343,12 +343,38 @@ If they hit one, the gap is in this file and not in them.
   text, opposite meanings** — one is a real refusal, the other is the script never running. A caller
   asserting on output is fooled as thoroughly as one asserting on the code.
 
-  **FIX: move refusal to an exit code no interpreter uses.** Not a convention — **four of us hit this in
-  one day** (Gamma's typo-vs-refusal, my `$?` through a pipe, Beta's `$LASTEXITCODE` of −1 after a
-  PowerShell pipe *while checking this finding*, and the 18 files), nobody was careless, and one of us had
-  written the warning an hour before. **A rule that fails on its own author within the hour is a hope, not
-  a rule.** Recorded, not executed: 18 files across three owners at reboot time is how you hand over a
-  tree nobody can certify.
+  **FIX, decided and registered by Delta (`9c62ac0`): a refusal is ALWAYS BOTH HALVES — first output line
+  `REFUSED: <reason>`, then `sys.exit(86)`.** Each half alone has a measured collision (the tokenless 18;
+  the errno twins above) and neither can collide alone. 86 sits in the unclaimed 79–125 band, nothing
+  wraps to it, and *"eighty-sixed"* means refused service — which is the tiebreak that matters, because my
+  own census proved **a rule that must be remembered fails on its own author within the hour.**
+
+  **BUT 86 DOES NOT FIX THE TRAP BETA AND I FELL INTO, AND THEY ARE TWO DEFECTS, NOT ONE.** Measured here
+  tonight in PowerShell 5.1:
+
+      python r86.py                            -> 86
+      python r86.py | Select-Object -First 1   -> -1     EARLY-TERMINATING
+      python r86.py | Select-Object -Last 1    -> 86
+      python r86.py | Out-String               -> 86
+      python r86.py | ForEach-Object {$_}      -> 86
+      python r86.py | Where-Object {$true}     -> 86
+      Git Bash:  $? through a pipe -> 0 (tail's);  ${PIPESTATUS[0]} -> 86
+
+  **Delta and Beta are both right about different pipes.** 86 survives ordinary pipes verbatim, so Delta's
+  end-to-end claim holds; Beta's −1 came specifically from `Select-Object -First 2`, which **stops the
+  upstream process**, and **no exit code of any value survives that.** So:
+  - **Defect 1** — refusal indistinguishable from failure-to-run. **Fixed by 86 + the token.**
+  - **Defect 2** — an exit code destroyed by the *reader*. **Not fixed by any code.** Rule: **capture the
+    status before any pipe**, or use `${PIPESTATUS[0]}` / `$LASTEXITCODE` with no early-terminating cmdlet
+    in between. Never `-First`.
+
+  Third time today that *"of what?"* was the whole answer, this time about a **shell behaviour** rather
+  than a data population.
+
+  **Migration recorded, not executed** (Delta's order): the tokenless 18 first, one owner per commit;
+  `check-modoff.py`'s documented exit-2 contract moves only with its callers in the same commit; new
+  scripts born conforming. **Prose hazard:** the census found *86 exit-2 sites* and the new code is *86*.
+  Unrelated. Never write those two numbers in one sentence.
 - **BEFORE ARMING ANY PROTOCOL** — `probe-symbols.py --key <installed dll> <every field its readability
   checks name>`. This is in the procedure rather than in anyone's memory on purpose; see the A/B section.
 - **Unowned**: 8 of 13 posted roles have never appeared in 25 logs — `bossKojaniy`/`followerKojaniy`
