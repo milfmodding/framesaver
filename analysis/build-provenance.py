@@ -16,10 +16,16 @@ knows which commit it came from. Ask it.
   build-provenance.py <dll> [<dll> ...]   report each one's commit
   build-provenance.py --compare <a> <b>   same source or not
 
-Exit 0 if all inputs are readable and, under --compare, from the same
-commit. Exit 1 on a real difference, 2 when it cannot tell -- an
-unparseable input is an error, never a verdict, because "cannot tell"
-and "differs" have opposite consequences for a freeze.
+Exit 0 if all inputs are readable and, under --compare, BYTE-IDENTICAL
+and from the same commit. Exit 1 on a real difference, 2 when it cannot
+tell -- an unparseable input is an error, never a verdict, because
+"cannot tell" and "differs" have opposite consequences for a freeze.
+
+Same commit but different bytes is a DIFFERENCE, not a pass, and that is
+a deliberate reversal (2026-08-04). Framesaver.csproj:13 sets
+<Deterministic>true</Deterministic>, so two builds of one commit are
+byte-identical in this environment; a difference means the inputs moved
+while the commit did not. See the note in compare().
 
 WHAT THE STAMP DOES NOT TELL YOU, and it is the whole reason a freeze
 still needs discipline: the SDK records HEAD at build time, not the
@@ -134,15 +140,37 @@ def compare(a, b, repo):
         print('  and byte-identical.')
         return 0
 
-    # Same commit, different bytes. Report it rather than ruling on it:
-    # the remaining volatile fields are the timestamp, MVID and debug
-    # directory, and enumerating them was tried and abandoned -- a
-    # blocklist of what does not matter can only omit.
+    # SAME COMMIT, DIFFERENT BYTES. This used to print "expected for two
+    # builds of one commit: timestamp, MVID and debug directory move. Not a
+    # behaviour difference by itself." and return 0.
+    #
+    # THAT WAS BACKWARDS FOR THIS PROJECT, and it argued the reader out of
+    # the one observation worth investigating. Framesaver.csproj:13 sets
+    # <Deterministic>true</Deterministic>, under which the MVID and the PE
+    # timestamp are functions of the compilation INPUTS rather than of the
+    # clock. Two builds of one commit are byte-identical - measured, twice,
+    # 2026-08-04, different output paths five minutes apart.
+    #
+    # So a difference here is not noise. It means the inputs differed while
+    # the commit did not: a different SDK, a different reference assembly, a
+    # different source path, or a working tree that does not match what git
+    # reported. That last one is the stale-incremental-build class arriving
+    # from the other side, and the old text would have talked you out of it.
+    #
+    # Exit 1, per this file's own contract - "a real difference". It is not
+    # a claim that the IL differs; it is a refusal to call it noise.
+    #
+    # BOUNDED: determinism makes output a function of inputs, so this is
+    # identity WITHIN an environment, not across machines. A different SDK
+    # on another box legitimately produces different bytes for one commit.
     n = sum(1 for x, y in zip(da, db) if x != y) + abs(len(da) - len(db))
     print('  but %d bytes differ at sizes %d and %d.' % (n, len(da), len(db)))
-    print('  Expected for two builds of one commit: timestamp, MVID and')
-    print('  debug directory move. Not a behaviour difference by itself.')
-    return 0
+    print('  This project builds DETERMINISTICALLY (Framesaver.csproj:13), so')
+    print('  two builds of one commit are normally byte-identical. A difference')
+    print('  means the INPUTS differed - SDK, references, source paths, or a')
+    print('  tree that does not match what git reported. Investigate; do not')
+    print('  file this as timestamp noise.')
+    return 1
 
 
 def main():
