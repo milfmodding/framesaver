@@ -106,6 +106,7 @@ namespace Framesaver
         public static ConfigEntry<bool> TelemetryEnabled;
         public static ConfigEntry<string> RunTag;
         public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> ProtocolKey;
+        public static ConfigEntry<bool> ProtocolAutoStart;
         public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> MarkKey;
         public static ConfigEntry<float> TelemetryWindow;
         public static ConfigEntry<float> SpikeEventMs;
@@ -267,6 +268,32 @@ namespace Framesaver
                     + "after it. Replaces changing knobs through the F12 overlay, which moves the view, "
                     + "costs a large IMGUI draw, and lands the change mid-window. Does nothing and says so "
                     + "if no protocol is loaded - see framesaver.protocol.ini."));
+
+            // OFF BY DEFAULT, and not because the trigger is doubtful - it is because the ONE
+            // question this feature raises is not ours to answer. On the manual trigger the operator
+            // presses when she is ready; on this one the first arm begins the instant the match
+            // starts. Those differ by however long she would have taken, and that is a preference,
+            // not a defect. Defaulting off means nobody's existing protocol changes behaviour on a
+            // deploy, and turning it on is a one-time config edit rather than a per-raid act - which
+            // is what "remove dependencies on me" actually asked for.
+            //
+            // The spawn-in worry that killed the MatchmakerFinalCountdown hook does NOT apply here.
+            // That hook fired BEFORE the fade-in, so arms would tick through a frame nobody would
+            // want measured. This fires on GameStatus.Started, and every protocol worth running
+            // already opens with a warmup arm for exactly this reason - protocol-anim-cull.ini gives
+            // it 180s and says so. The warmup IS the delay, so a second delay setting would be a
+            // knob duplicating a step the file already has.
+            ProtocolAutoStart = Config.Bind(
+                "3. Telemetry", "Auto-start protocol at raid start", false,
+                new ConfigDescription(
+                    "Advance the protocol to its first step automatically when a raid starts, instead "
+                    + "of waiting for the first press of the protocol step key. Every later step is "
+                    + "already automatic when the protocol file sets @seconds, so this removes the "
+                    + "last manual act from a timed run. Fires once per raid, on the transition into "
+                    + "the raid proper - the same GameStatus.Started gate the telemetry uses - and "
+                    + "only when the protocol has not already been started by hand. Does nothing if "
+                    + "no protocol is loaded. Leave this off if you want to choose the moment the "
+                    + "first arm begins; the file's warmup step is the usual way to buy that time."));
 
             // Adjacent to the protocol key, but the failure modes are opposites and
             // that is what sets the default apart. A missed protocol press voids an
