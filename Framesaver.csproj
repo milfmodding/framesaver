@@ -104,6 +104,12 @@
       <HintPath>$(ManagedDir)\UnityEngine.InputLegacyModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- NavMesh.SamplePosition, for validating a computed grid position before handing it to
+         BotCreationDataClass.AddPosition - see DistanceGridSpawn.cs. -->
+    <Reference Include="UnityEngine.AIModule">
+      <HintPath>$(ManagedDir)\UnityEngine.AIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <!--
