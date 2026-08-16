@@ -595,7 +595,11 @@ namespace Framesaver.Patches
     {
         protected override MethodBase GetTargetMethod()
         {
-            return AccessTools.Method(typeof(GameWorld), "smethod_2");
+            // 4.1: was "smethod_2"; the closure GameWorld.PlayerTick invokes now carries the
+            // CG_PlayerTick name. Mapped by call site (PlayerTick -> smethod_2 on 4.0.13,
+            // PlayerTick -> CG_PlayerTick on 4.1), not by name - three same-shaped closures
+            // made name-shape matching impossible.
+            return AccessTools.Method(typeof(GameWorld), "CG_PlayerTick");
         }
 
         [PatchPrefix]
