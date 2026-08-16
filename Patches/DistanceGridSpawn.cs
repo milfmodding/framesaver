@@ -155,19 +155,19 @@ namespace Framesaver.Patches
         {
             try
             {
-                BotProfileDataClass profileData = new BotProfileDataClass(
+                GetProfileDataParams profileData = new GetProfileDataParams(
                     EPlayerSide.Savage, WildSpawnType.assault, BotDifficulty.normal, 0f);
 
                 // Matches DebugSpawnAnyway's choice, not arbitrarily - assault/Savage is NOT one of
                 // RoleSleepDistance's ~13 posted roles, so every spawned bot uses the plain 130/150m
                 // wake/sleep band this feature exists to test, rather than a role-specific 350m one
                 // that would make several rings meaningless. Confirmed 2026-08-08, see the room log.
-                BotCreationDataClass data = await BotCreationDataClass.Create(
-                    profileData, spawner.BotCreator, slots.Count, spawner);
+                BotCreationData data = await BotCreationData.Create(
+                    profileData, spawner._botCreator, slots.Count, spawner);
 
                 // corePointId -1: guaranteed not to match a real AICorePoint.Id, which are
                 // non-negative and generated per map. AICorePointHolder.GetCorePoint returns null
-                // for an unmatched id - no exception - and BotCreatorClass.method_2 passes that
+                // for an unmatched id - no exception - and BotCreatorClient.method_2 passes that
                 // straight through as the bot's cover-point reference. Worst case is a bot with no
                 // cover reference, not a crash. Confirmed 2026-08-08 against the live assembly.
                 for (int i = 0; i < slots.Count; i++)

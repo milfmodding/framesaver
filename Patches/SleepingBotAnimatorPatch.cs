@@ -178,8 +178,8 @@ namespace Framesaver.Patches
             }
 
             // Guard against a pooled Player having been recycled onto a different bot since we recorded it.
-            BotOwner owner = standBy.BotOwner_0;
-            if (owner == null || owner.GetPlayer != player || standBy.StandByType_1 != BotStandByType.paused)
+            BotOwner owner = standBy._owner;
+            if (owner == null || owner.GetPlayer != player || standBy.standByType != BotStandByType.paused)
             {
                 Sleeping.Remove(player);
                 return false;
@@ -234,7 +234,7 @@ namespace Framesaver.Patches
         /// </summary>
         internal static void SetSleeping(BotStandBy standBy, bool sleeping)
         {
-            BotOwner owner = standBy != null ? standBy.BotOwner_0 : null;
+            BotOwner owner = standBy != null ? standBy._owner : null;
             Player player = owner != null ? owner.GetPlayer : null;
             if (player == null)
             {
@@ -429,7 +429,7 @@ namespace Framesaver.Patches
         /// </summary>
         internal static bool WriteReachesUnity(Type animator)
         {
-            return animator != null && !typeof(FastAnimatorProcessorClass).IsAssignableFrom(animator);
+            return animator != null && !typeof(FastAnimatorSystem.FastAnimatorProcessor).IsAssignableFrom(animator);
         }
 
         public static void ReadAndReset()
@@ -472,7 +472,7 @@ namespace Framesaver.Patches
 
             try
             {
-                ApplicationConfigClass config = BackendConfigAbstractClass.Config;
+                ApplicationConfig config = AppEnvironment.Config;
                 Inert = config != null && config.UseBodyFastAnimator;
             }
             catch (Exception)
@@ -526,7 +526,7 @@ namespace Framesaver.Patches
             // AwakeAge.Woke is add-if-absent, so the un-paused values that are
             // not wakes - active to goToSave and back - leave a running span
             // alone.
-            BotOwner owner = __instance != null ? __instance.BotOwner_0 : null;
+            BotOwner owner = __instance != null ? __instance._owner : null;
             if (paused)
             {
                 AwakeAge.Ended(owner);

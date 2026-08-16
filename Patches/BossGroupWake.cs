@@ -40,7 +40,7 @@ namespace Framesaver.Patches
             return boss != null
                    && !boss.IsDead
                    && boss.StandBy != null
-                   && boss.StandBy.StandByType_1 != BotStandByType.paused;
+                   && boss.StandBy.standByType != BotStandByType.paused;
         }
 
         /// <summary>

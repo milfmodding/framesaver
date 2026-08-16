@@ -16,7 +16,7 @@ namespace Framesaver.Patches
     /// <summary>
     /// Caps how long AsyncWorker's completion drain may run in a single call, deferring the rest to the next one.
     ///
-    /// GClass1516.CheckForFinishedTasks empties the whole completion queue in one unbounded loop. Each queued
+    /// Diz.Utils.TaskWorker.CheckForFinishedTasks empties the whole completion queue in one unbounded loop. Each queued
     /// item is a TaskCompletionSource.SetResult, and TaskCompletionSource runs its continuations inline unless
     /// told otherwise - so the entire downstream async method body executes right there, on the main thread,
     /// inside whichever phase called the drain. AsyncWorker calls it from both Update and FixedUpdate.
@@ -251,7 +251,7 @@ namespace Framesaver.Patches
                 if (inner != null)
                 {
                     // Everything in DataHandlerClass funnels through the same two closures, so the method name
-                    // alone says "a backend request" and nothing more. The endpoint is on the Class312 the
+                    // alone says "a backend request" and nothing more. The endpoint is on the BackendRequestParams the
                     // closure captured.
                     return Name(inner.Method) + DescribeRequest(inner.Target);
                 }
@@ -265,7 +265,7 @@ namespace Framesaver.Patches
         }
 
         /// <summary>
-        /// Pulls the endpoint and payload size off a captured Class312 backend request, if there is one.
+        /// Pulls the endpoint and payload size off a captured BackendRequestParams backend request, if there is one.
         /// Also reports any large captured string, which for the DataHandlerClass parse closures is the raw
         /// response body - the number that says whether this was a big response or merely a slow one.
         /// </summary>
@@ -281,13 +281,13 @@ namespace Framesaver.Patches
                 FieldInfo[] fields = FieldsOf(closure.GetType());
                 string endpoint = null;
                 int bodyChars = -1;
-                Class312 backRequest = null;
+                BackendRequestParams backRequest = null;
 
                 for (int i = 0; i < fields.Length; i++)
                 {
                     object value = fields[i].GetValue(closure);
 
-                    Class312 request = value as Class312;
+                    BackendRequestParams request = value as BackendRequestParams;
                     if (request != null && endpoint == null)
                     {
                         backRequest = request;
@@ -319,14 +319,14 @@ namespace Framesaver.Patches
         }
 
         /// <summary>
-        /// The roles this request asked for, dug out of Class312.Params.
+        /// The roles this request asked for, dug out of BackendRequestParams.Params.
         ///
         /// Response size turned out to be a poor predictor of cost: 113 KB took 566 ms in one window and 64 ms
         /// in another, a 9x spread at identical size, with no GC and no heap growth to explain it. The obvious
         /// suspect is what the bytes describe - a PMC with a fully modded weapon builds a far deeper item graph
         /// per character than a scav with a pistol - and the role is the way to test that.
         /// </summary>
-        private static string DescribeWaves(Class312 request)
+        private static string DescribeWaves(BackendRequestParams request)
         {
             try
             {
@@ -336,18 +336,18 @@ namespace Framesaver.Patches
                     return "";
                 }
 
-                // Class19<List<WaveInfoClass>> - a single-field params wrapper.
+                // The single-field params wrapper around the wave list (element was WaveInfoClass, 4.1: CountTypeBotWave).
                 FieldInfo[] fields = FieldsOf(p.GetType());
                 for (int i = 0; i < fields.Length; i++)
                 {
-                    IEnumerable<WaveInfoClass> waves = fields[i].GetValue(p) as IEnumerable<WaveInfoClass>;
+                    IEnumerable<CountTypeBotWave> waves = fields[i].GetValue(p) as IEnumerable<CountTypeBotWave>;
                     if (waves == null)
                     {
                         continue;
                     }
 
                     StringBuilder sb = new StringBuilder();
-                    foreach (WaveInfoClass w in waves)
+                    foreach (CountTypeBotWave w in waves)
                     {
                         if (sb.Length > 0)
                         {
@@ -447,11 +447,11 @@ namespace Framesaver.Patches
     {
         protected override MethodBase GetTargetMethod()
         {
-            return AccessTools.Method(typeof(GClass1516), nameof(GClass1516.CheckForFinishedTasks));
+            return AccessTools.Method(typeof(Diz.Utils.TaskWorker), nameof(Diz.Utils.TaskWorker.CheckForFinishedTasks));
         }
 
         [PatchPrefix]
-        private static bool Prefix(GClass1516 __instance)
+        private static bool Prefix(Diz.Utils.TaskWorker __instance)
         {
             float budget = Plugin.AsyncDrainBudgetMs.Value;
             bool diagnose = Plugin.AsyncDrainDiagnostics.Value;
@@ -475,7 +475,7 @@ namespace Framesaver.Patches
 
             long start = Stopwatch.GetTimestamp();
             double budgetMs = inRaid ? budget : 0d;
-            Queue<Action> queue = __instance.Queue_1;
+            Queue<Action> queue = __instance._finishedCallbacks;
 
             for (;;)
             {

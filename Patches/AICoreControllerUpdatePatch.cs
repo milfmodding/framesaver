@@ -9,13 +9,14 @@ using UnityEngine;
 namespace Framesaver.Patches
 {
     /// <summary>
-    /// Replaces AICoreControllerClass.Update, which drives every bot brain from BotsController.method_0 (itself
+    /// Replaces AICoreController.Update, which drives every bot brain from BotsController.method_0 (itself
     /// subscribed to BaseLocalGame's per-frame UpdateByUnity event).
     ///
     /// Two problems with the original:
     ///
-    /// 1. Leak. HashSet_1 is the pending-removal set. Update drains it into HashSet_0.Remove every frame but
-    ///    never clears it, and method_0 clears HashSet_0 and HashSet_2 while skipping it. Every disposed agent
+    /// 1. Leak. _listToDel is the pending-removal set. Update drains it into _listAgents.Remove every frame but
+    ///    never clears it, and Clear() clears _listAgents and _listOfErrors while skipping it. (4.1 IL
+    ///    re-verified 2026-08-16: identical shape.) Every disposed agent
     ///    is therefore re-walked for the rest of the raid, and - the bigger cost - stays strongly referenced,
     ///    keeping each dead bot's strategy, layers, node dictionary and GameObject alive.
     ///
@@ -30,19 +31,19 @@ namespace Framesaver.Patches
     {
         // Reused across frames; snapshotting also avoids the collection-modified exception vanilla is exposed
         // to when an agent disposes itself mid-iteration.
-        private static readonly List<GClass32> Snapshot = new List<GClass32>(256);
+        private static readonly List<AICoreAgentBase> Snapshot = new List<AICoreAgentBase>(256);
         private static int _cursor;
 
-        /// <summary>Agents in HashSet_0 as of the last tick.</summary>
+        /// <summary>Agents in _listAgents as of the last tick.</summary>
         public static int LiveAgents;
 
         /// <summary>
-        /// Size of HashSet_1 as observed this tick. With the leak fix off this climbs monotonically for the
+        /// Size of _listToDel as observed this tick. With the leak fix off this climbs monotonically for the
         /// whole raid, which is the leak measured directly.
         /// </summary>
         public static int PendingRemoval;
 
-        /// <summary>Cumulative agents drained out of HashSet_1 since load.</summary>
+        /// <summary>Cumulative agents drained out of _listToDel since load.</summary>
         public static int RemovedTotal;
 
         /// <summary>Brains actually ticked on the last frame - confirms slicing is doing what it claims.</summary>
@@ -50,53 +51,53 @@ namespace Framesaver.Patches
 
         protected override MethodBase GetTargetMethod()
         {
-            return AccessTools.Method(typeof(AICoreControllerClass), nameof(AICoreControllerClass.Update));
+            return AccessTools.Method(typeof(AICoreController), nameof(AICoreController.Update));
         }
 
         [PatchPrefix]
-        private static bool Prefix(AICoreControllerClass __instance)
+        private static bool Prefix(AICoreController __instance)
         {
             return Run(__instance);
         }
 
-        private static bool Run(AICoreControllerClass __instance)
+        private static bool Run(AICoreController __instance)
         {
             bool slice = Plugin.BrainUpdatePeriod.Value > 0f && !ModCompat.SuppressSlicing;
 
             // With every option off this replacement is behaviourally identical to vanilla, so it is still
-            // worth running when telemetry is on: it is the only way to observe HashSet_1 growing during a
+            // worth running when telemetry is on: it is the only way to observe _listToDel growing during a
             // baseline capture. Only bow out entirely when nothing at all wants us here.
             if (!Plugin.FixAgentLeak.Value && !slice && !Plugin.TelemetryEnabled.Value)
             {
                 return true;
             }
 
-            if (!__instance.Bool_0)
+            if (!__instance._enable)
             {
                 return false; // controller stopped, same as vanilla
             }
 
-            PendingRemoval = __instance.HashSet_1.Count;
+            PendingRemoval = __instance._listToDel.Count;
 
             if (PendingRemoval > 0)
             {
-                foreach (GClass32 removed in __instance.HashSet_1)
+                foreach (AICoreAgentBase removed in __instance._listToDel)
                 {
-                    __instance.HashSet_0.Remove(removed);
+                    __instance._listAgents.Remove(removed);
                 }
 
                 if (Plugin.FixAgentLeak.Value)
                 {
                     RemovedTotal += PendingRemoval;
-                    __instance.HashSet_1.Clear();
+                    __instance._listToDel.Clear();
                 }
             }
 
-            LiveAgents = __instance.HashSet_0.Count;
+            LiveAgents = __instance._listAgents.Count;
 
             if (!slice)
             {
-                foreach (GClass32 agent in __instance.HashSet_0)
+                foreach (AICoreAgentBase agent in __instance._listAgents)
                 {
                     SafeUpdate(agent, __instance);
                 }
@@ -106,7 +107,7 @@ namespace Framesaver.Patches
             }
 
             Snapshot.Clear();
-            Snapshot.AddRange(__instance.HashSet_0);
+            Snapshot.AddRange(__instance._listAgents);
 
             int count = Snapshot.Count;
             if (count == 0)
@@ -149,7 +150,7 @@ namespace Framesaver.Patches
         /// Mirrors vanilla's per-agent swallow, including its cap of 10 distinct offenders, but logs the first
         /// few instead of discarding them silently.
         /// </summary>
-        private static void SafeUpdate(GClass32 agent, AICoreControllerClass controller)
+        private static void SafeUpdate(AICoreAgentBase agent, AICoreController controller)
         {
             try
             {
@@ -157,10 +158,10 @@ namespace Framesaver.Patches
             }
             catch (Exception e)
             {
-                if (!controller.HashSet_2.Contains(agent) && controller.Int_0 < 10)
+                if (!controller._listOfErrors.Contains(agent) && controller._errorsPrinted < 10)
                 {
-                    controller.HashSet_2.Add(agent);
-                    controller.Int_0++;
+                    controller._listOfErrors.Add(agent);
+                    controller._errorsPrinted++;
                     Plugin.LogSource.LogError("Framesaver: bot brain update threw - " + e);
                 }
             }

@@ -66,7 +66,7 @@ namespace Framesaver.Patches
             // game's own activation flow, or another mod - is left entirely alone.
             if (__instance.BotState != EBotState.NonActive
                 || __instance.StandBy == null
-                || __instance.StandBy.StandByType_1 != BotStandByType.paused)
+                || __instance.StandBy.standByType != BotStandByType.paused)
             {
                 return true;
             }
@@ -99,14 +99,14 @@ namespace Framesaver.Patches
             }
 
             // Same field the game uses, so BotStandBy.GetHit's 30s post-damage grace period still applies.
-            if (Time.time < __instance.NextCheckTime)
+            if (Time.time < __instance._nextCheckTime)
             {
                 return false;
             }
 
-            __instance.NextCheckTime = Time.time + Plugin.CheckInterval.Value;
+            __instance._nextCheckTime = Time.time + Plugin.CheckInterval.Value;
 
-            BotOwner bot = __instance.BotOwner_0;
+            BotOwner bot = __instance._owner;
             if (bot == null)
             {
                 return false;
@@ -154,7 +154,7 @@ namespace Framesaver.Patches
 
             float distance = DistanceToNearestHuman(bot.Position);
 
-            if (__instance.StandByType_1 == BotStandByType.active)
+            if (__instance.standByType == BotStandByType.active)
             {
                 if (distance > __instance.DIST_TO_SLEEP)
                 {
@@ -189,7 +189,7 @@ namespace Framesaver.Patches
         /// </summary>
         private static void Wake(BotStandBy standBy, BotOwner bot)
         {
-            bool asleep = standBy.StandByType_1 != BotStandByType.active;
+            bool asleep = standBy.standByType != BotStandByType.active;
             bool deactivated = bot.BotState == EBotState.NonActive;
 
             // Already awake, so there is no transition to make or to time.
@@ -379,12 +379,12 @@ namespace Framesaver.Patches
         /// </summary>
         private static void GoToSleep(BotStandBy standBy, BotOwner bot)
         {
-            BotStandByType before = standBy.StandByType_1;
+            BotStandByType before = standBy.standByType;
             long start = Stopwatch.GetTimestamp();
 
             GoToSleepInner(standBy, bot);
 
-            if (standBy.StandByType_1 != before)
+            if (standBy.standByType != before)
             {
                 StandByTransitions.Slept(Stopwatch.GetTimestamp() - start);
             }
@@ -394,25 +394,26 @@ namespace Framesaver.Patches
         {
             if (!Plugin.SleepImmediately.Value)
             {
-                // Vanilla route: enter goToSave, pathfind to the nearest cover point, sleep on arrival.
-                standBy.method_0();
+                // Vanilla route (was method_0, now Pause): enter goToSave, pathfind to the nearest cover
+                // point, sleep on arrival.
+                standBy.Pause();
                 return;
             }
 
-            if (standBy.StandByType_1 == BotStandByType.paused)
+            if (standBy.standByType == BotStandByType.paused)
             {
                 return;
             }
 
-            // Vanilla's method_0/method_1 both refuse to sleep a bot that still needs first aid. Keep that.
+            // Vanilla's Pause/DoStay both refuse to sleep a bot that still needs first aid. Keep that.
             if (bot.Medecine != null && bot.Medecine.FirstAid != null && bot.Medecine.FirstAid.Have2Do)
             {
                 return;
             }
 
-            // Deliberately not calling method_1(): it re-checks Mind.CAN_STAND_BY, which would undo the
+            // Deliberately not calling DoStay(): it re-checks Mind.CAN_STAND_BY, which would undo the
             // "Force for all roles" option. CanDoStandBy was already validated by the caller.
-            standBy.CurPoint = null;
+            standBy._curPoint = null;
             standBy.StandByType = BotStandByType.paused;
 
             if (bot.Mover != null)

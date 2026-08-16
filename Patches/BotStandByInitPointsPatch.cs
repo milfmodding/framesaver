@@ -27,7 +27,7 @@ namespace Framesaver.Patches
                 // Still logged. Standing down is a decision about this bot,
                 // and an unlogged one is indistinguishable from a bot that
                 // never activated.
-                BotLog.StandByAssigned(__instance, __instance.BotOwner_0);
+                BotLog.StandByAssigned(__instance, __instance._owner);
                 return;
             }
 
@@ -49,7 +49,7 @@ namespace Framesaver.Patches
             // Last, so the line records what this bot was actually granted
             // rather than what it was about to be. The grant never changes
             // afterwards - it is decided here, once, for the bot's whole life.
-            BotLog.StandByAssigned(__instance, __instance.BotOwner_0);
+            BotLog.StandByAssigned(__instance, __instance._owner);
         }
 
         /// <summary>
@@ -90,7 +90,7 @@ namespace Framesaver.Patches
             // fight at the global distance. Widening it here rather than
             // exempting the role is what keeps the cost bounded - a bot past
             // the wider distance still sleeps. See RoleSleepDistance.
-            float roleSleep = RoleSleepDistance.For(standBy.BotOwner_0);
+            float roleSleep = RoleSleepDistance.For(standBy._owner);
             if (roleSleep > 0f)
             {
                 standBy.DIST_TO_SLEEP = roleSleep;
