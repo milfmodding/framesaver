@@ -37,7 +37,8 @@ import re
 import sys
 from collections import Counter, defaultdict
 
-DB = r"F:\SPT\SPT4.0.13\SPT\SPT_Data\database\locations"
+# 2026-08-16: SPT-4.1 install; server DB lives under SPT_Runtime there.
+DB = r"F:\SPT\SPT-4.1\SPT_Runtime\SPT_Data\database\locations"
 
 # Telemetry `map` -> database directory. An unknown map REFUSES rather than guessing: a wrong
 # directory yields a confident ceiling belonging to somewhere else.

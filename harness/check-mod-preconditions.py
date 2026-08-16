@@ -28,9 +28,11 @@ import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-INSTALL = r"F:\SPT\SPT4.0.13"
+# 2026-08-16: repointed at the SPT-4.1 install with the port campaign. Note the
+# server subfolder is SPT_Runtime here - 4.0.13 called it SPT.
+INSTALL = r"F:\SPT\SPT-4.1"
 PLUGINS = os.path.join(INSTALL, "BepInEx", "plugins")
-SERVERMODS = os.path.join(INSTALL, "SPT", "user", "mods")
+SERVERMODS = os.path.join(INSTALL, "SPT_Runtime", "user", "mods")
 
 # name -> (client dll/dir fragments, server mod dir fragments). Fragments are matched
 # case-insensitively as substrings, because mod authors capitalise inconsistently and a folder
