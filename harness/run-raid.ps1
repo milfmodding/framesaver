@@ -83,8 +83,14 @@ $ErrorActionPreference = 'Stop'
 
 $HarnessDir  = $PSScriptRoot
 $RepoDir     = Split-Path -Parent $HarnessDir
-$InstallDir  = 'F:\SPT\SPT4.0.13'
-$ServerDir   = Join-Path $InstallDir 'SPT'
+# 2026-08-16: repointed at the SPT-4.1 install for the post-port campaign. The
+# 4.1 server lives under SPT_Runtime\ rather than 4.0.13's SPT\ - every
+# server-derived path below follows from $ServerDir, so this and $InstallDir
+# are the only lines that changed. F:\SPT\SPT4.0.13 stays untouched as the
+# 4.0.13 measurement corpus; nothing builds or deploys against it by default
+# any more (the csproj default moved with this change).
+$InstallDir  = 'F:\SPT\SPT-4.1'
+$ServerDir   = Join-Path $InstallDir 'SPT_Runtime'
 $ServerExe   = Join-Path $ServerDir 'SPT.Server.exe'
 $LauncherExe = Join-Path $ServerDir 'SPT.Launcher.exe'
 $ClientExe   = Join-Path $InstallDir 'EscapeFromTarkov.exe'

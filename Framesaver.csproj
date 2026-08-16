@@ -24,12 +24,13 @@
       still has raw obfuscated type names and five of our targets do not resolve.
     -->
     <!--
-      Normalised, not just joined. Unresolved, this prints as
-      "...\Framesaver\..\..\SPT4.0.13\..." in the deploy line, and the whole
-      point of that line is to name WHICH install unambiguously - there are two
-      on this machine and only this one is ever deployed to.
+      2026-08-16: 4.1 is the canonical version, so the build default now targets
+      the SPT-4.1 install, spelled absolutely rather than relative to the repo.
+      The 4.0.13 tree remains as the read-only measurement corpus; pointing a
+      deploy at it after this change is a deliberate act someone has to type,
+      not a default. (The old relative form is gone with the 4.0.13 default.)
     -->
-    <SptDir>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\SPT4.0.13'))</SptDir>
+    <SptDir>F:\SPT\SPT-4.1</SptDir>
     <ManagedDir>$(SptDir)\EscapeFromTarkov_Data\Managed</ManagedDir>
     <BepInExDir>$(SptDir)\BepInEx</BepInExDir>
 
