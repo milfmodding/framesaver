@@ -120,8 +120,9 @@
       <HintPath>$(ManagedDir)\UnityEngine.InputLegacyModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <!-- NavMesh.SamplePosition, for validating a computed grid position before handing it to
-         BotCreationDataClass.AddPosition - see DistanceGridSpawn.cs. -->
+    <!-- NavMesh.SamplePosition. Sole user was the distance-grid spawn, archived 2026-08-17
+         (not shipping v1; retrievable from history for Leica). Reference kept so the
+         resurrection diff is one file. -->
     <Reference Include="UnityEngine.AIModule">
       <HintPath>$(ManagedDir)\UnityEngine.AIModule.dll</HintPath>
       <Private>false</Private>
