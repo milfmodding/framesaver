@@ -572,7 +572,18 @@ namespace Framesaver
             // Diagnostic, so it goes through TryEnable: a bare Enable() that fails to resolve throws out
             // of Awake and drops every registration after it, including telemetry - which would turn a
             // census defect into total data loss for the run.
-            // (PlayerLoopProfiler install/arm moved to Ranger's Plugin.cs at seam-5.)
+            // (PlayerLoopProfiler install/arm — REVERTED here 2026-08-17 seam-5 follow-up: the
+            // profiler and the sampler that reads it are statically coupled within ONE assembly
+            // (Telemetry reads this assembly's PlayerLoopProfiler.Snapshot; MarkersPresent() is
+            // loop-scanning so the flip made Ranger's install at boot while THIS mod's 5s re-arm
+            // re-owned the loop after every raid-load rewrite — ownership inverted in-raid, the
+            // defect Tau found in the flip-verify raid). Transitional shape: Framesaver owns the
+            // profiler until the capstone moves Telemetry.cs and the profiler TOGETHER.)
+            if (ProfilePlayerLoop.Value)
+            {
+                PlayerLoopProfiler.Install();
+                PlayerLoopProfiler.ArmFrameGap();
+            }
 
             if (TelemetryEnabled.Value)
             {
