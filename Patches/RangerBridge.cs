@@ -179,5 +179,32 @@ namespace Framesaver.Patches
             global::Ranger.TelemetryBus.Event("botBackup.pendingMax", pendingMax);
             global::Ranger.TelemetryBus.Event("botBackup.largestRequest", largestRequest);
         }
+
+        /// <summary>
+        /// AsyncDrain's publish call, isolated. Same reasoning as above.
+        ///
+        /// Deliberately publishes only GcSuspended and the top-1 worst-callback pair
+        /// (WorstCallbackMs/WorstCallbackName), NOT Drained/Deferred/Truncated. Those three reset
+        /// per-FRAME (AsyncDrain.ResetFrame, called from Telemetry.Sample every frame) rather than
+        /// per-window (ResetWindow) - GcSuspended and the Top-N arrays are the only fields on this
+        /// class that actually survive to the once-per-window call site this is published from. A
+        /// window-boundary read of Drained/Deferred/Truncated would silently report only the LAST
+        /// frame's counts rather than the window's, which is worse than not publishing them - the
+        /// NDJSON side does not make this mistake either: asyncUpdateDrain/asyncFixedDrain are Stat
+        /// blocks accumulated frame-by-frame into _asyncUpdate/_asyncFixed, not a single end-of-window
+        /// read of the static fields.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void PublishAsyncDrain(int gcSuspended, double worstMs, string worstName)
+        {
+            if (!global::Ranger.TelemetryBus.Enabled)
+            {
+                return;
+            }
+
+            global::Ranger.TelemetryBus.Event("asyncDrain.gcSuspended", gcSuspended);
+            global::Ranger.TelemetryBus.Event("asyncDrain.worstMs", (float)worstMs);
+            global::Ranger.TelemetryBus.Tag("asyncDrain.worstName", worstName);
+        }
     }
 }

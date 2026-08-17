@@ -232,6 +232,25 @@ namespace Framesaver.Patches
         }
 
         /// <summary>
+        /// Ranger extraction (2026-08-16/17): publish-side addition, ADDITIVE. Publishes GcSuspended
+        /// and the top-1 worst callback (WorstCallbackMs/WorstCallbackName) - the fields that are
+        /// actually window-scoped, reset by ResetWindow above. Deliberately does NOT publish Drained/
+        /// Deferred/Truncated, which reset per-FRAME (ResetFrame, called every Sample()) - see
+        /// RangerBridge.PublishAsyncDrain's doc comment for why a window-boundary read of those three
+        /// would be silently wrong. Called once per window from Telemetry.cs's Flush(), beside the
+        /// existing gcSuspended/worstCallbacks NDJSON fields.
+        /// </summary>
+        internal static void PublishTelemetry()
+        {
+            if (!RangerBridge.Present)
+            {
+                return;
+            }
+
+            RangerBridge.PublishAsyncDrain(GcSuspended, WorstCallbackMs, WorstCallbackName);
+        }
+
+        /// <summary>
         /// The queued Action is almost always a compiler-generated closure - AsyncWorker.Class1009&lt;T&gt;.method_0
         /// for the result path, Class1011.method_1 for the void path - whose name says nothing about the caller.
         /// The useful identity is the Func/Action the closure was built around, one field in. Walking that field
