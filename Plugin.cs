@@ -112,7 +112,6 @@ namespace Framesaver
         public static ConfigEntry<float> SpikeEventMs;
         public static ConfigEntry<bool> ProfilePlayerLoop;
         public static ConfigEntry<string> ExpandPhase;
-        public static ConfigEntry<bool> GpuTelemetryEnabled;
 
 
         private void Awake()
@@ -363,12 +362,10 @@ namespace Framesaver
                 + "matching no phase are logged - a blocklist typo expands something you meant to block "
                 + "and otherwise looks exactly like success.");
 
-            GpuTelemetryEnabled = Config.Bind(
-                "3. Telemetry", "GPU telemetry", true,
-                "Sample VRAM budget vs usage (BSG's own DXGI query, twice a second), Unity's FrameTimingManager " +
-                "and the render-submission profiler counters. This is the only view into the GPU side, which is " +
-                "where the TimeUpdate presentation-wait spikes live. Sources that this build does not support " +
-                "report themselves as unavailable and then stop costing anything.");
+            // ("GPU telemetry" was here and is archived 2026-08-17 with the GPU instruments -
+            // Sophia's ruling: SPT's problems are CPU-bound, and none of the three sources
+            // ever paid off. The wall clock and graphics-config blocks survive in
+            // GpuTelemetry.cs, which keeps its name.)
 
             // "Force fast body animator" was here and is gone. It swapped
             // Unity's Animator for BSG's FastAnimatorProcessorClass, which
