@@ -159,5 +159,25 @@ namespace Framesaver.Patches
             global::Ranger.TelemetryBus.Tag("modCompat.suppressingSlicing", suppressingSlicing);
             global::Ranger.TelemetryBus.Tag("modCompat.clearingStandByFlag", clearingStandByFlag);
         }
+
+        /// <summary>
+        /// BotBackup's publish call, isolated. Same reasoning as above. All five values are
+        /// already-computed per-window counters (static fields BotBackup owns, reset each window by
+        /// its own ResetWindow), so Event not Count.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void PublishBotBackup(int added, int fired, int bailed, int pendingMax, int largestRequest)
+        {
+            if (!global::Ranger.TelemetryBus.Enabled)
+            {
+                return;
+            }
+
+            global::Ranger.TelemetryBus.Event("botBackup.added", added);
+            global::Ranger.TelemetryBus.Event("botBackup.fired", fired);
+            global::Ranger.TelemetryBus.Event("botBackup.bailed", bailed);
+            global::Ranger.TelemetryBus.Event("botBackup.pendingMax", pendingMax);
+            global::Ranger.TelemetryBus.Event("botBackup.largestRequest", largestRequest);
+        }
     }
 }
