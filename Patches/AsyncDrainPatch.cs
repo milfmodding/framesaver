@@ -533,7 +533,7 @@ namespace Framesaver.Patches
 
                     long t0 = Stopwatch.GetTimestamp();
                     AsyncDrain.RunCallback(action);
-                    double ms = AiTiming.ToMs(Stopwatch.GetTimestamp() - t0);
+                    double ms = TickMath.ToMs(Stopwatch.GetTimestamp() - t0);
 
                     AsyncDrain.Record(ms, action, GC.GetTotalMemory(false) - heap0,
                         ProfileBuild.TotalMs - profile0,
@@ -550,7 +550,7 @@ namespace Framesaver.Patches
 
                 // Checked after executing, so the drain always makes progress no matter how small the budget or
                 // how slow a single callback is.
-                if (budgetMs > 0d && AiTiming.ToMs(Stopwatch.GetTimestamp() - start) >= budgetMs)
+                if (budgetMs > 0d && TickMath.ToMs(Stopwatch.GetTimestamp() - start) >= budgetMs)
                 {
                     lock (queue)
                     {
