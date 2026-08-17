@@ -96,5 +96,25 @@ namespace Framesaver.Patches
 
             global::Ranger.TelemetryBus.Event("longRangeExemption.count", count);
         }
+
+        /// <summary>
+        /// AICoreControllerUpdatePatch's publish call, isolated. Same reasoning as above. All 4
+        /// values are already-computed snapshot counters (LiveAgents/PendingRemoval/RemovedTotal/
+        /// LastBrainsTicked, all updated every frame in the Harmony prefix), so Event (last-write-
+        /// wins) not Count.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void PublishAICoreController(int liveAgents, int pendingRemoval, int removedTotal, int lastBrainsTicked)
+        {
+            if (!global::Ranger.TelemetryBus.Enabled)
+            {
+                return;
+            }
+
+            global::Ranger.TelemetryBus.Event("aiCoreController.liveAgents", liveAgents);
+            global::Ranger.TelemetryBus.Event("aiCoreController.pendingRemoval", pendingRemoval);
+            global::Ranger.TelemetryBus.Event("aiCoreController.removedTotal", removedTotal);
+            global::Ranger.TelemetryBus.Event("aiCoreController.lastBrainsTicked", lastBrainsTicked);
+        }
     }
 }

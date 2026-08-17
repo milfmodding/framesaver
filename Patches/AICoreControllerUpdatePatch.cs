@@ -49,6 +49,23 @@ namespace Framesaver.Patches
         /// <summary>Brains actually ticked on the last frame - confirms slicing is doing what it claims.</summary>
         public static int LastBrainsTicked;
 
+        /// <summary>
+        /// Ranger extraction (2026-08-16/17): publish-side addition, ADDITIVE, does not change any
+        /// of the four counters above. Routed through RangerBridge rather than calling
+        /// Ranger.TelemetryBus directly - see RangerBridge.cs and RoleSleepDistance.PublishTelemetry()
+        /// for why. Called once per window from Telemetry.cs's Flush(), matching the existing
+        /// once-per-window reads of these same four fields there.
+        /// </summary>
+        internal static void PublishTelemetry()
+        {
+            if (!RangerBridge.Present)
+            {
+                return;
+            }
+
+            RangerBridge.PublishAICoreController(LiveAgents, PendingRemoval, RemovedTotal, LastBrainsTicked);
+        }
+
         protected override MethodBase GetTargetMethod()
         {
             return AccessTools.Method(typeof(AICoreController), nameof(AICoreController.Update));
