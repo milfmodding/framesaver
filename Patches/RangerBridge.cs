@@ -206,5 +206,25 @@ namespace Framesaver.Patches
             global::Ranger.TelemetryBus.Event("asyncDrain.worstMs", (float)worstMs);
             global::Ranger.TelemetryBus.Tag("asyncDrain.worstName", worstName);
         }
+
+        /// <summary>
+        /// SleepingBotAnimatorPatch's publish call, isolated. Same reasoning as above. All three
+        /// values are passed in by the caller rather than read here - see
+        /// SleepingBotAnimatorPatch.PublishTelemetry's own doc comment for why (each is a computed
+        /// property that walks a bot roster per read, and the caller already paid for one read each
+        /// to build the NDJSON "bots" block).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void PublishAnimatorCull(int animCulled, int animCulledOffScreen, int animCulledEngine)
+        {
+            if (!global::Ranger.TelemetryBus.Enabled)
+            {
+                return;
+            }
+
+            global::Ranger.TelemetryBus.Event("animatorCull.culled", animCulled);
+            global::Ranger.TelemetryBus.Event("animatorCull.culledOffScreen", animCulledOffScreen);
+            global::Ranger.TelemetryBus.Event("animatorCull.culledEngine", animCulledEngine);
+        }
     }
 }

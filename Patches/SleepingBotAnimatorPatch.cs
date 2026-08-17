@@ -437,6 +437,25 @@ namespace Framesaver.Patches
         }
 
         /// <summary>
+        /// Ranger extraction (2026-08-16/17): publish-side addition, ADDITIVE. Takes the three values
+        /// as parameters rather than re-reading CulledLastFrame/CulledOffScreen/CulledEngine itself -
+        /// each is a COMPUTED PROPERTY that walks a bot roster on every read, so a second independent
+        /// read here would double that cost every window for no reason. The caller (Telemetry.Flush)
+        /// already reads all three once for the NDJSON "bots" block; this reuses those same values.
+        /// Routed through RangerBridge rather than calling Ranger.TelemetryBus directly - see
+        /// RangerBridge.cs for why a plain reference is not safe with Ranger absent.
+        /// </summary>
+        internal static void PublishTelemetry(int animCulled, int animCulledOffScreen, int animCulledEngine)
+        {
+            if (!RangerBridge.Present)
+            {
+                return;
+            }
+
+            RangerBridge.PublishAnimatorCull(animCulled, animCulledOffScreen, animCulledEngine);
+        }
+
+        /// <summary>
         /// Drops every tracked bot. Called once per raid start.
         ///
         /// Entries only leave <see cref="Sleeping"/> when a bot transitions out of paused, and nothing
