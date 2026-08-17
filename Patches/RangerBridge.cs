@@ -226,5 +226,27 @@ namespace Framesaver.Patches
             global::Ranger.TelemetryBus.Event("animatorCull.culledOffScreen", animCulledOffScreen);
             global::Ranger.TelemetryBus.Event("animatorCull.culledEngine", animCulledEngine);
         }
+
+        /// <summary>
+        /// StandByTransitions seam (extraction phase 2): a counted wake/sleep transition with
+        /// its path duration, published from BotStandByUpdatePatch where the transition is
+        /// observed. Count + Sum deliberately, NOT Event: Event is last-write-wins per window
+        /// and would silently report only the final transition's length, while the semantic
+        /// being preserved is `wokenMs / woken` = cost of ONE wake - both halves of that ratio
+        /// must accumulate. Key names mirror the class's own NDJSON block ("standByTransitions":
+        /// woken/wokenMs/slept/sleptMs). Called alongside the direct StandByTransitions call
+        /// until that class moves to Ranger; additive, changes no NDJSON output.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void PublishStandByTransition(bool woken, double ms)
+        {
+            if (!global::Ranger.TelemetryBus.Enabled)
+            {
+                return;
+            }
+
+            global::Ranger.TelemetryBus.Count(woken ? "standBy.woken" : "standBy.slept", 1);
+            global::Ranger.TelemetryBus.Sum(woken ? "standBy.wokenMs" : "standBy.sleptMs", ms);
+        }
     }
 }

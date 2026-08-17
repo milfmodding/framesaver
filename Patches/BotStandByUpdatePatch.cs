@@ -219,7 +219,17 @@ namespace Framesaver.Patches
             // of both - our own StandByType postfix, and OnBotStateChange's
             // subscribers. That envelope is the point: the cost of a wake is
             // what it triggers, not what this method executes.
-            StandByTransitions.Woken(Stopwatch.GetTimestamp() - start);
+            long wakeTicks = Stopwatch.GetTimestamp() - start;
+            StandByTransitions.Woken(wakeTicks);
+
+            // Ranger extraction seam (phase 2), additive: publish the same transition to
+            // the bus so the measurement half can move to Ranger without losing this fact.
+            // Gate stops the call; see RangerBridge.PublishStandByTransition for why the
+            // payload is count+sum rather than a single Event.
+            if (RangerBridge.Present)
+            {
+                RangerBridge.PublishStandByTransition(true, TickMath.ToMs(wakeTicks));
+            }
         }
 
         /// <summary>
@@ -386,7 +396,15 @@ namespace Framesaver.Patches
 
             if (standBy.standByType != before)
             {
-                StandByTransitions.Slept(Stopwatch.GetTimestamp() - start);
+                long sleepTicks = Stopwatch.GetTimestamp() - start;
+                StandByTransitions.Slept(sleepTicks);
+
+                // Ranger extraction seam (phase 2), additive: same shape as the wake-side
+                // call above; both halves of the wokenMs/woken-style ratio must accumulate.
+                if (RangerBridge.Present)
+                {
+                    RangerBridge.PublishStandByTransition(false, TickMath.ToMs(sleepTicks));
+                }
             }
         }
 
