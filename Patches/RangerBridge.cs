@@ -141,5 +141,23 @@ namespace Framesaver.Patches
             global::Ranger.TelemetryBus.Event("botStandBy.roleUnknown", roleUnknown);
             global::Ranger.TelemetryBus.Event("botStandBy.standByRefused", standByRefused);
         }
+
+        /// <summary>
+        /// ModCompat's publish call, isolated. Same reasoning as above. Publishes tags rather than
+        /// events - each argument is either empty (no guard active) or names the mod responsible for
+        /// that guard, so Tag (last-write-wins string) is the right shape, not Event (numeric).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void PublishModCompat(string suppressingStandBy, string suppressingSlicing, string clearingStandByFlag)
+        {
+            if (!global::Ranger.TelemetryBus.Enabled)
+            {
+                return;
+            }
+
+            global::Ranger.TelemetryBus.Tag("modCompat.suppressingStandBy", suppressingStandBy);
+            global::Ranger.TelemetryBus.Tag("modCompat.suppressingSlicing", suppressingSlicing);
+            global::Ranger.TelemetryBus.Tag("modCompat.clearingStandByFlag", clearingStandByFlag);
+        }
     }
 }

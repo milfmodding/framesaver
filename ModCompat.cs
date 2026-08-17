@@ -321,5 +321,28 @@ namespace Framesaver
 
             return names.ToArray();
         }
+
+        /// <summary>
+        /// Ranger extraction (2026-08-16/17): publish-side addition, ADDITIVE. Called from the same
+        /// call site as AppendDetected (Telemetry.cs's Flush, in the "mods" block), which is
+        /// deliberate: that is the one place detection is already forced regardless of caller order
+        /// (see AppendDetected's own doc comment), so this call costs nothing the block did not
+        /// already pay for. Publishes the three compatibility-guard outcomes as tags (which mod, if
+        /// any, is suppressing what) rather than raw booleans, since "suppressed, and by whom" is
+        /// the fact a reader actually wants - a bare true/false would need cross-referencing against
+        /// AppendDetected's own list to answer the same question.
+        /// </summary>
+        internal static void PublishTelemetry()
+        {
+            if (!Patches.RangerBridge.Present)
+            {
+                return;
+            }
+
+            Patches.RangerBridge.PublishModCompat(
+                SuppressStandBy ? "AILimit" : "",
+                SuppressSlicing ? (Orbit ? "ORBIT" : "BigBrain") : "",
+                ClearsStandByFlag ? (QuestingBots ? "QuestingBots" : "ORBIT") : "");
+        }
     }
 }
