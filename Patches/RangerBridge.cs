@@ -116,5 +116,30 @@ namespace Framesaver.Patches
             global::Ranger.TelemetryBus.Event("aiCoreController.removedTotal", removedTotal);
             global::Ranger.TelemetryBus.Event("aiCoreController.lastBrainsTicked", lastBrainsTicked);
         }
+
+        /// <summary>
+        /// BotStandByUpdatePatch's aggregate counts, isolated. Same reasoning as above, but note the
+        /// shape difference from the other four publish sites: these five values are not static
+        /// fields owned by the patch class itself - they are locals computed once per window inside
+        /// Telemetry.CountBots(), which calls BotStandByUpdatePatch.RoleStandByKnown/RoleAllowsStandBy
+        /// as per-bot predicates rather than accumulating its own counters. So this publish call is
+        /// made from Telemetry.cs directly, at the point those locals already exist and are about to
+        /// be serialized to NDJSON - matching where the data actually lives rather than inventing a
+        /// PublishTelemetry() on a class that owns no state to publish.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void PublishBotStandByCounts(int awake, int asleep, int exempt, int roleUnknown, int standByRefused)
+        {
+            if (!global::Ranger.TelemetryBus.Enabled)
+            {
+                return;
+            }
+
+            global::Ranger.TelemetryBus.Event("botStandBy.awake", awake);
+            global::Ranger.TelemetryBus.Event("botStandBy.asleep", asleep);
+            global::Ranger.TelemetryBus.Event("botStandBy.exempt", exempt);
+            global::Ranger.TelemetryBus.Event("botStandBy.roleUnknown", roleUnknown);
+            global::Ranger.TelemetryBus.Event("botStandBy.standByRefused", standByRefused);
+        }
     }
 }
