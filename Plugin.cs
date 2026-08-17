@@ -114,11 +114,6 @@ namespace Framesaver
         public static ConfigEntry<string> ExpandPhase;
         public static ConfigEntry<bool> GpuTelemetryEnabled;
 
-        // ---- 5. Distance grid spawn ----------------------------------------------------------
-        public static ConfigEntry<BepInEx.Configuration.KeyboardShortcut> GridSpawnKey;
-        public static ConfigEntry<string> GridSpawnDistances;
-        public static ConfigEntry<int> GridSpawnCountPerDistance;
-        public static ConfigEntry<float> GridSpawnNavMeshRadius;
 
         private void Awake()
         {
@@ -130,7 +125,7 @@ namespace Framesaver
                 + "BotStandBy objects we do and pauses bots harder, so the stand-by patch turns itself off "
                 + "when it is present; ORBIT and BigBrain drive bot brains, so round-robin brain slicing "
                 + "turns itself off when either is present. Turn this off to force Framesaver's own "
-                + "behaviour and accept the overlap - see COMPATIBILITY.md. Detection is logged at the "
+                + "behaviour and accept the overlap. Detection is logged at the "
                 + "first stand-by check of a raid, not at startup.");
 
             ReclaimStandBy = Config.Bind(
@@ -515,50 +510,10 @@ namespace Framesaver
                 + "does NOT make the stall smaller; it moves it out of the physics step so it stops feeding "
                 + "Unity's catch-up logic. Toggleable mid-raid.");
 
-            // Built 2026-08-08 per Sophia: spawn a known, controlled bot population at fixed
-            // distances instead of hoping a map/route lands the awake count where we need it.
-            // Ladder is 50/120/160/250 rather than round hundreds - checked against the live
-            // 130/150m wake/sleep thresholds so two points bracket the actual transition band
-            // instead of two of four points landing redundantly inside "definitely awake".
-            // See DistanceGridSpawn.cs.
-            // PageUp, mirroring ProtocolKey's PageDown - same modifiers, same "hard to hit by
-            // accident" reasoning, Sophia's choice 2026-08-08.
-            GridSpawnKey = Config.Bind(
-                "5. Distance grid spawn", "Spawn grid key",
-                new BepInEx.Configuration.KeyboardShortcut(
-                    UnityEngine.KeyCode.PageUp,
-                    UnityEngine.KeyCode.LeftControl,
-                    UnityEngine.KeyCode.LeftAlt),
-                new ConfigDescription(
-                    "Spawns the distance-grid bot population at your current position. Press once "
-                    + "raid load noise (bundle loading, HTTP calls, the initial wave) has settled - "
-                    + "this does not wait for you. Does nothing outside a raid. Fires once; press "
-                    + "again for another grid. Writes a telemetry marker the instant it fires, "
-                    + "before any bot is confirmed, same as the mark key does for a manual note."));
-
-            GridSpawnDistances = Config.Bind(
-                "5. Distance grid spawn", "Distances", "50,120,160,250",
-                "Comma-separated metres from the player for each ring. Default brackets the live "
-                + "Sleep/Wake thresholds: 50 (deep awake), 120 (near the wake edge), 160 (just past "
-                + "sleep), 250 (deep asleep). Changing Sleep/Wake distance elsewhere does not move "
-                + "this - update both together if you want the ladder to track them.");
-
-            GridSpawnCountPerDistance = Config.Bind(
-                "5. Distance grid spawn", "Bots per ring", 5,
-                new ConfigDescription(
-                    "How many bots to place at each configured distance.",
-                    new AcceptableValueRange<int>(1, 20)));
-
-            GridSpawnNavMeshRadius = Config.Bind(
-                "5. Distance grid spawn", "NavMesh snap radius", 3f,
-                new ConfigDescription(
-                    "How far (metres) a ring position may move to land on walkable NavMesh. Kept "
-                    + "tight on purpose - a generous radius near a building or elevation change can "
-                    + "snap to a spot meaningfully off the intended ring, which would look like clean "
-                    + "data while quietly moving the distance variable this exists to control. A "
-                    + "position that fails to snap within this radius is skipped and logged, not "
-                    + "silently widened.",
-                    new AcceptableValueRange<float>(0.5f, 20f)));
+            // (The "5. Distance grid spawn" section - Spawn grid key, Distances, Bots per
+            // ring, NavMesh snap radius - was archived 2026-08-17 per Sophia's ruling: not
+            // shipping in v1, deferred to Leica. See git history, commit "archive distance
+            // grid spawn".)
 
             new BotStandByUpdatePatch().Enable();
             new SleepingBotStandByPumpPatch().Enable();

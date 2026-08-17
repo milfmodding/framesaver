@@ -28,6 +28,7 @@ TestResults/
 # It matches direct children of artifacts/ only, which is why a hand-taken copy
 # in artifacts/rollback/ stays ignored.
 !artifacts/Framesaver-*.dll
+artifacts/*.zip
 
 # Rollback copies taken before a deploy. Useful on disk, not history.
 artifacts/rollback/
