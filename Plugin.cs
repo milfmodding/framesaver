@@ -568,36 +568,11 @@ namespace Framesaver
             // resolves a method by string. A patch that fails to resolve throws out of Awake, which would
             // silently drop every registration after it - including the telemetry component - and cost a
             // raid to discover. A missing checkpoint only merges its segment into the previous one.
-            TryEnable(new CoversCreateCheckpoint(), "CoversCreateCheckpoint");
-            TryEnable(new CoverBoundsCheckpoint(), "CoverBoundsCheckpoint");
-            TryEnable(new StationaryInitCheckpoint(), "StationaryInitCheckpoint");
-            TryEnable(new ZoneLeaveCtorCheckpoint(), "ZoneLeaveCtorCheckpoint");
-            TryEnable(new SettingsRepoCheckpoint(), "SettingsRepoCheckpoint");
-            TryEnable(new EventsCtorCheckpoint(), "EventsCtorCheckpoint");
-            TryEnable(new BotsControllerMethod2Checkpoint(), "BotsControllerMethod2Checkpoint");
-            TryEnable(new GClass369InitCheckpoint(), "GClass369InitCheckpoint");
-            TryEnable(new SpawnerCtorCheckpoint(), "SpawnerCtorCheckpoint");
-            TryEnable(new CoreActivateCheckpoint(), "CoreActivateCheckpoint");
-            TryEnable(new BotCreatorCtorPatch(), "BotCreatorCtorPatch");
-            TryEnable(new SetSettingsPatch(), "SetSettingsPatch");
-            TryEnable(new SpawnActionPatch(), "SpawnActionPatch");
 
             // Diagnostic, so it goes through TryEnable: a bare Enable() that fails to resolve throws out
             // of Awake and drops every registration after it, including telemetry - which would turn a
             // census defect into total data loss for the run.
-            TryEnable(new PlayerOnDeadCensusPatch(), "PlayerOnDeadCensusPatch");
-
-
-            new PlayerLateUpdateTimingPatch().Enable();
-            new GameWorldPlayerTickPatch().Enable();
-            new JobSchedulerLateUpdatePatch().Enable();
-            new AmbientLightLateUpdatePatch().Enable();
-
-            if (ProfilePlayerLoop.Value)
-            {
-                PlayerLoopProfiler.Install();
-                PlayerLoopProfiler.ArmFrameGap();
-            }
+            // (PlayerLoopProfiler install/arm moved to Ranger's Plugin.cs at seam-5.)
 
             if (TelemetryEnabled.Value)
             {
