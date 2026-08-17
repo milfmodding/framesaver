@@ -110,6 +110,19 @@ namespace Framesaver.Patches
                     held++;
                 }
             }
+
+            // Ranger extraction (2026-08-16/17): publish-side addition only, ADDITIVE, does not
+            // change what this method returns or how the linked/held counts above are computed.
+            //
+            // Routed through RangerBridge rather than calling Ranger.TelemetryBus directly - see
+            // RangerBridge.cs for why a direct call here would not be safe with Ranger absent (the
+            // JIT resolves types referenced anywhere in THIS method's IL when Counts() itself is
+            // first compiled, not only on the branch taken - so a bare `if (TelemetryBus.Enabled)`
+            // inline here would still require Ranger.dll to compile Counts() at all).
+            if (RangerBridge.Present)
+            {
+                RangerBridge.PublishBossGroupWake(linked, held);
+            }
         }
 
         /// <summary>

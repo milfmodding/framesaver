@@ -74,6 +74,21 @@
       <HintPath>$(BepInExDir)\plugins\spt\spt-common.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!--
+      Ranger extraction (2026-08-16/17): OPTIONAL at runtime, not at compile time - this is a
+      compile-time reference so RangerBridge.cs (the ONLY file allowed to name a Ranger.* type,
+      see its own doc comment for why) can resolve Ranger.TelemetryBus. Private=false so the DLL
+      is never copied alongside Framesaver.dll - Ranger.dll's own presence in BepInEx/plugins is
+      what makes it "installed", same as every other Reference here.
+
+      HintPath points at Ranger's OWN build output rather than a copy checked into this repo,
+      because there is no copy checked in - if this path is wrong, the fix is building Ranger
+      first (`dotnet build -c Release` in F:\SPT\Mods\ranger), not editing this file.
+    -->
+    <Reference Include="Ranger">
+      <HintPath>F:\SPT\Mods\ranger\bin\Release\Ranger.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Assembly-CSharp">
       <HintPath>$(ManagedDir)\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>

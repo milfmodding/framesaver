@@ -1,0 +1,100 @@
+using System.Runtime.CompilerServices;
+using BepInEx.Bootstrap;
+
+namespace Framesaver.Patches
+{
+    /// <summary>
+    /// The ONLY place in Framesaver that is allowed to touch a Ranger.* type, and the reason it
+    /// exists rather than every publish site calling TelemetryBus directly.
+    ///
+    /// **Why a plain reference + `if (TelemetryBus.Enabled)` is NOT safe with Ranger absent.**
+    /// The .NET JIT resolves every type referenced anywhere in a method's IL when that method is
+    /// first compiled - not only the ones on the branch actually taken at runtime. So a call like
+    ///
+    ///     if (TelemetryBus.Enabled) { TelemetryBus.Event(...); }
+    ///
+    /// written inline inside, say, BossGroupWake.Counts(), does not protect that method: the JIT
+    /// has to resolve Ranger.TelemetryBus to compile Counts() AT ALL, whether or not Enabled ends
+    /// up true. With Ranger.dll missing from BepInEx/plugins, that throws (TypeLoadException /
+    /// FileNotFoundException) from inside Counts() itself, the first time Flush() calls it - every
+    /// raid, every window, not a clean plugin-load-time failure. Worse than an outright load
+    /// failure, because it looks like intermittent runtime instability rather than a missing file.
+    ///
+    /// **The fix: isolate every Ranger-touching call into its own method, marked NoInlining, and
+    /// gate the CALL to that method (not its internals) behind a presence check done once.** The
+    /// JIT only has to resolve a method's referenced types when THAT METHOD is compiled, and
+    /// NoInlining stops the JIT folding this wrapper's body into its caller (which would pull the
+    /// Ranger reference back into a method that has to compile regardless of presence). A caller
+    /// that never invokes the wrapper never triggers its compilation, so Ranger's absence never
+    /// surfaces as an exception - it just means telemetry silently does not fire, which is
+    /// correct: no-kit is documented as the DEFAULT case in Ranger's own design doc.
+    /// </summary>
+    internal static class RangerBridge
+    {
+        private const string RangerGuid = "ranger.telemetry.kit";
+
+        // Checked once, cached. Chainloader.PluginInfos is stable once BepInEx has finished
+        // loading plugins, and every call site here runs well after that point (raid-time, not
+        // Awake-time), so re-checking per call would just be repeated dictionary lookups for an
+        // answer that cannot change mid-session.
+        private static bool? _present;
+
+        internal static bool Present
+        {
+            get
+            {
+                if (_present == null)
+                {
+                    _present = Chainloader.PluginInfos.ContainsKey(RangerGuid);
+                }
+
+                return _present.Value;
+            }
+        }
+
+        /// <summary>
+        /// BossGroupWake's publish call, isolated. See the class doc comment for why this exists
+        /// as its own NoInlining method rather than an inline TelemetryBus call at the caller.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void PublishBossGroupWake(int linked, int held)
+        {
+            if (!global::Ranger.TelemetryBus.Enabled)
+            {
+                return;
+            }
+
+            global::Ranger.TelemetryBus.Event("bossGroupWake.linked", linked);
+            global::Ranger.TelemetryBus.Event("bossGroupWake.held", held);
+        }
+
+        /// <summary>
+        /// RoleSleepDistance's publish call, isolated. Same reasoning as above.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void PublishRoleSleepDistance(float effective, float effectiveWake)
+        {
+            if (!global::Ranger.TelemetryBus.Enabled)
+            {
+                return;
+            }
+
+            global::Ranger.TelemetryBus.Event("roleSleepDistance.effective", effective);
+            global::Ranger.TelemetryBus.Event("roleSleepDistance.effectiveWake", effectiveWake);
+        }
+
+        /// <summary>
+        /// LongRangeExemption's publish call, isolated. Same reasoning as above.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void PublishLongRangeExemption(int count)
+        {
+            if (!global::Ranger.TelemetryBus.Enabled)
+            {
+                return;
+            }
+
+            global::Ranger.TelemetryBus.Event("longRangeExemption.count", count);
+        }
+    }
+}

@@ -87,6 +87,32 @@ namespace Framesaver.Patches
         }
 
         /// <summary>
+        /// Ranger extraction (2026-08-16/17): the publish-side addition, deliberately NOT folded
+        /// into the Effective/EffectiveWake getters above. Those getters are also called from
+        /// For(), a per-bot, per-stand-by-check hot path (BotStandByInitPointsPatch.cs) - embedding
+        /// a TelemetryBus.Event call there would add a dictionary write to every one of those
+        /// calls, for a value that only actually needs publishing once per telemetry window. This
+        /// method exists so the caller (Telemetry.cs, once per window) controls the cadence rather
+        /// than the getter forcing it on every internal use. Does not change what Effective/
+        /// EffectiveWake return; purely additive.
+        ///
+        /// Routed through RangerBridge rather than calling Ranger.TelemetryBus directly - see
+        /// RangerBridge.cs for why: the JIT resolves every type referenced anywhere in a method's
+        /// IL when that method is first compiled, not only on the branch taken, so a bare
+        /// `if (TelemetryBus.Enabled)` inline in THIS method would still require Ranger.dll just to
+        /// compile PublishTelemetry() at all - not what "optional reference" is supposed to mean.
+        /// </summary>
+        internal static void PublishTelemetry()
+        {
+            if (!RangerBridge.Present)
+            {
+                return;
+            }
+
+            RangerBridge.PublishRoleSleepDistance(Effective, EffectiveWake);
+        }
+
+        /// <summary>
         /// The widen-only policy, split from the config read so it can be
         /// tested: the ConfigEntry statics do not exist outside BepInEx, and
         /// this is the half worth checking.

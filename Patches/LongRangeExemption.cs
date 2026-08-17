@@ -159,5 +159,23 @@ namespace Framesaver.Patches
                 return live;
             }
         }
+
+        /// <summary>
+        /// Ranger extraction (2026-08-16/17): publish-side addition, ADDITIVE, does not change what
+        /// Count returns. Routed through RangerBridge rather than calling Ranger.TelemetryBus
+        /// directly - see RangerBridge.cs and RoleSleepDistance.PublishTelemetry() for why a direct
+        /// call in a method Telemetry.cs invokes unconditionally would require Ranger.dll just to
+        /// compile, even with Ranger absent. Called once per window from Telemetry.cs's Flush(),
+        /// matching Count's own once-per-window read there.
+        /// </summary>
+        internal static void PublishTelemetry()
+        {
+            if (!RangerBridge.Present)
+            {
+                return;
+            }
+
+            RangerBridge.PublishLongRangeExemption(Count);
+        }
     }
 }
