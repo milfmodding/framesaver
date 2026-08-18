@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using BepInEx.Bootstrap;
+using EFT;
 
 namespace Framesaver.Patches
 {
@@ -269,5 +270,85 @@ namespace Framesaver.Patches
             global::Ranger.TelemetryBus.Count(woken ? "standBy.woken" : "standBy.slept", 1);
             global::Ranger.TelemetryBus.Sum(woken ? "standBy.wokenMs" : "standBy.sleptMs", ms);
         }
+
+        /// <summary>
+        /// Registers FrameLevers.PerFrame (MaxDeltaTime cap, JobScheduler tuning, player-loop
+        /// profiler re-arm check) as Ranger's per-frame callback, isolated. Same reasoning as
+        /// every other bridge method - the JIT resolves TelemetryBus/RegisterPerFrameCallback's
+        /// signature the moment THIS method compiles, so it must never be called inline at
+        /// Plugin.Awake() with Ranger possibly absent. Called once from Plugin.Awake(), gated
+        /// on Present, same as the checkpoint patches.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void RegisterPerFrameLevers()
+        {
+            global::Ranger.TelemetryBus.RegisterPerFrameCallback(FramesaverGuid, FrameLevers.PerFrame);
+        }
+
+        /// <summary>
+        /// Registers GcControl's per-frame drive (ApplyConfig/Drive/Track), isolated. Same
+        /// reasoning as RegisterPerFrameLevers above - kept as its own bridge method rather
+        /// than folded into that one so GcControl's own per-frame surface stays a single,
+        /// independently-testable registration, matching how it was already described in the
+        /// capstone notes before this bridge method existed to make the registration real.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void RegisterGcControlPerFrame()
+        {
+            global::Ranger.TelemetryBus.RegisterPerFrameCallback(FramesaverGuid, GcControlPerFrame);
+        }
+
+        private static void GcControlPerFrame()
+        {
+            GcControl.ApplyConfig();
+            GcControl.Drive();
+            GcControl.Track();
+        }
+
+        /// <summary>
+        /// Registers the live reader for Plugin.ForceStandByForAllRoles.Value, isolated. See
+        /// TelemetryBus.RegisterForceStandByForAllRolesReader's own doc comment for why this
+        /// exists as a separate one-slot reader rather than folding into the window callback's
+        /// cfg dump - it is read per bot-event (BotLogPatches.cs), not per window.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void RegisterForceStandByForAllRolesReader()
+        {
+            global::Ranger.TelemetryBus.RegisterForceStandByForAllRolesReader(ReadForceStandByForAllRoles);
+        }
+
+        private static bool ReadForceStandByForAllRoles()
+        {
+            return Plugin.ForceStandByForAllRoles.Value;
+        }
+
+        /// <summary>
+        /// Registers the single stand-by-role predicate BotLogPatches.cs/CountBots ask per bot,
+        /// isolated. See TelemetryBus.RegisterBotStandByPredicate's own doc comment for the
+        /// one-slot shape and why. The delegate body reaches into
+        /// Framesaver.Patches.BotStandByUpdatePatch, which is exactly the reason this whole
+        /// registration call has to be isolated here rather than made inline anywhere the JIT
+        /// might compile it with Ranger absent.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void RegisterBotStandByPredicate()
+        {
+            global::Ranger.TelemetryBus.RegisterBotStandByPredicate(FramesaverGuid, AskBotStandBy);
+        }
+
+        private static bool? AskBotStandBy(BotOwner bot)
+        {
+            if (!BotStandByUpdatePatch.RoleStandByKnown(bot))
+            {
+                return null;
+            }
+
+            return BotStandByUpdatePatch.RoleAllowsStandBy(bot);
+        }
+
+        // The guid every registration above stamps as its owner, matching Plugin.cs's
+        // [BepInPlugin] attribute. Not RangerGuid (that names RANGER's own plugin id, checked
+        // by Present) - this is FRAMESAVER's own id, the one TelemetryBus nests fields under.
+        private const string FramesaverGuid = "framesaver.ai.perf";
     }
 }

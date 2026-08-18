@@ -587,6 +587,24 @@ namespace Framesaver
                 gameObject.AddComponent<Telemetry>();
             }
 
+            // Ranger capstone wiring (2026-08-18): registers this mod's per-frame levers, the
+            // bot stand-by predicate, and the forceStandByForAllRoles reader against Ranger's
+            // TelemetryBus - all through RangerBridge so this Awake() stays JIT-safe with
+            // Ranger absent (see RangerBridge.cs's own doc comment for why a direct call here
+            // would not be safe). Present-gated the same way every Ranger-touching call in this
+            // assembly already is. Inert until the capstone namespace switch makes Ranger's own
+            // Telemetry.cs the one calling TelemetryBus.InvokePerFrameCallbacks() /
+            // TryAskBotStandBy() / ForceStandByForAllRoles() - wiring the registration now means
+            // that switch only has to DELETE the old inline code, not add new registration code
+            // as well.
+            if (RangerBridge.Present)
+            {
+                RangerBridge.RegisterPerFrameLevers();
+                RangerBridge.RegisterGcControlPerFrame();
+                RangerBridge.RegisterBotStandByPredicate();
+                RangerBridge.RegisterForceStandByForAllRolesReader();
+            }
+
             LogSource.LogInfo("Framesaver loaded.");
         }
 
