@@ -118,6 +118,27 @@ namespace Framesaver.Patches
         }
 
         /// <summary>
+        /// AICoreControllerUpdatePatch's PER-FRAME accumulation, isolated. Capstone finding
+        /// (2026-08-17/18): Telemetry.cs's own tickedSum/liveSum fields summed these two values
+        /// directly every frame - a different relationship than the snapshot above (Event,
+        /// last-write-wins). Sum accumulates, matching seam-2's StandByTransitions shape. Called
+        /// once per frame from AICoreControllerUpdatePatch's own Prefix, not once per window like
+        /// every other publish site here - deliberately, since the quantity being preserved IS a
+        /// per-frame accumulation.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void PublishAICoreControllerSums(int lastBrainsTicked, int liveAgents)
+        {
+            if (!global::Ranger.TelemetryBus.Enabled)
+            {
+                return;
+            }
+
+            global::Ranger.TelemetryBus.Sum("aiCoreController.tickedSum", lastBrainsTicked);
+            global::Ranger.TelemetryBus.Sum("aiCoreController.liveSum", liveAgents);
+        }
+
+        /// <summary>
         /// BotStandByUpdatePatch's aggregate counts, isolated. Same reasoning as above, but note the
         /// shape difference from the other four publish sites: these five values are not static
         /// fields owned by the patch class itself - they are locals computed once per window inside

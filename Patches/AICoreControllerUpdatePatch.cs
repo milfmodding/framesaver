@@ -66,6 +66,27 @@ namespace Framesaver.Patches
             RangerBridge.PublishAICoreController(LiveAgents, PendingRemoval, RemovedTotal, LastBrainsTicked);
         }
 
+        /// <summary>
+        /// Capstone finding (2026-08-17/18): Telemetry.cs's own `_tickedSum`/`_liveSum` fields
+        /// summed these two values directly, every frame, for the window-level `tickedSum`/
+        /// `liveSum` NDJSON pair - a DIFFERENT relationship than the four-value snapshot
+        /// <see cref="PublishTelemetry"/> already publishes (those are last-write-wins facts;
+        /// TelemetryBus.Event is correct for them). A per-frame ACCUMULATION needs
+        /// TelemetryBus.Sum instead, the same primitive seam-2's StandByTransitions uses for
+        /// wokenMs/sleptMs. Called once per frame from this same Prefix, right after
+        /// LastBrainsTicked/LiveAgents are set for the frame, so the values summed here are
+        /// identical to what a direct read would have captured.
+        /// </summary>
+        private static void PublishPerFrameSums()
+        {
+            if (!RangerBridge.Present)
+            {
+                return;
+            }
+
+            RangerBridge.PublishAICoreControllerSums(LastBrainsTicked, LiveAgents);
+        }
+
         protected override MethodBase GetTargetMethod()
         {
             return AccessTools.Method(typeof(AICoreController), nameof(AICoreController.Update));
@@ -120,6 +141,7 @@ namespace Framesaver.Patches
                 }
 
                 LastBrainsTicked = LiveAgents;
+                PublishPerFrameSums();
                 return false;
             }
 
@@ -131,6 +153,7 @@ namespace Framesaver.Patches
             {
                 _cursor = 0;
                 LastBrainsTicked = 0;
+                PublishPerFrameSums();
                 return false;
             }
 
@@ -159,6 +182,7 @@ namespace Framesaver.Patches
             }
 
             LastBrainsTicked = perFrame;
+            PublishPerFrameSums();
             Snapshot.Clear(); // don't hold agent references between frames
             return false;
         }
