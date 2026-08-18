@@ -603,6 +603,7 @@ namespace Framesaver
                 RangerBridge.RegisterGcControlPerFrame();
                 RangerBridge.RegisterBotStandByPredicate();
                 RangerBridge.RegisterForceStandByForAllRolesReader();
+                RangerBridge.RegisterCapstoneCallbacks();
             }
 
             LogSource.LogInfo("Framesaver loaded.");

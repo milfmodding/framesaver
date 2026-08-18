@@ -206,11 +206,40 @@ namespace Framesaver
               .Append('}');
         }
 
+        /// <summary>
+        /// JObject-shaped sibling of AppendWindow, for the capstone window callback body
+        /// (Ranger's TelemetryBus.RegisterWindowCallback expects Action&lt;JObject&gt;, not
+        /// Action&lt;StringBuilder&gt; - Sophia's 2026-08-18 ruling). Same fields, same values,
+        /// just written into an object graph instead of appended as characters. AppendWindow
+        /// itself is UNCHANGED and still used nowhere once the capstone lands (nothing else
+        /// calls it directly anymore - Telemetry.cs's window line is built entirely through
+        /// the callback now), kept only so this diff stays additive rather than rewriting a
+        /// working method.
+        /// </summary>
+        internal static void AppendWindowTo(Newtonsoft.Json.Linq.JObject obj)
+        {
+            var gcDrive = new Newtonsoft.Json.Linq.JObject();
+            gcDrive["calls"] = _driveCalls;
+            gcDrive["pending"] = _drivePending;
+            gcDrive["msTotal"] = _driveMsTotal;
+            gcDrive["msMax"] = _driveMsMax;
+            gcDrive["sliceNs"] = SliceNs();
+            obj["gcDrive"] = gcDrive;
+        }
+
         internal static void AppendCfg(StringBuilder sb)
         {
             sb.Append(",\"gcTimeSliceMs\":").Append(Fmt(Plugin.GcTimeSliceMs.Value))
               .Append(",\"gcDriveMs\":").Append(Fmt(Plugin.GcDriveMs.Value))
               .Append(",\"gcSliceApplied\":").Append(_sliceApplied ? "true" : "false");
+        }
+
+        /// <summary>JObject-shaped sibling of AppendCfg - see AppendWindowTo's doc comment for why this pairs with it.</summary>
+        internal static void AppendCfgTo(Newtonsoft.Json.Linq.JObject cfg)
+        {
+            cfg["gcTimeSliceMs"] = Plugin.GcTimeSliceMs.Value;
+            cfg["gcDriveMs"] = Plugin.GcDriveMs.Value;
+            cfg["gcSliceApplied"] = _sliceApplied;
         }
 
         private static ulong SliceNs()

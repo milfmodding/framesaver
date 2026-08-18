@@ -336,6 +336,22 @@ namespace Framesaver.Patches
             global::Ranger.TelemetryBus.RegisterBotStandByPredicate(FramesaverGuid, AskBotStandBy);
         }
 
+        /// <summary>
+        /// Registers CapstoneCallbacks.BuildHeader/BuildWindow as Ranger's header/window
+        /// callbacks, isolated. Same reasoning as every other bridge method - the JIT
+        /// resolves TelemetryBus.RegisterHeaderCallback/RegisterWindowCallback's JObject-
+        /// typed signature (Newtonsoft.Json.Linq.JObject) the moment THIS method compiles,
+        /// so it must never be called inline anywhere the JIT might compile with Ranger
+        /// absent. Called once from Plugin.Awake(), gated on Present, same as every other
+        /// registration site.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void RegisterCapstoneCallbacks()
+        {
+            global::Ranger.TelemetryBus.RegisterHeaderCallback(FramesaverGuid, CapstoneCallbacks.BuildHeader);
+            global::Ranger.TelemetryBus.RegisterWindowCallback(FramesaverGuid, CapstoneCallbacks.BuildWindow);
+        }
+
         private static bool? AskBotStandBy(BotOwner bot)
         {
             if (!BotStandByUpdatePatch.RoleStandByKnown(bot))

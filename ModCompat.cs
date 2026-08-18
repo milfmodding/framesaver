@@ -307,7 +307,13 @@ namespace Framesaver
             sb.Append(']');
         }
 
-        private static string[] DetectedNames()
+        /// <summary>
+        /// Capstone (2026-08-18): internal accessor so CapstoneCallbacks.BuildWindow can
+        /// build the "mods" JArray without duplicating this list. AppendDetected (the
+        /// StringBuilder version) is UNCHANGED and still calls this same method - both are
+        /// thin wrappers around one list now, not two independent listings to keep in sync.
+        /// </summary>
+        internal static string[] DetectedNames()
         {
             var names = new System.Collections.Generic.List<string>(8);
 

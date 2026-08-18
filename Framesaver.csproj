@@ -93,6 +93,17 @@
       <HintPath>$(ManagedDir)\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!--
+      Capstone (2026-08-18): needed for the window/header callback bodies
+      registered against Ranger's TelemetryBus, which takes Action<JObject> per
+      Sophia's ruling (room, 2026-08-18 06:33Z). Already deployed in the game's
+      own Managed folder (SPT itself uses it, same HintPath Ranger.csproj already
+      references) - zero new bundling.
+    -->
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(ManagedDir)\Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <!-- Comfort.Common.Singleton<GameWorld> -->
     <Reference Include="Comfort">
       <HintPath>$(ManagedDir)\Comfort.dll</HintPath>
