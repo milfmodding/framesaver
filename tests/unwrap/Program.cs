@@ -721,7 +721,10 @@ class P {
         // one thing no bench could drive.
         Console.WriteLine("\nAwakeAge span reset (raid gate)");
         var wokeAt = aa.GetMethod("WokeAt", BindingFlags.NonPublic | BindingFlags.Static);
-        var endedM = aa.GetMethod("Ended", BindingFlags.NonPublic | BindingFlags.Static);
+        // Public as of the capstone cutover (2026-08-19) - RangerBridge.NotifyAwakeAgeEnded
+        // needs cross-assembly access, so Ended (unlike WokeAt/RecordAt/ResetForRaid, which
+        // stayed internal - nothing outside this assembly calls them directly) is now public.
+        var endedM = aa.GetMethod("Ended", BindingFlags.Public | BindingFlags.Static);
         var recordAt = aa.GetMethod("RecordAt", BindingFlags.NonPublic | BindingFlags.Static);
         var resetRaid = aa.GetMethod("ResetForRaid", BindingFlags.NonPublic | BindingFlags.Static);
         var botType = Type.GetType("EFT.BotOwner, Assembly-CSharp");
@@ -982,7 +985,16 @@ class P {
         Console.WriteLine("\nDecoupled animator cull");
         var pluginT = asm.GetType("Framesaver.Plugin");
         Check("the flag ships", pluginT.GetField("CullAllBotAnimators") != null, true);
-        Check("and the cfg block records it", inUs(",\"cullAllBots\":"), true);
+        // Capstone finding (2026-08-19): this used to search for the literal StringBuilder-
+        // shaped fragment `,"cullAllBots":` - which no longer appears anywhere once the
+        // window callback build via JObject/Newtonsoft instead of StringBuilder.Append
+        // (Sophia's ruling, room 2026-08-18 06:33Z). Newtonsoft still writes the bare
+        // property name ("cullAllBots") as a string constant when setting the JObject key,
+        // just without the comma/colon punctuation a StringBuilder literal would carry - so
+        // searching for the bare key name is the JObject-shape-agnostic equivalent, and it's
+        // what `and the cfg block no longer emits it` below already effectively relies on for
+        // its own control (`,"cullSleeping":`, fixed the same way).
+        Check("and the cfg block records it", inUs("cullAllBots"), true);
         var cullAll = sba.GetMethod("CullEveryBot",
                                     BindingFlags.NonPublic | BindingFlags.Static);
         Check("CullEveryBot ships", cullAll != null, true);
@@ -1017,11 +1029,13 @@ class P {
               asm.GetType("Framesaver.Patches.FastBodyAnimatorPatch") == null, true);
         Check("the setting is gone from Plugin",
               asm.GetType("Framesaver.Plugin").GetField("ForceFastBodyAnimator") == null, true);
-        Check("and the cfg block no longer emits it", inUs(",\"fastAnim\":"), false);
+        Check("and the cfg block no longer emits it", inUs("fastAnim"), false);
         // Control for the three above: the search does find a cfg key that IS
         // still emitted, so "not found" means removed rather than broken.
+        // Bare key name, not the `,"cullSleeping":` literal - see "and the cfg
+        // block records it" above for why (JObject construction, not StringBuilder).
         Check("...while a surviving cfg key is still found (control)",
-              inUs(",\"cullSleeping\":"), true);
+              inUs("cullSleeping"), true);
 
         // What remains is the READ-ONLY half. UseBodyFastAnimator still exists
         // and another mod can set it, and under it the cull is inert while
@@ -1137,17 +1151,30 @@ class P {
                      in fieldRe.Matches(File.ReadAllText(ini))) {
                 string tok = m.Groups[1].Value;
                 if (tok.IndexOf('.') < 0 && tok.ToLowerInvariant() == tok) continue;
-                // Quoted, but NOT `"leaf":` - `botStandBy` and `botWindow` are
-                // emitted as VALUES of the type key, so a key-shaped pattern
-                // reported three real fields as missing. Weaker and still
-                // sufficient: a misspelling appears nowhere in the image at all.
+                // Originally quoted (`"leaf"`, not `"leaf":`) - `botStandBy` and
+                // `botWindow` are emitted as VALUES of the type key, so a
+                // key-shaped pattern reported three real fields as missing, and
+                // the quote-without-colon form was weaker and still sufficient:
+                // a misspelling appears nowhere in the image at all.
+                //
+                // Capstone finding (2026-08-19): even the quote-without-colon form
+                // stopped working for JObject-built fields (CapstoneCallbacks.cs) -
+                // Newtonsoft's `obj["key"] = value` compiles to an `ldstr "key"`
+                // string CONSTANT with no surrounding quote characters at all; the
+                // JSON quotes only exist in the SERIALIZED OUTPUT at runtime, which
+                // this test never produces (it inspects the compiled image, not a
+                // live NDJSON line). Bare, unquoted search is what actually finds a
+                // string constant regardless of which side of the StringBuilder/
+                // JObject boundary emits it - confirmed false-negative on
+                // animCulledOffScreen (genuinely present in CapstoneCallbacks.cs,
+                // confirmed by direct byte search of the built DLL) before this fix.
                 string leaf = tok.Substring(tok.LastIndexOf('.') + 1);
-                if (!inUs("\"" + leaf + "\"")) missing.Add(tok);
+                if (!inUs(leaf)) missing.Add(tok);
             }
             Check(Path.GetFileName(ini) + " fields", string.Join("/", missing), "");
         }
         Check("a misspelt field would be caught (control)",
-              inUs("\"animCullEngine\""), false);
+              inUs("animCullEngine"), false);
 
         // ---- Which of our patches can SUPPRESS the method they wrap --------
         //
