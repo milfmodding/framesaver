@@ -512,14 +512,18 @@ namespace Framesaver
             // shipping in v1, deferred to Leica. See git history, commit "archive distance
             // grid spawn".)
 
+            // Capstone cutover (2026-08-19): BotSpawnLogPatch/BotActivationCanaryPatch/
+            // BotBackupAddPatch/BotBackupFlushPatch moved to Ranger's Plugin.cs, WITH the static
+            // classes they instrument (BotLog, BotBackup) - see that file's own Awake for the
+            // four .Enable() calls' new home. BotLog.Subscribe() moved with BotLog for the same
+            // reason. This list now carries only what stays: shipping stand-by/brain/animator/
+            // async/spawn features, none of which are measurement-only.
             new BotStandByUpdatePatch().Enable();
             new SleepingBotStandByPumpPatch().Enable();
             new BotStandByInitPointsPatch().Enable();
             new AICoreControllerUpdatePatch().Enable();
             new BotsControllerTickPatch().Enable();
             new UpdateManualTimingPatch().Enable();
-            new BotSpawnLogPatch().Enable();
-            BotLog.Subscribe();
             new BossWaveSettingsPatch().Enable();
             new BotControllerSettingsPatch().Enable();
             new SleepingBotAnimatorPatch().Enable();
@@ -531,8 +535,6 @@ namespace Framesaver
             new AsyncDrainPatch().Enable();
             new ProfileCtorPatch().Enable();
             new ProfileInventoryPatch().Enable();
-            new BotBackupAddPatch().Enable();
-            new BotBackupFlushPatch().Enable();
             new BundleLoadPatch().Enable();
             new SpawnCreateDataPatch().Enable();
             new SpawnByWavePatch().Enable();
@@ -541,7 +543,6 @@ namespace Framesaver
             new SpawnZoneAttemptPatch().Enable();
             new BotOwnerCreatePatch().Enable();
             new BotCreateWorkPatch().Enable();
-            new BotActivationCanaryPatch().Enable();
 
             // Raid initialisation, which resumes inline inside the last bot/generate completion callback and
             // is the unexplained 16.7s. One-shot per raid, so no per-frame cost.
@@ -569,23 +570,16 @@ namespace Framesaver
             // Diagnostic, so it goes through TryEnable: a bare Enable() that fails to resolve throws out
             // of Awake and drops every registration after it, including telemetry - which would turn a
             // census defect into total data loss for the run.
-            // (PlayerLoopProfiler install/arm — REVERTED here 2026-08-17 seam-5 follow-up: the
-            // profiler and the sampler that reads it are statically coupled within ONE assembly
-            // (Telemetry reads this assembly's PlayerLoopProfiler.Snapshot; MarkersPresent() is
-            // loop-scanning so the flip made Ranger's install at boot while THIS mod's 5s re-arm
-            // re-owned the loop after every raid-load rewrite — ownership inverted in-raid, the
-            // defect Tau found in the flip-verify raid). Transitional shape: Framesaver owns the
-            // profiler until the capstone moves Telemetry.cs and the profiler TOGETHER.)
-            if (ProfilePlayerLoop.Value)
-            {
-                PlayerLoopProfiler.Install();
-                PlayerLoopProfiler.ArmFrameGap();
-            }
-
-            if (TelemetryEnabled.Value)
-            {
-                gameObject.AddComponent<Telemetry>();
-            }
+            //
+            // Capstone cutover (2026-08-19): PlayerLoopProfiler.Install()/.ArmFrameGap() and
+            // gameObject.AddComponent<Telemetry>() are GONE from here, not just moved - they now
+            // live in Ranger's Plugin.cs (see that file's own Awake, restoring the seam-5 partial
+            // revert now that the profiler and its sampler live in one assembly again). Framesaver
+            // no longer writes the ndjson or owns the player-loop profiler at all. The
+            // `ProfilePlayerLoop`/`ExpandPhase` config entries above are DEAD as of this commit
+            // (nothing reads them anymore) - left declared rather than deleted so an existing
+            // BepInEx config file's saved values do not vanish with a warning; Ranger's own fresh
+            // keys under "Telemetry" are what actually governs behavior now.
 
             // Ranger capstone wiring (2026-08-18): registers this mod's per-frame levers, the
             // bot stand-by predicate, and the forceStandByForAllRoles reader against Ranger's
@@ -597,10 +591,14 @@ namespace Framesaver
             // TryAskBotStandBy() / ForceStandByForAllRoles() - wiring the registration now means
             // that switch only has to DELETE the old inline code, not add new registration code
             // as well.
+            //
+            // ONE call to RegisterPerFrameLevers() now, not two - see that method's own doc
+            // comment (2026-08-19 fix) for the real bug a second call with the same modGuid key
+            // used to cause (silent last-write-wins overwrite in TelemetryBus's per-frame
+            // callback dictionary).
             if (RangerBridge.Present)
             {
                 RangerBridge.RegisterPerFrameLevers();
-                RangerBridge.RegisterGcControlPerFrame();
                 RangerBridge.RegisterBotStandByPredicate();
                 RangerBridge.RegisterForceStandByForAllRolesReader();
                 RangerBridge.RegisterCapstoneCallbacks();

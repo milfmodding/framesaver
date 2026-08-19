@@ -272,37 +272,46 @@ namespace Framesaver.Patches
         }
 
         /// <summary>
-        /// Registers FrameLevers.PerFrame (MaxDeltaTime cap, JobScheduler tuning, player-loop
-        /// profiler re-arm check) as Ranger's per-frame callback, isolated. Same reasoning as
-        /// every other bridge method - the JIT resolves TelemetryBus/RegisterPerFrameCallback's
-        /// signature the moment THIS method compiles, so it must never be called inline at
-        /// Plugin.Awake() with Ranger possibly absent. Called once from Plugin.Awake(), gated
-        /// on Present, same as the checkpoint patches.
+        /// Registers Framesaver's WHOLE per-frame surface (FrameLevers.PerFrame - MaxDeltaTime
+        /// cap, JobScheduler tuning, player-loop profiler re-arm check - AND GcControl's
+        /// ApplyConfig/Drive/Track) as ONE per-frame callback, isolated.
+        ///
+        /// REAL BUG FOUND AND FIXED HERE (2026-08-19, capstone cutover session): this used to
+        /// be TWO separate methods (RegisterPerFrameLevers, RegisterGcControlPerFrame), each
+        /// calling TelemetryBus.RegisterPerFrameCallback(FramesaverGuid, ...) with the SAME key.
+        /// TelemetryBus's registration dictionary is `_perFrameCallbacks[modGuid] = callback` -
+        /// last write wins, not additive - so Plugin.Awake() calling both in sequence silently
+        /// dropped FrameLevers.PerFrame the moment GcControlPerFrame's registration ran second.
+        /// Dormant only because nothing yet calls TelemetryBus.InvokePerFrameCallbacks() (that
+        /// starts once the capstone's namespace switch lands and Ranger's Telemetry.cs starts
+        /// driving the per-window/per-frame calls) - so this would have silently disabled the
+        /// MaxDeltaTime cap, JobScheduler tuning and the profiler re-arm check the FIRST raid
+        /// after cutover, with nothing in a build log or a review diff pointing at it. Caught by
+        /// re-reading TelemetryBus's actual dictionary semantics rather than assuming two
+        /// registration calls compose. Fixed by merging into one registration, one delegate,
+        /// matching the one-modGuid-one-slot shape the dictionary actually has.
+        ///
+        /// The JIT resolves TelemetryBus/RegisterPerFrameCallback's signature the moment THIS
+        /// method compiles, so it must never be called inline at Plugin.Awake() with Ranger
+        /// possibly absent. Called once from Plugin.Awake(), gated on Present, same as the
+        /// checkpoint patches.
         /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static void RegisterPerFrameLevers()
         {
-            global::Ranger.TelemetryBus.RegisterPerFrameCallback(FramesaverGuid, FrameLevers.PerFrame);
+            global::Ranger.TelemetryBus.RegisterPerFrameCallback(FramesaverGuid, PerFrame);
         }
 
-        /// <summary>
-        /// Registers GcControl's per-frame drive (ApplyConfig/Drive/Track), isolated. Same
-        /// reasoning as RegisterPerFrameLevers above - kept as its own bridge method rather
-        /// than folded into that one so GcControl's own per-frame surface stays a single,
-        /// independently-testable registration, matching how it was already described in the
-        /// capstone notes before this bridge method existed to make the registration real.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static void RegisterGcControlPerFrame()
+        private static void PerFrame()
         {
-            global::Ranger.TelemetryBus.RegisterPerFrameCallback(FramesaverGuid, GcControlPerFrame);
-        }
-
-        private static void GcControlPerFrame()
-        {
+            FrameLevers.PerFrame();
             GcControl.ApplyConfig();
             GcControl.Drive();
             GcControl.Track();
+            // Capstone finding (2026-08-19): Ranger's Telemetry.cs reads asyncDrain.drainedThisFrame
+            // back every frame - see AsyncDrainPatch.PublishAndResetFrame's own doc comment for why
+            // publish-then-reset has to happen together, here, at this per-frame cadence.
+            AsyncDrain.PublishAndResetFrame();
         }
 
         /// <summary>
@@ -352,6 +361,100 @@ namespace Framesaver.Patches
             global::Ranger.TelemetryBus.RegisterWindowCallback(FramesaverGuid, CapstoneCallbacks.BuildWindow);
             global::Ranger.TelemetryBus.RegisterSpikeCallback(FramesaverGuid, CapstoneCallbacks.BuildSpike);
             global::Ranger.TelemetryBus.RegisterWindowResetCallback(FramesaverGuid, CapstoneCallbacks.ResetWindow);
+
+            // Gap found and fixed during the capstone cutover session (2026-08-19): Ranger's
+            // already-committed Telemetry.cs has a comment on its ResetForRaid path claiming
+            // SleepingBotAnimatorPatch.ResetForRaid() "moved to Framesaver's registered raid-start
+            // callback" - but no such registration existed anywhere in Framesaver until this line.
+            // Without it, per-raid stale-dictionary state in SleepingBotAnimatorPatch (see that
+            // class's own ResetForRaid doc comment for what leaks otherwise) would never actually
+            // clear once Ranger's Telemetry.cs becomes the live sampler and starts calling
+            // InvokeRaidStartCallbacks() instead of the direct call Framesaver's original
+            // Telemetry.cs makes today.
+            global::Ranger.TelemetryBus.RegisterRaidStartCallback(FramesaverGuid, SleepingBotAnimatorPatch.ResetForRaid);
+        }
+
+        /// <summary>
+        /// AwakeAge's per-bot wake notification, isolated. SleepingBotAnimatorPatch's
+        /// BotStandByStateChangePatch calls this on every un-pause edge (see that class's
+        /// own doc comment for why the hook lives there rather than in Wake()/GoToSleep()).
+        /// BotOwner is a shared EFT type both assemblies reference directly - only the
+        /// delegate body, which reaches into global::Ranger.AwakeAge, needs isolating.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void NotifyAwakeAgeWoke(BotOwner bot)
+        {
+            if (!Present)
+            {
+                return;
+            }
+
+            global::Ranger.AwakeAge.Woke(bot);
+        }
+
+        /// <summary>
+        /// AwakeAge's per-bot sleep/end notification, isolated. Same reasoning as
+        /// <see cref="NotifyAwakeAgeWoke"/>.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void NotifyAwakeAgeEnded(BotOwner bot)
+        {
+            if (!Present)
+            {
+                return;
+            }
+
+            global::Ranger.AwakeAge.Ended(bot);
+        }
+
+        /// <summary>
+        /// AwakeAge's per-bot-call timing record, isolated. Gap found and fixed during the
+        /// capstone cutover session (2026-08-19): UpdateManualTimingPatches.cs stays in
+        /// Framesaver (it is a per-bot shipping-adjacent timing instrument, not one of the
+        /// files that moves with Telemetry.cs/AwakeAgeTiming.cs) but calls AwakeAge.Record
+        /// directly - a bare, unqualified reference that resolves to Framesaver's OWN copy of
+        /// AwakeAge today. Once AwakeAgeTiming.cs is deleted from Framesaver at cutover, that
+        /// call would not compile at all - caught by an exhaustive coupling sweep before
+        /// deleting anything, not discovered as a build failure after. Same reasoning as every
+        /// other bridge method: BotOwner is a shared EFT type, only the delegate body (which
+        /// reaches into global::Ranger.AwakeAge) needs isolating.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void NotifyAwakeAgeRecord(BotOwner bot, long ticks)
+        {
+            if (!Present)
+            {
+                return;
+            }
+
+            global::Ranger.AwakeAge.Record(bot, ticks);
+        }
+
+        /// <summary>
+        /// The player-loop profiler's periodic re-arm check, isolated. Gap found and fixed
+        /// during the capstone cutover session (2026-08-19): FrameLevers.cs (staying in
+        /// Framesaver - it is the per-frame shipping-lever surface, not a file that moves)
+        /// called PlayerLoopProfiler.MarkersPresent()/.Install() directly, a bare reference
+        /// that resolves to Framesaver's OWN copy of PlayerLoopProfiler.cs today. That file
+        /// moves to Ranger AT THIS CUTOVER, together with Telemetry.cs (the seam-5 lesson,
+        /// documented at length in EXTRACTION-PLAN.md: the profiler and the sampler that reads
+        /// its Snapshot are statically coupled within one assembly and cannot change owners
+        /// independently) - so once PlayerLoopProfiler.cs is deleted from Framesaver, this
+        /// direct call would not compile. Caught by the same exhaustive coupling sweep that
+        /// found the AwakeAge.Record gap, before deleting anything.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void ReArmPlayerLoopProfilerIfNeeded()
+        {
+            if (!Present)
+            {
+                return;
+            }
+
+            if (!global::Ranger.PlayerLoopProfiler.MarkersPresent())
+            {
+                global::Ranger.PlayerLoopProfiler.Install();
+            }
         }
 
         private static bool? AskBotStandBy(BotOwner bot)

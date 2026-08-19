@@ -97,6 +97,14 @@ namespace Framesaver
         /// The game rewrites the player loop during raid load; re-arm if our markers were
         /// dropped. Moved verbatim from Telemetry.cs's Update() (the 5-second-interval check),
         /// using Time.realtimeSinceStartup the same way the original did.
+        ///
+        /// Capstone cutover (2026-08-19): PlayerLoopProfiler.cs moves to Ranger together with
+        /// Telemetry.cs (the seam-5 lesson - profiler and sampler cannot change owners
+        /// independently). This class stays in Framesaver, so the actual re-arm call is now
+        /// routed through RangerBridge rather than a direct PlayerLoopProfiler.MarkersPresent/
+        /// .Install call - see RangerBridge.ReArmPlayerLoopProfilerIfNeeded's own doc comment
+        /// for how this gap was found. The Plugin.ProfilePlayerLoop.Value gate stays here
+        /// (config lookup, no cross-assembly reach), only the profiler touch moved.
         /// </summary>
         private static void ReArmPlayerLoopProfilerIfDue()
         {
@@ -106,9 +114,9 @@ namespace Framesaver
             }
 
             _nextLoopCheck = Time.realtimeSinceStartup + 5f;
-            if (Plugin.ProfilePlayerLoop.Value && !PlayerLoopProfiler.MarkersPresent())
+            if (Plugin.ProfilePlayerLoop.Value)
             {
-                PlayerLoopProfiler.Install();
+                Framesaver.Patches.RangerBridge.ReArmPlayerLoopProfilerIfNeeded();
             }
         }
     }

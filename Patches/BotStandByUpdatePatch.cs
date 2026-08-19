@@ -220,12 +220,13 @@ namespace Framesaver.Patches
             // subscribers. That envelope is the point: the cost of a wake is
             // what it triggers, not what this method executes.
             long wakeTicks = Stopwatch.GetTimestamp() - start;
-            StandByTransitions.Woken(wakeTicks);
 
-            // Ranger extraction seam (phase 2), additive: publish the same transition to
-            // the bus so the measurement half can move to Ranger without losing this fact.
-            // Gate stops the call; see RangerBridge.PublishStandByTransition for why the
-            // payload is count+sum rather than a single Event.
+            // Capstone (2026-08-18): StandByTransitions moved to Ranger with the rest of
+            // Telemetry.cs's unit - the direct call this used to make
+            // (StandByTransitions.Woken(wakeTicks)) has nothing left to call, since
+            // Framesaver.Patches.StandByTransitions no longer exists. The bus publish
+            // below (seam-2, already verified live weeks before the capstone needed it)
+            // is now the ONLY path for this fact.
             if (RangerBridge.Present)
             {
                 RangerBridge.PublishStandByTransition(true, TickMath.ToMs(wakeTicks));
@@ -397,10 +398,9 @@ namespace Framesaver.Patches
             if (standBy.standByType != before)
             {
                 long sleepTicks = Stopwatch.GetTimestamp() - start;
-                StandByTransitions.Slept(sleepTicks);
 
-                // Ranger extraction seam (phase 2), additive: same shape as the wake-side
-                // call above; both halves of the wokenMs/woken-style ratio must accumulate.
+                // Capstone (2026-08-18): same resolution as the wake side above -
+                // StandByTransitions.Slept(sleepTicks) has nothing left to call.
                 if (RangerBridge.Present)
                 {
                     RangerBridge.PublishStandByTransition(false, TickMath.ToMs(sleepTicks));

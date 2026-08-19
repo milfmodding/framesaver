@@ -115,6 +115,44 @@ namespace Framesaver.Patches
             sb.Append(']');
         }
 
+        /// <summary>
+        /// JObject-shaped sibling of AppendTop, for the capstone window callback body (Ranger's
+        /// TelemetryBus.RegisterWindowCallback expects Action&lt;JObject&gt;, not
+        /// Action&lt;StringBuilder&gt; - Sophia's 2026-08-18 ruling, same reasoning as every other
+        /// JObject sibling in this codebase, e.g. GcControl.AppendWindowTo). Same fields, same
+        /// values, same TopCount/skip-null-name loop, just written as an object graph instead of
+        /// appended as characters. AppendTop itself is UNCHANGED and stays in use nowhere once the
+        /// capstone lands (Framesaver's own Telemetry.cs is deleted at cutover), kept only so this
+        /// stays additive rather than rewriting a working method.
+        /// </summary>
+        public static void AppendTopTo(Newtonsoft.Json.Linq.JArray array)
+        {
+            for (int i = 0; i < TopCount; i++)
+            {
+                if (TopName[i] == null)
+                {
+                    break;
+                }
+
+                double residual = TopMs[i] - TopProfileMs[i] - TopBundleMs[i];
+                if (residual < 0d)
+                {
+                    residual = 0d;
+                }
+
+                var entry = new Newtonsoft.Json.Linq.JObject();
+                entry["ms"] = TopMs[i];
+                entry["allocKb"] = TopAlloc[i] / 1024L;
+                entry["profileMs"] = TopProfileMs[i];
+                entry["bundleSyncMs"] = TopBundleMs[i];
+                entry["residualMs"] = residual;
+                entry["raidInitMs"] = TopRaidInitMs[i];
+                entry["gen0"] = TopGen0[i];
+                entry["name"] = TopName[i];
+                array.Add(entry);
+            }
+        }
+
         /// <summary>Callbacks run with collection suspended, so the effect is visible in telemetry.</summary>
         public static int GcSuspended;
 
@@ -213,6 +251,33 @@ namespace Framesaver.Patches
             Drained = 0;
             Deferred = 0;
             Truncated = 0;
+        }
+
+        /// <summary>
+        /// Publishes Drained (this frame's count) then resets it, isolated as its own per-frame
+        /// step. Capstone finding (2026-08-19): Ranger's already-committed Telemetry.cs (see its
+        /// _lastDrained assignment, capstone comment there) reads this back every frame via
+        /// TelemetryBus.TryGetEvent("asyncDrain.drainedThisFrame", ...) - that publish call did
+        /// not exist anywhere in Framesaver yet when this was found, a real gap between what
+        /// Ranger's side already assumes and what Framesaver's side actually does. PUBLISH THEN
+        /// RESET, in that order and both here: Ranger's read happens once per frame from its own
+        /// per-frame call site, same cadence as this method needs to run at, so this is the
+        /// single place both steps can happen atomically without a window where a second reader
+        /// could see a value already zeroed or a reset that raced the publish. Event (not Sum),
+        /// because Drained is inherently a THIS-FRAME snapshot, not an accumulating quantity -
+        /// same semantic Deferred/Truncated have, which is exactly why those two stay unpublished
+        /// per RangerBridge.PublishAsyncDrain's own doc comment (a window-boundary read of a
+        /// per-frame-reset field would silently be wrong; a per-FRAME read via this method is the
+        /// only safe cadence for exactly that reason).
+        /// </summary>
+        internal static void PublishAndResetFrame()
+        {
+            if (RangerBridge.Present)
+            {
+                global::Ranger.TelemetryBus.Event("asyncDrain.drainedThisFrame", Drained);
+            }
+
+            ResetFrame();
         }
 
         public static void ResetWindow()

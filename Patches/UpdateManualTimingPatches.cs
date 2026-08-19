@@ -258,9 +258,14 @@ namespace Framesaver.Patches
             // Record would re-stamp it at age 0 and pile near-zero costs into
             // the YOUNGEST bucket - making young bots look cheap and inverting
             // the very finding this instrument exists to test.
+            // Capstone cutover (2026-08-19): AwakeAge moved to Ranger with Telemetry.cs;
+            // this class stays in Framesaver, so the call is now cross-assembly. Routed
+            // through RangerBridge.NotifyAwakeAgeRecord rather than a direct
+            // global::Ranger.AwakeAge.Record call - see that bridge method's own doc comment
+            // for why this gap existed and how it was found.
             if (!paused && !dead)
             {
-                AwakeAge.Record(__instance, ticks);
+                RangerBridge.NotifyAwakeAgeRecord(__instance, ticks);
             }
         }
     }

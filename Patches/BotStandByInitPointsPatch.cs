@@ -27,7 +27,11 @@ namespace Framesaver.Patches
                 // Still logged. Standing down is a decision about this bot,
                 // and an unlogged one is indistinguishable from a bot that
                 // never activated.
-                BotLog.StandByAssigned(__instance, __instance._owner);
+                //
+                // Capstone (2026-08-18): BotLog moved to Ranger with the rest of
+                // Telemetry.cs's unit. Fully qualified rather than a bare `BotLog` -
+                // this class stays in Framesaver, so the type is now cross-assembly.
+                global::Ranger.Patches.BotLog.StandByAssigned(__instance, __instance._owner);
                 return;
             }
 
@@ -49,7 +53,7 @@ namespace Framesaver.Patches
             // Last, so the line records what this bot was actually granted
             // rather than what it was about to be. The grant never changes
             // afterwards - it is decided here, once, for the bot's whole life.
-            BotLog.StandByAssigned(__instance, __instance._owner);
+            global::Ranger.Patches.BotLog.StandByAssigned(__instance, __instance._owner);
         }
 
         /// <summary>

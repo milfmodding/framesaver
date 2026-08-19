@@ -548,11 +548,11 @@ namespace Framesaver.Patches
             BotOwner owner = __instance != null ? __instance._owner : null;
             if (paused)
             {
-                AwakeAge.Ended(owner);
+                RangerBridge.NotifyAwakeAgeEnded(owner);
             }
             else
             {
-                AwakeAge.Woke(owner);
+                RangerBridge.NotifyAwakeAgeWoke(owner);
             }
         }
     }

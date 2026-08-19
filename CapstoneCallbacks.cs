@@ -211,6 +211,21 @@ namespace Framesaver
             obj["cfg"] = cfg;
 
             GcControl.AppendWindowTo(obj);
+
+            // gcSuspended/worstCallbacks: both read AsyncDrain directly, same bucket as every
+            // other shipping-class read in this method. Found missing here during the capstone
+            // cutover session (2026-08-19) - Ranger's Telemetry.cs (already committed) has a
+            // comment claiming these "moved into Framesaver's registered window callback" but
+            // this method never actually contained them until now. AsyncDrain.PublishTelemetry()
+            // (the separate, additive bus-publish half - GcSuspended/WorstCallbackMs/
+            // WorstCallbackName as Events) is unaffected and keeps running from AsyncDrain's own
+            // code; this is the OTHER relationship, Telemetry reading AsyncDrain's state directly
+            // for its own NDJSON fields, same distinction the rest of this method's doc comments
+            // draw for the other 8 shipping classes.
+            obj["gcSuspended"] = Patches.AsyncDrain.GcSuspended;
+            JArray worstCallbacks = new JArray();
+            Patches.AsyncDrain.AppendTopTo(worstCallbacks);
+            obj["worstCallbacks"] = worstCallbacks;
         }
 
         /// <summary>
