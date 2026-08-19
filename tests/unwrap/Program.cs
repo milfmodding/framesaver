@@ -577,19 +577,27 @@ class P {
         Console.WriteLine("\nStandByTransitions");
         // Capstone migration: StandByTransitions moved to Ranger (bare namespace
         // Ranger, not Ranger.Patches - see AwakeAgeTiming.cs's own class list).
+        // Wiring-gap-adjacent fix (2026-08-19): Append(StringBuilder) is gone, replaced by
+        // AppendObj() returning a JObject - same shift UpdateManualTiming/BossSpawnGate went
+        // through, above. Reuse this file's own reflection-only Formatting.None helpers
+        // (toStringWithFormat etc., defined earlier in the BossSpawnGate block) rather than
+        // redefining them.
         var sbt = rangerAsm.GetType("Ranger.StandByTransitions");
         var woken = sbt.GetMethod("Woken", BindingFlags.NonPublic | BindingFlags.Static);
         var slept = sbt.GetMethod("Slept", BindingFlags.NonPublic | BindingFlags.Static);
-        var sbtAppend = sbt.GetMethod("Append", BindingFlags.Public | BindingFlags.Static);
+        var sbtAppend = sbt.GetMethod("AppendObj", BindingFlags.Public | BindingFlags.Static);
         var sbtReset = sbt.GetMethod("ResetWindow", BindingFlags.Public | BindingFlags.Static);
+
+        Func<string> sbtEmit = () => {
+            object obj = sbtAppend.Invoke(null, null);
+            return (string)toStringWithFormat.Invoke(obj, new object[] { formatNone, null });
+        };
 
         sbtReset.Invoke(null, null);
         woken.Invoke(null, new object[] { freq / 1000 });   // 1.0 ms
         woken.Invoke(null, new object[] { freq / 1000 });   // 1.0 ms
         slept.Invoke(null, new object[] { freq / 4000 });   // 0.25 ms
-        var sbt1 = new System.Text.StringBuilder();
-        sbtAppend.Invoke(null, new object[] { sbt1 });
-        string tj = sbt1.ToString();
+        string tj = sbtEmit();
         Check("wake count", tj.Contains("\"woken\":2"), true);
         Check("wake ms", tj.Contains("\"wokenMs\":2"), true);
         Check("sleep count", tj.Contains("\"slept\":1"), true);
@@ -602,20 +610,23 @@ class P {
         died.Invoke(null, new object[] { true });
         died.Invoke(null, new object[] { false });
         died.Invoke(null, new object[] { true });
-        var sbt3 = new System.Text.StringBuilder();
-        sbtAppend.Invoke(null, new object[] { sbt3 });
-        string dj = sbt3.ToString();
+        string dj = sbtEmit();
         Check("deaths while awake counted", dj.Contains("\"diedAwake\":2"), true);
         Check("deaths while asleep kept separate", dj.Contains("\"diedAsleep\":1"), true);
         Check("a death is not a wake", dj.Contains("\"woken\":2"), true);
         Check("a death is not a sleep", dj.Contains("\"slept\":1"), true);
 
+        // JObject conversion: same reasoning as UpdateManualTiming's ResetWindow check above -
+        // per-field Contains rather than a hand-written whole-string literal, since a JObject's
+        // ToString() whitespace/ordering is a different fragile surface than StringBuilder's was.
         sbtReset.Invoke(null, null);
-        var sbt2 = new System.Text.StringBuilder();
-        sbtAppend.Invoke(null, new object[] { sbt2 });
-        Check("ResetWindow zeroes every field",
-              sbt2.ToString(),
-              "{\"woken\":0,\"wokenMs\":0,\"slept\":0,\"sleptMs\":0,\"diedAwake\":0,\"diedAsleep\":0}");
+        string sbtResetJson = sbtEmit();
+        Check("ResetWindow zeroes woken", sbtResetJson.Contains("\"woken\":0"), true);
+        Check("ResetWindow zeroes wokenMs", sbtResetJson.Contains("\"wokenMs\":0"), true);
+        Check("ResetWindow zeroes slept", sbtResetJson.Contains("\"slept\":0"), true);
+        Check("ResetWindow zeroes sleptMs", sbtResetJson.Contains("\"sleptMs\":0"), true);
+        Check("ResetWindow zeroes diedAwake", sbtResetJson.Contains("\"diedAwake\":0"), true);
+        Check("ResetWindow zeroes diedAsleep", sbtResetJson.Contains("\"diedAsleep\":0"), true);
 
         // A comma-decimal locale turns "wokenMs":2.5 into "wokenMs":2,5 and
         // every window in the file stops parsing. Both timers pass
@@ -629,27 +640,28 @@ class P {
                 new System.Globalization.CultureInfo("de-DE");
             sbtReset.Invoke(null, null);
             slept.Invoke(null, new object[] { freq / 4000 });
-            var deSb = new System.Text.StringBuilder();
-            sbtAppend.Invoke(null, new object[] { deSb });
             Check("transitions: decimal point survives de-DE",
-                  deSb.ToString().Contains("\"sleptMs\":0.25"), true);
+                  sbtEmit().Contains("\"sleptMs\":0.25"), true);
 
             reset.Invoke(null, null);
             add.Invoke(null, new object[] { freq / 4000, true });
-            var deSb2 = new System.Text.StringBuilder();
-            append.Invoke(null, new object[] { deSb2 });
+            string deJson2 = ((string)toStringWithFormat.Invoke(append.Invoke(null, null), new object[] { formatNone, null }));
             Check("updateManual: decimal point survives de-DE",
-                  deSb2.ToString().Contains("\"pausedMs\":0.25"), true);
+                  deJson2.Contains("\"pausedMs\":0.25"), true);
         } finally {
             System.Threading.Thread.CurrentThread.CurrentCulture = prev;
         }
 
         // Telemetry.cs's Flush() builds via JObject now (2026-08-19 JObject conversion), so
-        // "standByTransitions" is a bare JObject key literal (obj["standByTransitions"] = ...),
-        // not a comma-wrapped StringBuilder fragment - same reasoning as the CapstoneCallbacks.cs
-        // fields already handled this way above. StandByTransitions.Append itself is unconverted
-        // this pass and still emits "{\"woken\":"/",\"sleptMs\":" as StringBuilder text.
-        foreach (var lit in new[] { "standByTransitions", "{\"woken\":", ",\"sleptMs\":" })
+        // "standByTransitions" is a bare JObject key literal (obj["standByTransitions"] = ...).
+        // StandByTransitions.Append ALSO converted to JObject this session (AppendObj(), not
+        // the StringBuilder-shaped Append(StringBuilder) this comment used to describe) - its
+        // own keys are now bare JObject assignments (obj["woken"] = ...) too, so the old
+        // comma-wrapped StringBuilder literals ({"woken": / ,"sleptMs":) no longer appear
+        // anywhere in the compiled binary and would fail this scan. Checking the bare key
+        // literals instead, matching the pattern every other JObject-converted field in this
+        // file already uses (see the standByRefused/awakeAge/stepSeconds fixes elsewhere).
+        foreach (var lit in new[] { "standByTransitions", "woken", "sleptMs" })
             Check($"emits {lit}", inUs(lit), true);
 
         // ---- Protocol @directives -------------------------------------------
@@ -721,25 +733,35 @@ class P {
         // not the contents.
         var ticksF = aa.GetField("Ticks", BindingFlags.NonPublic | BindingFlags.Static);
         var callsF = aa.GetField("Calls", BindingFlags.NonPublic | BindingFlags.Static);
-        var aaAppend = aa.GetMethod("Append", BindingFlags.Public | BindingFlags.Static);
+        // JObject/JArray conversion (2026-08-19): Append(StringBuilder) is gone, replaced by
+        // AppendObj() returning a JArray of bucket objects directly - same shift
+        // UpdateManualTiming/BossSpawnGate/StandByTransitions went through above. Reused via
+        // the same reflection-only Formatting.None helpers (toStringWithFormat works on any
+        // JToken, including a JArray, not just JObject).
+        var aaAppend = aa.GetMethod("AppendObj", BindingFlags.Public | BindingFlags.Static);
         var aaReset = aa.GetMethod("ResetWindow", BindingFlags.Public | BindingFlags.Static);
+
+        Func<string> aaEmit = () => {
+            object obj = aaAppend.Invoke(null, null);
+            return (string)toStringWithFormat.Invoke(obj, new object[] { formatNone, null });
+        };
 
         aaReset.Invoke(null, null);
         ((long[])ticksF.GetValue(null))[0] = freq / 1000;   // 1.0 ms in the youngest
         ((int[])callsF.GetValue(null))[0] = 4;
         ((long[])ticksF.GetValue(null))[5] = freq / 250;    // 4.0 ms in the tail
         ((int[])callsF.GetValue(null))[5] = 2;
-        var aaSb = new System.Text.StringBuilder();
-        aaAppend.Invoke(null, new object[] { aaSb });
-        string aj = aaSb.ToString();
-        Check("youngest bucket edge is 60", aj.Contains("{\"toS\":60,\"ms\":1,\"n\":4}"), true);
-        Check("tail edge is null, not 0", aj.Contains("{\"toS\":null,\"ms\":4,\"n\":2}"), true);
+        // toS/ms come through as JValue(float)/JValue(double), so Newtonsoft renders whole
+        // numbers with a trailing ".0" (60.0, not 60) - confirmed by direct read of the actual
+        // emitted string rather than guessed, since a StringBuilder-era literal like "60" would
+        // silently never match a JToken's own number formatting.
+        string aj = aaEmit();
+        Check("youngest bucket edge is 60", aj.Contains("{\"toS\":60.0,\"ms\":1.0,\"n\":4}"), true);
+        Check("tail edge is null, not 0", aj.Contains("{\"toS\":null,\"ms\":4.0,\"n\":2}"), true);
         Check("six buckets emitted", aj.Split(new[] { "{\"toS\":" }, StringSplitOptions.None).Length - 1, 6);
 
         aaReset.Invoke(null, null);
-        var aaSb2 = new System.Text.StringBuilder();
-        aaAppend.Invoke(null, new object[] { aaSb2 });
-        Check("ResetWindow zeroes the sums", aaSb2.ToString().Contains("\"ms\":0,\"n\":0}"), true);
+        Check("ResetWindow zeroes the sums", aaEmit().Contains("\"ms\":0.0,\"n\":0}"), true);
 
         // ---- Awake-age SPAN state machine ------------------------------
         //
@@ -890,9 +912,11 @@ class P {
         // "awakeAge", "triggerSubsMax" and "standByRefused" are all bare JObject key literals
         // now (obj["awakeAge"]=..., obj["triggerSubsMax"]=..., bots["standByRefused"]=...) since
         // Flush() builds via JObject (2026-08-19) - same reasoning as the other JObject-key
-        // literal fixes in this file. AwakeAge.Append itself is unconverted this pass and still
-        // emits "{\"toS\":" as StringBuilder text.
-        foreach (var lit in new[] { "awakeAge", "{\"toS\":", "triggerSubsMax",
+        // literal fixes in this file. AwakeAge.Append ALSO converted this session (AppendObj(),
+        // a JArray built via bucket["toS"]/["ms"]/["n"] assignments) - the old StringBuilder
+        // literal "{\"toS\":" no longer appears anywhere in the compiled binary, so checking
+        // the bare key "toS" instead, same fix shape as the StandByTransitions block above.
+        foreach (var lit in new[] { "awakeAge", "toS", "triggerSubsMax",
                                     "standByRefused" })
             Check($"emits {lit}", inUs(lit), true);
         // BOTH retired names must be GONE from the assembly, not merely unused.

@@ -492,6 +492,59 @@ namespace Framesaver.Patches
             raidInitMs = global::Ranger.RaidInit.TotalMs;
         }
 
+        /// <summary>
+        /// AsyncWorker.Update's drain timer, isolated. Added 2026-08-19 alongside restoring
+        /// AsyncWorkerTimingPatches.cs to Framesaver (see that file's own doc comment for why
+        /// it was deleted and then un-deleted in the same session) - the ONE Harmony patch on
+        /// AsyncWorker.Update stays here, but writes into Ranger's AsyncWorkerTiming.UpdateDrainMs
+        /// (which Telemetry.cs already reads, same-assembly) instead of a Framesaver-local field,
+        /// so Ranger's own timing-only copy of this patch class can stay unenabled without a
+        /// second Harmony patch on the same method.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void AddAsyncWorkerUpdateDrainMs(double ms)
+        {
+            if (!Present)
+            {
+                return;
+            }
+
+            global::Ranger.AsyncWorkerTiming.UpdateDrainMs += ms;
+        }
+
+        /// <summary>
+        /// AsyncWorker.FixedUpdate's drain timer (only called when NOT suppressed), isolated.
+        /// Same reasoning as <see cref="AddAsyncWorkerUpdateDrainMs"/>.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void AddAsyncWorkerFixedDrainMs(double ms)
+        {
+            if (!Present)
+            {
+                return;
+            }
+
+            global::Ranger.AsyncWorkerTiming.FixedDrainMs += ms;
+        }
+
+        /// <summary>
+        /// AsyncWorker.FixedUpdate's suppression counter, isolated. Same reasoning as
+        /// <see cref="AddAsyncWorkerUpdateDrainMs"/> - the suppression Prefix that increments
+        /// this is the shipping "Drain completions in Update only" lever and stays in
+        /// Framesaver; only the counter's storage lives in Ranger, matching its NDJSON field's
+        /// one home.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void IncrementAsyncWorkerFixedSkips()
+        {
+            if (!Present)
+            {
+                return;
+            }
+
+            global::Ranger.AsyncWorkerTiming.FixedSkips++;
+        }
+
         private static bool? AskBotStandBy(BotOwner bot)
         {
             if (!BotStandByUpdatePatch.RoleStandByKnown(bot))
