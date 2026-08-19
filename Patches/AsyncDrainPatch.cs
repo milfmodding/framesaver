@@ -587,24 +587,33 @@ namespace Framesaver.Patches
                     // split into "profile construction", "bundle prologue" and "everything else". A 16.3s
                     // callback carrying 830ms of profiles and 272ms of bundle prologue is a very different
                     // problem from one where those account for most of it - and so far neither does.
-                    double profile0 = ProfileBuild.TotalMs;
-                    double bundle0 = BundleLoad.SyncMsTotal;
+                    //
+                    // Wiring-gap fix (2026-08-19): ProfileBuild/BundleLoad/RaidInit are now Ranger-side
+                    // ONLY - Framesaver's own copies (which these three used to read directly) were
+                    // deleted as dead code once Ranger's Plugin.cs started actually enabling their
+                    // patches (see RangerBridge.ReadDrainAttribution's own doc comment for the full
+                    // story). Routed through the bridge rather than a direct cross-assembly reference,
+                    // same JIT-safety reasoning every other Ranger-touching call in this assembly uses.
+                    double profile0, bundle0, raidInit0;
+                    RangerBridge.ReadDrainAttribution(out profile0, out bundle0, out raidInit0);
                     int gen0 = GC.CollectionCount(0);
 
                     // The bot/generate callback that completes the last preset batch resumes the tail of
                     // LocalGame.vmethod_1 inline - BotsController.Init and the spawn scenarios. That is the
                     // 16.7s, and until now it landed entirely in `residual`.
-                    double raidInit0 = RaidInit.TotalMs;
 
                     long t0 = Stopwatch.GetTimestamp();
                     AsyncDrain.RunCallback(action);
                     double ms = TickMath.ToMs(Stopwatch.GetTimestamp() - t0);
 
+                    double profile1, bundle1, raidInit1;
+                    RangerBridge.ReadDrainAttribution(out profile1, out bundle1, out raidInit1);
+
                     AsyncDrain.Record(ms, action, GC.GetTotalMemory(false) - heap0,
-                        ProfileBuild.TotalMs - profile0,
-                        BundleLoad.SyncMsTotal - bundle0,
+                        profile1 - profile0,
+                        bundle1 - bundle0,
                         GC.CollectionCount(0) - gen0,
-                        RaidInit.TotalMs - raidInit0);
+                        raidInit1 - raidInit0);
                 }
                 else
                 {

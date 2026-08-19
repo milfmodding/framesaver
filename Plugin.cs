@@ -522,41 +522,32 @@ namespace Framesaver
             new SleepingBotStandByPumpPatch().Enable();
             new BotStandByInitPointsPatch().Enable();
             new AICoreControllerUpdatePatch().Enable();
-            new BotsControllerTickPatch().Enable();
-            new UpdateManualTimingPatch().Enable();
-            new BossWaveSettingsPatch().Enable();
-            new BotControllerSettingsPatch().Enable();
             new SleepingBotAnimatorPatch().Enable();
             new BotStandByStateChangePatch().Enable();
             new SkipSleepingPlayerLateUpdatePatch().Enable();
             new SkipSleepingWorldTickPatch().Enable();
-            new AsyncWorkerUpdatePatch().Enable();
-            new AsyncWorkerFixedUpdatePatch().Enable();
             new AsyncDrainPatch().Enable();
-            new ProfileCtorPatch().Enable();
-            new ProfileInventoryPatch().Enable();
-            new BundleLoadPatch().Enable();
-            new SpawnCreateDataPatch().Enable();
-            new SpawnByWavePatch().Enable();
-            new SpawnWithoutWavePatch().Enable();
-            new SpawnByTypeForcePatch().Enable();
-            new SpawnZoneAttemptPatch().Enable();
-            new BotOwnerCreatePatch().Enable();
-            new BotCreateWorkPatch().Enable();
 
-            // Raid initialisation, which resumes inline inside the last bot/generate completion callback and
-            // is the unexplained 16.7s. One-shot per raid, so no per-frame cost.
-            new BotsControllerInitPatch().Enable();
-            new WavesSpawnRunPatch().Enable();
-            new NonWavesSpawnRunPatch().Enable();
-            new BossSpawnRunPatch().Enable();
-            new CoversRestorePatch().Enable();
-            new CoversCachePointsPatch().Enable();
-            new BotDoorsRefreshPatch().Enable();
-            new BotZoneInitPatch().Enable();
-            new PatrolZoneMapPatch().Enable();
-            new CutControllerInitPatch().Enable();
-            new LootClusterScanPatch().Enable();
+            // Wiring-gap fix (2026-08-19, editing pass): the ~26 .Enable() calls that used to be
+            // here - BotsControllerTickPatch, UpdateManualTimingPatch, BossWaveSettingsPatch,
+            // BotControllerSettingsPatch, AsyncWorkerUpdatePatch, AsyncWorkerFixedUpdatePatch,
+            // ProfileCtorPatch, ProfileInventoryPatch, BundleLoadPatch, the six SpawnXPatch
+            // classes, BotOwnerCreatePatch, BotCreateWorkPatch, and the whole "raid
+            // initialisation" block below (BotsControllerInitPatch, WavesSpawnRunPatch,
+            // NonWavesSpawnRunPatch, BossSpawnRunPatch, CoversRestorePatch,
+            // CoversCachePointsPatch, BotDoorsRefreshPatch, BotZoneInitPatch, PatrolZoneMapPatch,
+            // CutControllerInitPatch, LootClusterScanPatch) - are REMOVED here, not just moved.
+            // Their SOURCE FILES already live in Ranger (git-filter-repo moves, EXTRACTION-PLAN.md
+            // batches 1-3) and Ranger's own Plugin.cs now enables them (this same editing pass) -
+            // enabling BOTH sides would Harmony-patch the exact same game methods twice every
+            // raid, which is wrong for a performance mod even though it would not corrupt data
+            // (the two copies write to separate static classes). Framesaver's copies of these
+            // classes are now fully dead code - see the same-session deletion of their source
+            // files from Patches/*.cs. AsyncDrainPatch is the one exception: its diagnostics half
+            // still reads Framesaver's OWN ProfileBuild/BundleLoad/RaidInit statics directly (a
+            // class-split EXTRACTION-PLAN.md flagged as needed but never executed), so it and its
+            // three dependency classes stay here for now, unconverted, pending that split as
+            // separate follow-on work.
 
             // Pass 2: checkpoints that partition BotsController.Init, plus the vmethod_1 tail outside it.
             // Pass 1 left 91% of Init in `otherMs` and the cold/warm pair showed the entire warm-up lives

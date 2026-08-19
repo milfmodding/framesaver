@@ -457,6 +457,41 @@ namespace Framesaver.Patches
             }
         }
 
+        /// <summary>
+        /// Reads Ranger's current ProfileBuild.TotalMs/BundleLoad.SyncMsTotal/RaidInit.TotalMs in
+        /// one call, isolated. Added 2026-08-19 (wiring-gap fix session) alongside deleting
+        /// Framesaver's OWN copies of ProfileBuild/BundleLoad/RaidInit (RaidInitPatches.cs,
+        /// ProfileBuildPatches.cs, BundleLoadPatches.cs, and their ~26 sibling patch classes) -
+        /// those source files already moved to Ranger in the earlier extraction batches and
+        /// Ranger's Plugin.cs now enables their patches, so Framesaver's copies were dead weight
+        /// that had also drifted out of sync (Telemetry.cs, the only reader, stopped reading them
+        /// at the capstone). AsyncDrainPatch's diagnostics block is the ONE remaining Framesaver
+        /// call site that needs these three values - EXTRACTION-PLAN.md flagged a diagnostics/
+        /// suppression class-split for AsyncDrainPatch.cs itself as still-needed follow-on work;
+        /// this bridge method is a smaller, immediate fix that keeps AsyncDrainPatch's existing
+        /// attribution (raidInitMs/profileMs/bundleSyncMs in its worstCallbacks NDJSON block)
+        /// correct against the values that actually change now (Ranger's, not a frozen zero)
+        /// without doing that larger split under time pressure. Absent-Ranger default (0,0,0) is
+        /// the same shape AsyncDrainPatch's delta math already tolerates - a delta against a
+        /// constant 0 baseline just reports 0 rather than a wrong number, same posture as every
+        /// other RangerBridge call this session's caller can no-op through.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void ReadDrainAttribution(out double profileMs, out double bundleMs, out double raidInitMs)
+        {
+            if (!Present)
+            {
+                profileMs = 0d;
+                bundleMs = 0d;
+                raidInitMs = 0d;
+                return;
+            }
+
+            profileMs = global::Ranger.ProfileBuild.TotalMs;
+            bundleMs = global::Ranger.BundleLoad.SyncMsTotal;
+            raidInitMs = global::Ranger.RaidInit.TotalMs;
+        }
+
         private static bool? AskBotStandBy(BotOwner bot)
         {
             if (!BotStandByUpdatePatch.RoleStandByKnown(bot))

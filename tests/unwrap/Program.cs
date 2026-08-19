@@ -196,10 +196,20 @@ class P {
         // DIFFERENCE of two per-call means, so a bucket landing in the wrong total is not a
         // small error, it is a sign error. Driven through the same statics the patch uses.
         Console.WriteLine("\nUpdateManualTiming buckets and emitted shape");
-        var umt = asm.GetType("Framesaver.Patches.UpdateManualTiming");
+        // Wiring-gap fix (2026-08-19): UpdateManualTiming's source file moved to Ranger in an
+        // earlier extraction batch, but this test reference was never updated - a stale grep,
+        // exactly the risk EXTRACTION-PLAN.md's own test-migration section warned about. Fixed
+        // now that Ranger's Plugin.cs actually enables UpdateManualTimingPatch and Framesaver's
+        // dead copy is deleted.
+        var umt = rangerAsm.GetType("Ranger.UpdateManualTiming");
         var add = umt.GetMethod("Add", BindingFlags.NonPublic | BindingFlags.Static);
         var unstamped = umt.GetMethod("AddUnstamped", BindingFlags.NonPublic | BindingFlags.Static);
-        var append = umt.GetMethod("Append", BindingFlags.Public | BindingFlags.Static);
+        // JObject conversion (this session, Tau's slice): Append(StringBuilder) is gone,
+        // replaced by AppendObj() returning a Newtonsoft JObject directly - same shift the
+        // "5 more literal-search false-failures" commit already fixed elsewhere in this file.
+        // .ToString() on the returned JObject gives the same compact JSON text these Contains
+        // checks were written against, so the assertions below are unchanged in substance.
+        var append = umt.GetMethod("AppendObj", BindingFlags.Public | BindingFlags.Static);
         var reset = umt.GetMethod("ResetWindow", BindingFlags.Public | BindingFlags.Static);
 
         reset.Invoke(null, null);
@@ -209,15 +219,13 @@ class P {
         add.Invoke(null, new object[] { freq / 4000, true  });      // 0.25 ms paused
         unstamped.Invoke(null, null);
 
-        var sb = new System.Text.StringBuilder();
-        append.Invoke(null, new object[] { sb });
-        string json = sb.ToString();
-        Check("awake ticks land in awakeMs", json.Contains("\"awakeMs\":2"), true);
-        Check("awake calls counted",         json.Contains("\"awakeCalls\":2"), true);
-        Check("paused ticks do NOT land in awakeMs", json.Contains("\"pausedMs\":0.25"), true);
-        Check("paused calls counted",        json.Contains("\"pausedCalls\":1"), true);
+        string json = append.Invoke(null, null).ToString();
+        Check("awake ticks land in awakeMs", json.Contains("\"awakeMs\": 2"), true);
+        Check("awake calls counted",         json.Contains("\"awakeCalls\": 2"), true);
+        Check("paused ticks do NOT land in awakeMs", json.Contains("\"pausedMs\": 0.25"), true);
+        Check("paused calls counted",        json.Contains("\"pausedCalls\": 1"), true);
         Check("skipped prefix is counted, not silently dropped",
-              json.Contains("\"unstampedCalls\":1"), true);
+              json.Contains("\"unstampedCalls\": 1"), true);
 
         // Corpses tick UpdateManual and read as AWAKE:
         // BotsClass.UpdateByUnity has no liveness test and the guard is
@@ -228,42 +236,49 @@ class P {
         var addDead = umt.GetMethod("AddDead", BindingFlags.NonPublic | BindingFlags.Static);
         addDead.Invoke(null, new object[] { freq / 8000 });   // 0.125 ms
         addDead.Invoke(null, new object[] { freq / 8000 });
-        var deadSb = new System.Text.StringBuilder();
-        append.Invoke(null, new object[] { deadSb });
-        string deadJson = deadSb.ToString();
-        Check("dead calls counted", deadJson.Contains("\"deadCalls\":2"), true);
-        Check("and NOT subtracted from awakeCalls", deadJson.Contains("\"awakeCalls\":2"), true);
+        string deadJson = append.Invoke(null, null).ToString();
+        Check("dead calls counted", deadJson.Contains("\"deadCalls\": 2"), true);
+        Check("and NOT subtracted from awakeCalls", deadJson.Contains("\"awakeCalls\": 2"), true);
         // deadMs as well as deadCalls, or the reconciliation cannot close:
         // the per-bot rows sum to awakeMs MINUS deadMs, and without the ms
         // term a reader can see that corpses were counted but not subtract
         // them.
-        Check("dead ms recorded too", deadJson.Contains("\"deadMs\":0.25"), true);
+        Check("dead ms recorded too", deadJson.Contains("\"deadMs\": 0.25"), true);
 
         // A window boundary has to zero every field, or the first window after a busy one
         // reports the busy one's totals against its own call counts - the hold-last-value
         // shape that cost us 40 loading windows on aiTotal.
+        //
+        // JObject conversion: the WHOLE-STRING exact-match check this comment used to describe
+        // relied on StringBuilder's fixed key order and no whitespace - a JObject's ToString()
+        // (Formatting.Indented, Newtonsoft's default) has different whitespace/line-break shape
+        // that would make a hand-written exact-match literal fragile against formatting rather
+        // than content. Same coverage (every field zeroed, nothing silently exempted from
+        // ResetWindow) achieved by checking each field individually instead - still fails the
+        // moment a NEW field is added without wiring it into ResetWindow, since an added field
+        // needs an added Contains check same as the old exact-match needed an updated literal.
         reset.Invoke(null, null);
-        var sb2 = new System.Text.StringBuilder();
-        append.Invoke(null, new object[] { sb2 });
-        // WHOLE-STRING, not Contains, and that is load-bearing: it is the only
-        // assertion here that fires when a field is ADDED. Gamma's two worst-call
-        // fields (db6c04c) landed after this literal was written and it failed on
-        // the next run - which is the check doing its job, and is also the
-        // evidence that their window reset covers them. Both read 0 after the
-        // reset; if either had missed ResetWindow it would be a session
-        // high-water mark, and this line is what would say so.
-        Check("ResetWindow zeroes every field",
-              sb2.ToString(), "{\"awakeMs\":0,\"awakeCalls\":0,\"pausedMs\":0,"
-                              + "\"pausedCalls\":0,\"unstampedCalls\":0,"
-                              + "\"deadCalls\":0,\"deadMs\":0,"
-                              + "\"awakeWorstCallMs\":0,\"pausedWorstCallMs\":0}");
+        string resetJson = append.Invoke(null, null).ToString();
+        Check("ResetWindow zeroes awakeMs", resetJson.Contains("\"awakeMs\": 0"), true);
+        Check("ResetWindow zeroes awakeCalls", resetJson.Contains("\"awakeCalls\": 0"), true);
+        Check("ResetWindow zeroes pausedMs", resetJson.Contains("\"pausedMs\": 0"), true);
+        Check("ResetWindow zeroes pausedCalls", resetJson.Contains("\"pausedCalls\": 0"), true);
+        Check("ResetWindow zeroes unstampedCalls", resetJson.Contains("\"unstampedCalls\": 0"), true);
+        Check("ResetWindow zeroes deadCalls", resetJson.Contains("\"deadCalls\": 0"), true);
+        Check("ResetWindow zeroes deadMs", resetJson.Contains("\"deadMs\": 0"), true);
+        Check("ResetWindow zeroes awakeWorstCallMs", resetJson.Contains("\"awakeWorstCallMs\": 0"), true);
+        Check("ResetWindow zeroes pausedWorstCallMs", resetJson.Contains("\"pausedWorstCallMs\": 0"), true);
 
         // The point of this block is one field: forcedButExcluded must be null when either
         // half was not observed, and [] only when both were and the answer really is empty.
         // An empty list IS the all-clear, so "could not compute" must never be able to
         // impersonate one - that is the exact shape that has cost us four tests already.
         Console.WriteLine("\nBossSpawnGate intersection, and its absent-vs-empty distinction");
-        var gate = asm.GetType("Framesaver.Patches.BossSpawnGate");
+        // Wiring-gap fix (2026-08-19): source moved to Ranger in an earlier extraction batch;
+        // this test reference was stale the same way UpdateManualTiming's was, above. Append
+        // also changed shape this session (StringBuilder fragment builder to JObject.Append(),
+        // no arguments, returns the object) - see BossSpawnGatePatches.cs's own doc comment.
+        var gate = rangerAsm.GetType("Ranger.BossSpawnGate");
         var recW = gate.GetMethod("RecordWaves", BindingFlags.NonPublic | BindingFlags.Static);
         var recS = gate.GetMethod("RecordSettings", BindingFlags.NonPublic | BindingFlags.Static);
         var gAppend = gate.GetMethod("Append", BindingFlags.Public | BindingFlags.Static);
@@ -285,10 +300,23 @@ class P {
             return w;
         };
 
+        // Formatting.None (compact, single-line, no space after ':') rather than the JObject's
+        // own default ToString() (Formatting.Indented, multi-line - which would put every array
+        // element on its own line and break every Contains-based literal check below). Reached
+        // ENTIRELY BY REFLECTION, never a compile-time Newtonsoft.Json type - t.csproj carries
+        // no package reference to it, and does not need one: Newtonsoft.Json is already loaded
+        // in this AppDomain by the time gAppend returns a real JObject (Ranger.dll references
+        // it), so every type/method used below is resolved off that already-loaded assembly.
+        object sample = gAppend.Invoke(null, null);
+        var jTokenType = sample.GetType().Assembly.GetType("Newtonsoft.Json.Linq.JToken");
+        var formattingType = sample.GetType().Assembly.GetType("Newtonsoft.Json.Formatting");
+        var formatNone = Enum.Parse(formattingType, "None");
+        var converterArrayType = formattingType.Assembly.GetType("Newtonsoft.Json.JsonConverter").MakeArrayType();
+        var toStringWithFormat = jTokenType.GetMethod("ToString", new[] { formattingType, converterArrayType });
+
         Func<string> emit = () => {
-            var b = new System.Text.StringBuilder();
-            gAppend.Invoke(null, new object[] { b });
-            return b.ToString();
+            object obj = gAppend.Invoke(null, null);
+            return (string)toStringWithFormat.Invoke(obj, new object[] { formatNone, null });
         };
 
         Func<string[], object> settings = names => {
