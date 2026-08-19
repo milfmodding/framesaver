@@ -5,9 +5,20 @@ using System.Linq;
 using System.Reflection;
 
 class P {
-    const string Managed = @"F:\SPT\SPT4.0.13\EscapeFromTarkov_Data\Managed";
-    const string Core    = @"F:\SPT\SPT4.0.13\BepInEx\core";
-    const string Sptdir  = @"F:\SPT\SPT4.0.13\BepInEx\plugins\spt";
+    // 2026-08-19, found while verifying the capstone migration below: this pointed
+    // at F:\SPT\SPT4.0.13 (the pre-4.1 install) while both Framesaver.csproj and
+    // Ranger.csproj build against F:\SPT\SPT-4.1 (SptDir in both, since Sophia's
+    // 2026-08-16 ruling that 4.1 is canonical). PRE-EXISTING, not introduced by
+    // the capstone edit - confirmed by checking out this file at 3ad1b55 (the
+    // commit before any capstone work touched it) and finding the same constant
+    // there. Running the suite against Framesaver.dll/Ranger.dll (both built
+    // against 4.1's Assembly-CSharp.dll) while resolving dependencies from the
+    // 4.0.13 install threw MissingFieldException on BossGroupWake.Counts - a
+    // real field rename between game versions, not a suite bug. Corrected to
+    // match both csproj files' own SptDir.
+    const string Managed = @"F:\SPT\SPT-4.1\EscapeFromTarkov_Data\Managed";
+    const string Core    = @"F:\SPT\SPT-4.1\BepInEx\core";
+    const string Sptdir  = @"F:\SPT\SPT-4.1\BepInEx\plugins\spt";
 
     static Assembly Resolve(object s, ResolveEventArgs e) {
         string n = new AssemblyName(e.Name).Name + ".dll";
@@ -45,16 +56,50 @@ class P {
         // bottom of this file complains that half these sections sit behind an
         // `if` - "a null dll" is the first example it names - so a missing
         // binary quietly cost its checks and the run still printed green.
+        //
+        // Capstone migration (2026-08-19): TWO assemblies now, not one. The
+        // capstone cutover moved Telemetry.cs and its coupled classes
+        // (ProtocolRunner, AwakeAge, BotLog, StandByTransitions,
+        // TriggerSubscribers) into Ranger; the shipping classes this suite also
+        // reflects into (BossSpawnGate, UpdateManualTiming, SleepingBotAnimatorPatch,
+        // RoleSleepDistance, BossGroupWake, Plugin, ModCompat) stayed in
+        // Framesaver. `args[0]`/`args[1]` are Framesaver's and Ranger's DLL paths
+        // respectively, in that order, matching the pairing every prior migration
+        // in this codebase has used (Framesaver first, Ranger second) - same
+        // "pass the path or find a default" shape as before, just twice.
         string dll = args.Length > 0 ? args[0] : FindUp("bin/Release/Framesaver.dll");
         if (dll == null) {
             Console.WriteLine("REFUSED: no Framesaver.dll found. Pass its path as the first "
                               + "argument, or build bin/Release/Framesaver.dll first.");
             return 86;
         }
+        // Same marker-based search FindUp already uses for Framesaver.csproj
+        // (search AppContext.BaseDirectory's ancestors), rather than a raw "../"
+        // relative segment - FindUp combines `relative` onto each ANCESTOR of
+        // the test binary's own directory, so a leading "../" would combine
+        // onto an already-higher directory and walk past the actual sibling
+        // repo instead of finding it. Locate Framesaver's own csproj first (the
+        // repo root marker already used below), then step sideways to the
+        // sibling `ranger` checkout - same layout convention both repos'
+        // csproj comments already document (`F:\SPT\Mods\Framesaver` and
+        // `F:\SPT\Mods\ranger` as siblings).
+        string rangerDll = args.Length > 1 ? args[1] : FindRangerDll();
+        if (rangerDll == null) {
+            Console.WriteLine("REFUSED: no Ranger.dll found. Pass its path as the second "
+                              + "argument, or build ../ranger/bin/Release/Ranger.dll first. "
+                              + "Telemetry.cs and its coupled classes live there since the "
+                              + "capstone cutover (2026-08-19) and this suite cannot reflect "
+                              + "into them without it.");
+            return 86;
+        }
         Console.WriteLine($"assembly under test: {dll}");
+        Console.WriteLine($"assembly under test (Ranger half): {rangerDll}");
         var asm = Assembly.LoadFrom(dll);
+        var rangerAsm = Assembly.LoadFrom(rangerDll);
 
-        var tel = asm.GetType("Framesaver.Telemetry");
+        // Capstone migration: Telemetry.cs moved to Ranger (namespace Framesaver ->
+        // namespace Ranger) at the cutover. Reflected off rangerAsm now.
+        var tel = rangerAsm.GetType("Ranger.Telemetry");
         var unwrap = tel.GetMethod("Unwrap", BindingFlags.NonPublic | BindingFlags.Static);
         Console.WriteLine("Telemetry.Unwrap");
         var cases = new (double from, double to, double expect, string why)[] {
@@ -73,7 +118,8 @@ class P {
             Check($"{c.why} ({c.from} -> {c.to})", Math.Abs(got - c.expect) < 1e-9, true);
         }
 
-        var pr = asm.GetType("Framesaver.ProtocolRunner");
+        // Capstone migration: ProtocolRunner.cs moved to Ranger at the cutover.
+        var pr = rangerAsm.GetType("Ranger.ProtocolRunner");
         var strip = pr.GetMethod("StripComment", BindingFlags.NonPublic | BindingFlags.Static);
         var parse = pr.GetMethod("TryParse",    BindingFlags.NonPublic | BindingFlags.Static);
 
@@ -327,7 +373,8 @@ class P {
         // and distinct. A collapse from three to two is the failure that would overstate
         // Sophia in the one field the segmentation depends on.
         Console.WriteLine("\nBot ledger contract");
-        var botLog = asm.GetType("Framesaver.Patches.BotLog");
+        // Capstone migration: BotLog moved to Ranger (Framesaver.Patches -> Ranger.Patches).
+        var botLog = rangerAsm.GetType("Ranger.Patches.BotLog");
         Check("BotLog exists", botLog != null, true);
         foreach (var m in new[] { "Spawn", "Drain", "ResetForRaid", "Subscribe" })
             Check($"BotLog.{m} exists",
@@ -341,16 +388,35 @@ class P {
         // not guaranteed 2-byte aligned to the file start, so a decode from offset 0 misses
         // any literal at an odd offset. That is a check whose failure looks like a missing
         // field - which is the shape this whole file exists to catch.
+        //
+        // Capstone migration (2026-08-19): TWO images now, not one. Every NDJSON
+        // field this section checks used to be a StringBuilder.Append literal
+        // inside Framesaver's own Telemetry.cs, so Framesaver's #US heap was the
+        // only place any of them could appear. After the cutover, fields moved
+        // with the class that emits them: some (e.g. ",\"awakeAge\":",
+        // ",\"standByTransitions\":", ",\"stepSeconds\":") are string literals
+        // inside Ranger's own Telemetry.cs/ProtocolRunner.cs/AwakeAgeTiming.cs
+        // now; others (the ~40 fields CapstoneCallbacks.cs builds via JObject
+        // property assignment, not StringBuilder.Append - the "cfg":{...} block,
+        // "bossGroups":{...}, etc.) are C# STRING LITERALS INSIDE FRAMESAVER'S
+        // OWN ASSEMBLY (the JObject key names themselves, e.g. `obj["cfg"]`
+        // compiles the literal "cfg" into Framesaver.dll's #US heap even though
+        // the JSON that literal produces is written by Ranger's Telemetry
+        // component at runtime) - so a field can legitimately live in either
+        // image depending on which side of the registered-callback boundary
+        // built it. Search BOTH; a literal found in either counts as present.
         byte[] image = File.ReadAllBytes(dll);
-        Func<string, bool> inUs = lit => {
+        byte[] rangerImage = File.ReadAllBytes(rangerDll);
+        Func<byte[], string, bool> inImage = (img, lit) => {
             byte[] pat = System.Text.Encoding.Unicode.GetBytes(lit);
-            for (int i = 0; i + pat.Length <= image.Length; i++) {
+            for (int i = 0; i + pat.Length <= img.Length; i++) {
                 int j = 0;
-                while (j < pat.Length && image[i + j] == pat[j]) j++;
+                while (j < pat.Length && img[i + j] == pat[j]) j++;
                 if (j == pat.Length) return true;
             }
             return false;
         };
+        Func<string, bool> inUs = lit => inImage(image, lit) || inImage(rangerImage, lit);
 
         // botStandBy carries the EFFECTIVE grant beside the role property.
         // botSpawn.canStandBy cannot answer it: Create is a static factory at
@@ -437,17 +503,41 @@ class P {
         Check("no world -> linked 0", countArgs[0], 0);
         Check("no world -> heldAwake 0", countArgs[1], 0);
 
-        // The fields the analysis is written against, read out of the
-        // shipped IL for the same reason as the ledger's above.
-        foreach (var lit in new[] { ",\"bossGroups\":{\"linked\":", ",\"heldAwake\":",
-                                    ",\"roleSleep\":{\"roles\":[", ",\"roleSleepDist\":",
-                                    ",\"roleWakeDist\":", ",\"bossGroupWake\":" })
+        // The fields the analysis is written against, read out of the shipped
+        // IL for the same reason as the ledger's above.
+        //
+        // Capstone migration (2026-08-19): these six used to be StringBuilder.Append
+        // literals (e.g. `.Append(",\"bossGroups\":{\"linked\":")`), so the comma-
+        // prefixed, colon-suffixed shape was literally in the IL. CapstoneCallbacks.cs
+        // builds them via JObject property assignment now (`bossGroups["linked"] = ...`,
+        // `obj["bossGroups"] = bossGroups`), which compiles to the BARE key string with
+        // no comma or colon baked in - Newtonsoft.Json's serializer adds those at
+        // runtime, not the C# compiler at build time. Checking for the old
+        // StringBuilder-shaped literal against a JObject-built assembly always finds
+        // nothing and would silently "pass" a renamed or deleted field the same way a
+        // matcher that returns true unconditionally would - caught here by actually
+        // running the suite against the real post-cutover DLLs, not assumed from the
+        // rename alone. Bare key names WITHOUT surrounding quote characters -
+        // a C# string literal's quotes are source syntax, not part of the
+        // runtime string value, so `obj["bossGroups"]` compiles the #US heap
+        // entry "bossGroups" (10 chars), never "\"bossGroups\"" (12 chars,
+        // quotes included). Verified directly against the compiled DLL's own
+        // #US heap before trusting this - the first version of this fix
+        // searched WITH quotes and every one of these six failed, which
+        // looked like a real regression until a raw byte-search confirmed
+        // the bare literal was there all along.
+        foreach (var lit in new[] { "bossGroups", "linked", "heldAwake",
+                                    "roleSleep", "roles", "roleSleepDist",
+                                    "roleWakeDist", "bossGroupWake" })
             Check($"emits {lit}", inUs(lit), true);
 
         // Named for what it is not: the count that would have conflated
         // "rule off" with "linkage broken" was never emitted, and must not
-        // quietly appear later.
-        Check("no bare groupHeldAwake field (control)", inUs(",\"groupHeldAwake\":"), false);
+        // quietly appear later. Still a StringBuilder-shaped check deliberately -
+        // this asserts an ABSENCE, and the old comma-prefixed shape is a strict
+        // subset of what a bare "groupHeldAwake" search would also catch, so
+        // narrowing it does not weaken the control.
+        Check("no bare groupHeldAwake field (control)", inUs("groupHeldAwake"), false);
 
         // ---- Stand-by transition timing ------------------------------------
         //
@@ -457,7 +547,9 @@ class P {
         // and it is the number's whole meaning - without it the count is the
         // exempt population times the check rate. Stated rather than faked.
         Console.WriteLine("\nStandByTransitions");
-        var sbt = asm.GetType("Framesaver.Patches.StandByTransitions");
+        // Capstone migration: StandByTransitions moved to Ranger (bare namespace
+        // Ranger, not Ranger.Patches - see AwakeAgeTiming.cs's own class list).
+        var sbt = rangerAsm.GetType("Ranger.StandByTransitions");
         var woken = sbt.GetMethod("Woken", BindingFlags.NonPublic | BindingFlags.Static);
         var slept = sbt.GetMethod("Slept", BindingFlags.NonPublic | BindingFlags.Static);
         var sbtAppend = sbt.GetMethod("Append", BindingFlags.Public | BindingFlags.Static);
@@ -533,7 +625,8 @@ class P {
         // a Unity clock, so neither runs here. Directive() is the half that can
         // and the half that carries the parsing hazards.
         Console.WriteLine("\nProtocolRunner @directives");
-        var prType = asm.GetType("Framesaver.ProtocolRunner");
+        // Capstone migration: same class as above, second reflection block.
+        var prType = rangerAsm.GetType("Ranger.ProtocolRunner");
         var stepType = prType.GetNestedType("Step");
         var directive = prType.GetMethod("Directive", BindingFlags.NonPublic | BindingFlags.Static);
         var defSecs = prType.GetField("_defaultSeconds", BindingFlags.NonPublic | BindingFlags.Static);
@@ -577,7 +670,10 @@ class P {
         // An off-by-one at a boundary would move a whole population between
         // buckets and invent, or erase, exactly the ramp under test.
         Console.WriteLine("\nAwakeAge buckets");
-        var aa = asm.GetType("Framesaver.Patches.AwakeAge");
+        // Capstone migration: AwakeAge moved to Ranger, bare namespace Ranger
+        // (not Ranger.Patches - it lives in AwakeAgeTiming.cs alongside
+        // TriggerSubscribers, both declared directly under namespace Ranger).
+        var aa = rangerAsm.GetType("Ranger.AwakeAge");
         var bucket = aa.GetMethod("Bucket", BindingFlags.NonPublic | BindingFlags.Static);
         foreach (var c in new (float age, int want)[] {
             (0f, 0), (59.9f, 0), (60f, 1), (149.9f, 1), (150f, 2),
@@ -734,7 +830,9 @@ class P {
         // build of the game, because a rename would also return -1 and the two
         // would be indistinguishable from the log alone.
         Console.WriteLine("\nTriggerSubscribers");
-        var ts = asm.GetType("Framesaver.Patches.TriggerSubscribers");
+        // Capstone migration: TriggerSubscribers moved to Ranger with AwakeAge,
+        // same file (AwakeAgeTiming.cs), bare namespace Ranger.
+        var ts = rangerAsm.GetType("Ranger.TriggerSubscribers");
         var tsMax = ts.GetMethod("Max", BindingFlags.Public | BindingFlags.Static);
         Check("no game reads -1, not 0", tsMax.Invoke(null, null), -1);
         var backing = ts.GetField("_backing", BindingFlags.NonPublic | BindingFlags.Static);
@@ -1153,5 +1251,24 @@ class P {
             if (File.Exists(c)) return c;
         }
         return null;
+    }
+
+    /// <summary>
+    /// Capstone migration (2026-08-19): finds Ranger's built DLL as a sibling repo of
+    /// Framesaver's own root, same layout convention both csproj files document
+    /// (`F:\SPT\Mods\Framesaver` and `F:\SPT\Mods\ranger`). Locates Framesaver's own
+    /// csproj first via FindUp (repo-root marker already used for the protocol-file
+    /// section below), then steps to the sibling directory - deliberately NOT a
+    /// FindUp("../ranger/...") call, since FindUp combines `relative` onto each
+    /// ANCESTOR of the test binary's directory and a leading "../" would walk past
+    /// the sibling rather than finding it there.
+    /// </summary>
+    static string FindRangerDll() {
+        string fsCsproj = FindUp("Framesaver.csproj");
+        if (fsCsproj == null) return null;
+        string modsDir = Directory.GetParent(Path.GetDirectoryName(fsCsproj))?.FullName;
+        if (modsDir == null) return null;
+        string c = Path.Combine(modsDir, "ranger", "bin", "Release", "Ranger.dll");
+        return File.Exists(c) ? c : null;
     }
 }
