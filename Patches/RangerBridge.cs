@@ -545,6 +545,31 @@ namespace Framesaver.Patches
             global::Ranger.AsyncWorkerTiming.FixedSkips++;
         }
 
+        /// <summary>
+        /// BotStandByInitPointsPatch's per-activation log call, isolated. Added 2026-08-19
+        /// (post-raid audit, following Sophia's question about a Ranger-absent launch): this
+        /// call site was written directly against global::Ranger.Patches.BotLog at the BotLog
+        /// move (2026-08-18) without going through this bridge, the one exception found in an
+        /// exhaustive sweep for bare Ranger.* references outside this file. BotStandBy.InitPoints
+        /// is patched unconditionally (Plugin.cs's bare .Enable(), not gated on Present) and
+        /// fires on every bot activation - so with Ranger.dll absent, the JIT would have had to
+        /// resolve Ranger.Patches.BotLog to compile the Postfix AT ALL, throwing on the very
+        /// first bot spawn of any raid. Same failure shape as the incident RangerBridge itself
+        /// was built to prevent (register reg-dec-2026-08-17T042932). BotStandBy/BotOwner are
+        /// shared EFT types both assemblies reference directly, so only the call into
+        /// global::Ranger.Patches.BotLog needs isolating - same reasoning as NotifyAwakeAgeWoke.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void NotifyBotLogStandByAssigned(BotStandBy standBy, BotOwner bot)
+        {
+            if (!Present)
+            {
+                return;
+            }
+
+            global::Ranger.Patches.BotLog.StandByAssigned(standBy, bot);
+        }
+
         private static bool? AskBotStandBy(BotOwner bot)
         {
             if (!BotStandByUpdatePatch.RoleStandByKnown(bot))

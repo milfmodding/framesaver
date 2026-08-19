@@ -29,9 +29,12 @@ namespace Framesaver.Patches
                 // never activated.
                 //
                 // Capstone (2026-08-18): BotLog moved to Ranger with the rest of
-                // Telemetry.cs's unit. Fully qualified rather than a bare `BotLog` -
-                // this class stays in Framesaver, so the type is now cross-assembly.
-                global::Ranger.Patches.BotLog.StandByAssigned(__instance, __instance._owner);
+                // Telemetry.cs's unit. Routed through RangerBridge (2026-08-19 fix) rather
+                // than a bare cross-assembly reference - see RangerBridge.
+                // NotifyBotLogStandByAssigned's own doc comment for why a direct call here
+                // was a real Ranger-absent crash risk, this Postfix being unconditionally
+                // enabled and firing on every bot activation.
+                RangerBridge.NotifyBotLogStandByAssigned(__instance, __instance._owner);
                 return;
             }
 
@@ -53,7 +56,7 @@ namespace Framesaver.Patches
             // Last, so the line records what this bot was actually granted
             // rather than what it was about to be. The grant never changes
             // afterwards - it is decided here, once, for the bot's whole life.
-            global::Ranger.Patches.BotLog.StandByAssigned(__instance, __instance._owner);
+            RangerBridge.NotifyBotLogStandByAssigned(__instance, __instance._owner);
         }
 
         /// <summary>
