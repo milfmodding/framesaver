@@ -616,7 +616,12 @@ class P {
             System.Threading.Thread.CurrentThread.CurrentCulture = prev;
         }
 
-        foreach (var lit in new[] { ",\"standByTransitions\":", "{\"woken\":", ",\"sleptMs\":" })
+        // Telemetry.cs's Flush() builds via JObject now (2026-08-19 JObject conversion), so
+        // "standByTransitions" is a bare JObject key literal (obj["standByTransitions"] = ...),
+        // not a comma-wrapped StringBuilder fragment - same reasoning as the CapstoneCallbacks.cs
+        // fields already handled this way above. StandByTransitions.Append itself is unconverted
+        // this pass and still emits "{\"woken\":"/",\"sleptMs\":" as StringBuilder text.
+        foreach (var lit in new[] { "standByTransitions", "{\"woken\":", ",\"sleptMs\":" })
             Check($"emits {lit}", inUs(lit), true);
 
         // ---- Protocol @directives -------------------------------------------
@@ -660,7 +665,8 @@ class P {
             System.Threading.Thread.CurrentThread.CurrentCulture = prev2;
         }
 
-        foreach (var lit in new[] { ",\"stepSeconds\":", "unknown directive '@" })
+        // Same JObject-key reasoning as above: protocol["stepSeconds"] is a bare literal now.
+        foreach (var lit in new[] { "stepSeconds", "unknown directive '@" })
             Check($"emits {lit}", inUs(lit), true);
 
         // ---- Awake-age bucketing -------------------------------------
@@ -853,8 +859,13 @@ class P {
         // Bots.Remove in one call, so the state it counted is unreachable and it
         // could only ever read 0. updateManual.deadCalls answers the same
         // question and harness/check-fields.py now FAILS on a non-zero.
-        foreach (var lit in new[] { ",\"awakeAge\":", "{\"toS\":", ",\"triggerSubsMax\":",
-                                    ",\"standByRefused\":" })
+        // "awakeAge", "triggerSubsMax" and "standByRefused" are all bare JObject key literals
+        // now (obj["awakeAge"]=..., obj["triggerSubsMax"]=..., bots["standByRefused"]=...) since
+        // Flush() builds via JObject (2026-08-19) - same reasoning as the other JObject-key
+        // literal fixes in this file. AwakeAge.Append itself is unconverted this pass and still
+        // emits "{\"toS\":" as StringBuilder text.
+        foreach (var lit in new[] { "awakeAge", "{\"toS\":", "triggerSubsMax",
+                                    "standByRefused" })
             Check($"emits {lit}", inUs(lit), true);
         // BOTH retired names must be GONE from the assembly, not merely unused.
         // `standByBlocked` was a good name for what standByRefused now carries

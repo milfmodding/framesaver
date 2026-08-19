@@ -571,31 +571,25 @@ namespace Framesaver
             // of Awake and drops every registration after it, including telemetry - which would turn a
             // census defect into total data loss for the run.
             //
-            // Capstone cutover (2026-08-19): PlayerLoopProfiler.Install()/.ArmFrameGap() and
-            // gameObject.AddComponent<Telemetry>() are GONE from here, not just moved - they now
-            // live in Ranger's Plugin.cs (see that file's own Awake, restoring the seam-5 partial
-            // revert now that the profiler and its sampler live in one assembly again). Framesaver
-            // no longer writes the ndjson or owns the player-loop profiler at all. The
-            // `ProfilePlayerLoop`/`ExpandPhase` config entries above are DEAD as of this commit
-            // (nothing reads them anymore) - left declared rather than deleted so an existing
-            // BepInEx config file's saved values do not vanish with a warning; Ranger's own fresh
-            // keys under "Telemetry" are what actually governs behavior now.
+            // Framesaver does not own the player-loop profiler or write the ndjson file - both live
+            // in Ranger's Plugin.cs (PlayerLoopProfiler.Install()/.ArmFrameGap(), gameObject.
+            // AddComponent<Telemetry>()), since the profiler and the sampler that reads its
+            // Snapshot are statically coupled within one assembly and cannot have separate owners
+            // without one racing the other's raid-load re-arm. The `ProfilePlayerLoop`/`ExpandPhase`
+            // config entries above are DEAD - nothing here reads them - left declared rather than
+            // deleted so an existing BepInEx config file's saved values do not vanish with a
+            // warning; Ranger's own fresh keys under "Telemetry" are what actually governs behavior.
 
-            // Ranger capstone wiring (2026-08-18): registers this mod's per-frame levers, the
-            // bot stand-by predicate, and the forceStandByForAllRoles reader against Ranger's
-            // TelemetryBus - all through RangerBridge so this Awake() stays JIT-safe with
-            // Ranger absent (see RangerBridge.cs's own doc comment for why a direct call here
-            // would not be safe). Present-gated the same way every Ranger-touching call in this
-            // assembly already is. Inert until the capstone namespace switch makes Ranger's own
-            // Telemetry.cs the one calling TelemetryBus.InvokePerFrameCallbacks() /
-            // TryAskBotStandBy() / ForceStandByForAllRoles() - wiring the registration now means
-            // that switch only has to DELETE the old inline code, not add new registration code
-            // as well.
+            // Registers this mod's per-frame levers (MaxDeltaTime cap, JobScheduler tuning, the
+            // profiler re-arm check), the bot stand-by predicate, the forceStandByForAllRoles
+            // reader, and the header/window/spike/window-reset NDJSON callbacks against Ranger's
+            // TelemetryBus - all through RangerBridge so this Awake() stays JIT-safe with Ranger
+            // absent (see RangerBridge.cs's own doc comment for why a direct call here would not
+            // be safe). Present-gated the same way every Ranger-touching call in this assembly is.
             //
-            // ONE call to RegisterPerFrameLevers() now, not two - see that method's own doc
-            // comment (2026-08-19 fix) for the real bug a second call with the same modGuid key
-            // used to cause (silent last-write-wins overwrite in TelemetryBus's per-frame
-            // callback dictionary).
+            // ONE call to RegisterPerFrameLevers(), not two - see that method's own doc comment for
+            // why a second registration under the same modGuid key would silently overwrite the
+            // first in TelemetryBus's per-frame callback dictionary.
             if (RangerBridge.Present)
             {
                 RangerBridge.RegisterPerFrameLevers();
