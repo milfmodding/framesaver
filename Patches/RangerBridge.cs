@@ -350,6 +350,8 @@ namespace Framesaver.Patches
         {
             global::Ranger.TelemetryBus.RegisterHeaderCallback(FramesaverGuid, CapstoneCallbacks.BuildHeader);
             global::Ranger.TelemetryBus.RegisterWindowCallback(FramesaverGuid, CapstoneCallbacks.BuildWindow);
+            global::Ranger.TelemetryBus.RegisterSpikeCallback(FramesaverGuid, CapstoneCallbacks.BuildSpike);
+            global::Ranger.TelemetryBus.RegisterWindowResetCallback(FramesaverGuid, CapstoneCallbacks.ResetWindow);
         }
 
         private static bool? AskBotStandBy(BotOwner bot)

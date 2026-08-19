@@ -194,6 +194,23 @@ namespace Framesaver
               .Append(",\"gcMsSinceSuspend\":").Append(Fmt(_msSinceSuspendAtLastGc));
         }
 
+        /// <summary>
+        /// JObject-shaped sibling of AppendSpike, for TelemetryBus.RegisterSpikeCallback (capstone,
+        /// 2026-08-18) - same fields, same gate (nothing written when no collection is on record),
+        /// just object-graph instead of characters. AppendSpike itself is unused once the capstone
+        /// lands, kept only so this stays additive.
+        /// </summary>
+        internal static void AppendSpikeTo(Newtonsoft.Json.Linq.JObject obj)
+        {
+            if (_suspendsBeforeLastGc < 0)
+            {
+                return;
+            }
+
+            obj["gcSuspendsBefore"] = _suspendsBeforeLastGc;
+            obj["gcMsSinceSuspend"] = _msSinceSuspendAtLastGc;
+        }
+
         internal static void AppendWindow(StringBuilder sb)
         {
             sb.Append(",\"gcDrive\":{\"calls\":").Append(_driveCalls)

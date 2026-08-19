@@ -212,5 +212,27 @@ namespace Framesaver
 
             GcControl.AppendWindowTo(obj);
         }
+
+        /// <summary>
+        /// Registered once at Framesaver's Awake via RangerBridge.RegisterCapstoneCallbacks.
+        /// Builds the per-collection GC-suspend diagnostic (gcSuspendsBefore/gcMsSinceSuspend),
+        /// emitted only on spike lines that carry a completed collection - see GcControl's own
+        /// doc comment on AppendSpike for the full reasoning.
+        /// </summary>
+        internal static void BuildSpike(JObject obj)
+        {
+            GcControl.AppendSpikeTo(obj);
+        }
+
+        /// <summary>
+        /// Registered once at Framesaver's Awake via RangerBridge.RegisterCapstoneCallbacks.
+        /// Zeroes GcControl's window-scoped drive counters (calls/pending/msTotal/msMax) at
+        /// the same boundary Telemetry.cs zeroes its own - without this they carry over and
+        /// every window's gcDrive block after the first double-counts.
+        /// </summary>
+        internal static void ResetWindow()
+        {
+            GcControl.ResetWindow();
+        }
     }
 }
