@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.CompilerServices;
 using BepInEx.Bootstrap;
 using EFT;
@@ -21,14 +22,37 @@ namespace Framesaver.Patches
     /// raid, every window, not a clean plugin-load-time failure. Worse than an outright load
     /// failure, because it looks like intermittent runtime instability rather than a missing file.
     ///
-    /// **The fix: isolate every Ranger-touching call into its own method, marked NoInlining, and
-    /// gate the CALL to that method (not its internals) behind a presence check done once.** The
-    /// JIT only has to resolve a method's referenced types when THAT METHOD is compiled, and
-    /// NoInlining stops the JIT folding this wrapper's body into its caller (which would pull the
-    /// Ranger reference back into a method that has to compile regardless of presence). A caller
-    /// that never invokes the wrapper never triggers its compilation, so Ranger's absence never
-    /// surfaces as an exception - it just means telemetry silently does not fire, which is
-    /// correct: no-kit is documented as the DEFAULT case in Ranger's own design doc.
+    /// **SUPERSEDED PATTERN (2026-08-19 through early 2026-08-20), kept documented because the
+    /// remaining wrapper methods below still use it: isolate every Ranger-touching call into its
+    /// own method, marked NoInlining, and gate the CALL TO THAT METHOD (not just its internals)
+    /// behind an explicit `if (RangerBridge.Present)` at every call site.** This works, but it is
+    /// TWO things a caller has to get right together - the isolation (inside the wrapper) and the
+    /// gate (at the call site) - and getting only one of them right looks identical to getting
+    /// both right until Ranger.dll is actually absent. **This exact mistake was made three times**
+    /// in this codebase's history: the 2026-08-17 incident, this session's first
+    /// BotStandByInitPointsPatch fix (which gated only inside the wrapper), and a pre-existing
+    /// AsyncDrainPatch.cs call site - each one throwing TypeLoadException the moment the affected
+    /// method was first JIT-compiled with Ranger absent, despite a correctly-worded version of
+    /// this exact doc comment already explaining the rule.
+    ///
+    /// **CURRENT PATTERN: <see cref="RunIfPresent(Action)"/> and its `out`-param sibling
+    /// <see cref="RunIfPresent(RunWithDrainAttribution)"/>.** A C# lambda's BODY is only
+    /// JIT-compiled the moment its delegate is INVOKED, never when the delegate is merely
+    /// CREATED - creating a delegate only needs the lambda's method token/signature. So
+    /// `RangerBridge.RunIfPresent(() => global::Ranger.Foo())` is safe from any call site,
+    /// unconditionally, with no external `if` needed: the lambda's body (with the Ranger
+    /// reference inside it) is compiled only inside `RunIfPresent`, and only past the `if
+    /// (Present)` check. The gate and the isolation boundary are now the SAME `if` - there is no
+    /// second thing to remember. New call sites should use this, not the older per-purpose
+    /// wrapper methods below (which are kept where an existing method already had callers, to
+    /// avoid an unnecessary second refactor of working call sites in the same pass that
+    /// introduced RunIfPresent - see the register decision this pass recorded for the audit that
+    /// found and fixed every wrapper method's own call sites instead).
+    ///
+    /// tests/unwrap's RangerBridgeCallSiteAudit mechanically enforces this file's boundary: any
+    /// `.cs` file outside this one that contains a bare `global::Ranger.` or `Ranger.Patches.`
+    /// token NOT inside a `RunIfPresent(...)` lambda fails the suite. A doc comment did not stop
+    /// the mistake three times; a build failure is a different category of defense.
     /// </summary>
     internal static class RangerBridge
     {
@@ -51,6 +75,56 @@ namespace Framesaver.Patches
 
                 return _present.Value;
             }
+        }
+
+        /// <summary>
+        /// Runs `action` only if Ranger is present, isolated. THIS IS THE CURRENT PATTERN - see
+        /// the class doc comment for the full reasoning (lambda bodies JIT-compile on delegate
+        /// INVOCATION, not creation, so the gate and the isolation boundary become the same
+        /// `if`). Call as:
+        ///
+        ///     RangerBridge.RunIfPresent(() => global::Ranger.TelemetryBus.Event("x", 1));
+        ///
+        /// [MethodImpl(NoInlining)] is NOT needed here the way it was on the older per-purpose
+        /// wrappers below: RunIfPresent's own signature and body reference only `Action` and
+        /// `Present`, neither of which is a Ranger.* type, so there is nothing in THIS method
+        /// that needs isolating from its caller's compile. The isolation this pass relies on is
+        /// the LAMBDA's own compiler-generated method, which the C# compiler already emits as a
+        /// separate method regardless of inlining attributes - NoInlining here would only affect
+        /// whether RunIfPresent's own trivial body gets inlined into callers, which has no
+        /// bearing on Ranger-absence safety either way.
+        /// </summary>
+        internal static void RunIfPresent(Action action)
+        {
+            if (Present)
+            {
+                action();
+            }
+        }
+
+        /// <summary>
+        /// The `out`-param sibling of <see cref="RunIfPresent(Action)"/>, for
+        /// ReadDrainAttribution's 3 `out double` parameters - `Action` itself cannot express an
+        /// `out` parameter, so this is a small custom delegate type rather than restructuring
+        /// that call site to return a tuple or struct (its siblings already use `out` params
+        /// idiomatically, so a custom delegate keeps that shape rather than making this one call
+        /// site look different from its neighbours). Same reasoning as RunIfPresent(Action)
+        /// otherwise - defaults all three out params to 0d when Ranger is absent, matching what
+        /// ReadDrainAttribution's own Ranger-absent branch used to return directly.
+        /// </summary>
+        internal delegate void RunWithDrainAttribution(out double profileMs, out double bundleMs, out double raidInitMs);
+
+        internal static void RunIfPresent(RunWithDrainAttribution action, out double profileMs, out double bundleMs, out double raidInitMs)
+        {
+            if (Present)
+            {
+                action(out profileMs, out bundleMs, out raidInitMs);
+                return;
+            }
+
+            profileMs = 0d;
+            bundleMs = 0d;
+            raidInitMs = 0d;
         }
 
         /// <summary>
@@ -568,6 +642,39 @@ namespace Framesaver.Patches
             }
 
             global::Ranger.Patches.BotLog.StandByAssigned(standBy, bot);
+        }
+
+        /// <summary>
+        /// CapstoneCallbacks.BuildWindow's tickedSum/liveSum read, isolated. Added 2026-08-20
+        /// (RunIfPresent refactor pass) - this call previously lived directly in
+        /// CapstoneCallbacks.cs as a bare `global::Ranger.TelemetryBus.TryGetSum` reference. It
+        /// was already SAFE in practice (BuildWindow is only ever reached via a delegate Ranger
+        /// itself registers-and-invokes, and that registration is Present-gated one level up at
+        /// Plugin.Awake()) - but "safe by an argument a reader has to re-derive" is exactly the
+        /// posture that let three other call sites go wrong this session, so it is moved here to
+        /// match the uniform rule tests/unwrap's RangerBridgeCallSiteAudit checks mechanically:
+        /// no bare Ranger.* reference outside this file, full stop, no case-by-case exceptions
+        /// no matter how sound the individual argument for one.
+        ///
+        /// TryGetSum(string, out double) doesn't fit the plain RunIfPresent(Action) shape (one
+        /// out param, not zero), and defining a whole custom delegate type for a single
+        /// call-with-two-different-keys felt like more machinery than the call site is worth -
+        /// a small dedicated wrapper, same as the pre-refactor pattern, is the more readable
+        /// choice for this one. Returns 0d for both when Ranger is absent, matching what a
+        /// direct TryGetSum miss already returns via its own `out value` default.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void ReadAICoreControllerSums(out double tickedSum, out double liveSum)
+        {
+            if (!Present)
+            {
+                tickedSum = 0d;
+                liveSum = 0d;
+                return;
+            }
+
+            global::Ranger.TelemetryBus.TryGetSum("aiCoreController.tickedSum", out tickedSum);
+            global::Ranger.TelemetryBus.TryGetSum("aiCoreController.liveSum", out liveSum);
         }
 
         private static bool? AskBotStandBy(BotOwner bot)

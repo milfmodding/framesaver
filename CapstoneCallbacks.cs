@@ -144,10 +144,14 @@ namespace Framesaver
             // us). tickedSum/liveSum via TryGetSum: Ranger's window-close reads these
             // through the bus now, not a Telemetry-owned private field.
             bool slicing = Plugin.BrainUpdatePeriod.Value > 0f && !ModCompat.SuppressSlicing;
+            // RunIfPresent-family refactor (2026-08-20): routed through RangerBridge.
+            // ReadAICoreControllerSums instead of a bare TelemetryBus.TryGetSum call - see that
+            // method's own doc comment for why (mechanical audit enforces no bare Ranger.*
+            // reference outside RangerBridge.cs, no exceptions for call sites that happen to be
+            // safe for other reasons).
             double tickedSum;
             double liveSum;
-            global::Ranger.TelemetryBus.TryGetSum("aiCoreController.tickedSum", out tickedSum);
-            global::Ranger.TelemetryBus.TryGetSum("aiCoreController.liveSum", out liveSum);
+            Patches.RangerBridge.ReadAICoreControllerSums(out tickedSum, out liveSum);
 
             JObject agents = new JObject();
             agents["live"] = Patches.AICoreControllerUpdatePatch.LiveAgents;

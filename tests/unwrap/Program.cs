@@ -1307,6 +1307,8 @@ class P {
         Check("suppressing prefixes match the reviewed list",
               string.Join(" ", suppressors), string.Join(" ", known));
 
+        RangerBridgeCallSiteAudit();
+
         // `bad == 0` is an ABSENCE, and this file argues elsewhere that an
         // absence of complaint is not a verification. Half the sections here sit
         // behind an `if` - a null dll, a type that vanished from the game
@@ -1328,6 +1330,116 @@ class P {
             ? $"\nall {ran} cases pass (against shipped IL)"
             : $"\n{bad} FAILURES of {ran}");
         return bad == 0 ? 0 : 1;
+    }
+
+
+    /// <summary>
+    /// MECHANICAL check for the exact mistake that caused three real crashes tonight
+    /// (2026-08-20, RangerBridge.RunIfPresent introduction): a bare `global::Ranger.` or
+    /// `Ranger.Patches.` reference anywhere OUTSIDE RangerBridge.cs that is not wrapped in a
+    /// `RangerBridge.RunIfPresent(...)` (or `RunIfPresentX` for the out-param variants) call.
+    ///
+    /// WHY THIS EXISTS RATHER THAN TRUSTING THE DOC COMMENT: the correct pattern was already
+    /// written down, correctly, on RangerBridge.cs's own class doc comment before tonight - and
+    /// three separate actors (the 2026-08-17 incident, this session's first BotStandByInitPointsPatch
+    /// fix, and a pre-existing AsyncDrainPatch.cs call site) still got it wrong, each one throwing
+    /// TypeLoadException the moment Ranger.dll was absent and the offending method was first JIT
+    /// compiled. A comment a reader can skip is not the same defense as a check that fails the build.
+    ///
+    /// SOURCE-TEXT SCAN, not reflection: the defect is about what the COMPILED IL references, which
+    /// is a property of the SOURCE that produced it, not something the two shipped assemblies this
+    /// suite already reflects into can answer after the fact (by the time it is a TypeLoadException,
+    /// the mistake already happened). Reads every .cs file in the Framesaver repo root and its
+    /// Patches/ subdirectory (mirroring FindUp's own repo-root convention), skips RangerBridge.cs
+    /// itself (the one file allowed to name Ranger.* directly) and this test project's own files.
+    ///
+    /// A REAL POSITIVE CONTROL, not just an absence: constructs a source string containing exactly
+    /// the violation this check exists to catch, and asserts detection fires on it BEFORE trusting
+    /// a clean scan of the real repo - the same discipline as the corpus's stated rule that a
+    /// negative result needs a planted positive to mean anything.
+    /// </summary>
+    static void RangerBridgeCallSiteAudit() {
+        string repoRoot = FindUp("Framesaver.csproj");
+        if (repoRoot == null) {
+            Check("RangerBridge call-site audit: repo root found", false, true);
+            return;
+        }
+        repoRoot = Path.GetDirectoryName(repoRoot);
+
+        // Positive control FIRST: prove the detector actually fires before trusting it to stay
+        // silent over real source. A detector that always says "clean" and a detector that works
+        // are indistinguishable without this.
+        string planted = "internal static void Bad() { global::Ranger.TelemetryBus.Event(\"x\", 1); }";
+        Check("audit control: a bare global::Ranger. reference is detected",
+              HasUngatedRangerReference(planted), true);
+
+        string plantedSafe = "internal static void Good() { RangerBridge.RunIfPresent(() => "
+                            + "global::Ranger.TelemetryBus.Event(\"x\", 1)); }";
+        Check("audit control: the same reference INSIDE RunIfPresent is not flagged (control)",
+              HasUngatedRangerReference(plantedSafe), false);
+
+        var offenders = new System.Collections.Generic.List<string>();
+        foreach (string file in Directory.GetFiles(repoRoot, "*.cs", SearchOption.AllDirectories)) {
+            string rel = file.Substring(repoRoot.Length).TrimStart('\\', '/');
+            if (rel.StartsWith("tests" + Path.DirectorySeparatorChar)) continue;
+            if (rel.StartsWith("obj" + Path.DirectorySeparatorChar)
+                || rel.StartsWith("bin" + Path.DirectorySeparatorChar)) continue;
+            if (Path.GetFileName(file) == "RangerBridge.cs") continue;
+
+            string text = File.ReadAllText(file);
+            if (HasUngatedRangerReference(text)) offenders.Add(rel);
+        }
+
+        Check("no ungated global::Ranger./Ranger.Patches. reference outside RangerBridge.cs",
+              offenders.Count == 0 ? "" : string.Join(", ", offenders), "");
+    }
+
+    /// <summary>
+    /// True if `text` contains a `global::Ranger.` or `Ranger.Patches.` token that is not inside
+    /// a `RunIfPresent`/`RunIfPresentX`-family call's lambda body. Deliberately crude (brace
+    /// depth tracking rather than a real C# parser) - the corpus this check guards is small and
+    /// hand-written, and a crude check that is easy to read and audit by eye beats a precise one
+    /// nobody can verify is doing what it claims.
+    ///
+    /// Method: find each RunIfPresent-family call, find the matching close-paren by counting
+    /// paren depth from the open paren following it, and mask that whole span out before
+    /// searching for bare Ranger references in what remains.
+    /// </summary>
+    static bool HasUngatedRangerReference(string text) {
+        // Strip `//`/`///` line comments first (naive, but this file's own source is all this
+        // needs to survive - a doc comment ILLUSTRATING the pattern with the literal token
+        // `global::Ranger.` in prose, exactly like RangerBridge.cs's own class doc comment does,
+        // must not itself be flagged as a violation). Deliberately does not handle string
+        // literals containing "//" or block comments (/* */) - neither appears in this codebase
+        // today, and a crude check that is easy to audit by eye beats a precise one nobody can
+        // verify is doing what it claims, same reasoning as the RunIfPresent-masking loop below.
+        var codeOnly = new System.Text.StringBuilder(text.Length);
+        foreach (string line in text.Split('\n')) {
+            int slashes = line.IndexOf("//", StringComparison.Ordinal);
+            codeOnly.Append(slashes < 0 ? line : line.Substring(0, slashes)).Append('\n');
+        }
+        text = codeOnly.ToString();
+
+        var chars = text.ToCharArray();
+        int i = 0;
+        while (i < chars.Length) {
+            int callStart = text.IndexOf("RunIfPresent", i, StringComparison.Ordinal);
+            if (callStart < 0) break;
+            int openParen = text.IndexOf('(', callStart);
+            if (openParen < 0) { i = callStart + 1; continue; }
+            int depth = 1;
+            int j = openParen + 1;
+            while (j < chars.Length && depth > 0) {
+                if (chars[j] == '(') depth++;
+                else if (chars[j] == ')') depth--;
+                j++;
+            }
+            for (int k = callStart; k < j && k < chars.Length; k++) chars[k] = ' ';
+            i = j;
+        }
+
+        string masked = new string(chars);
+        return masked.Contains("global::Ranger.") || masked.Contains("Ranger.Patches.");
     }
 
     /// <summary>

@@ -269,13 +269,17 @@ namespace Framesaver.Patches
         /// per RangerBridge.PublishAsyncDrain's own doc comment (a window-boundary read of a
         /// per-frame-reset field would silently be wrong; a per-FRAME read via this method is the
         /// only safe cadence for exactly that reason).
+        ///
+        /// RunIfPresent (2026-08-20 fix): the `global::Ranger.*` touch now lives inside a lambda
+        /// passed to RangerBridge.RunIfPresent rather than a bare call gated by an explicit
+        /// `if (RangerBridge.Present)` here - see RangerBridge.cs's own class doc comment for why
+        /// the old shape (isolation inside a wrapper, gate at the call site, two separate things)
+        /// is the exact pattern that crashed this file live on 2026-08-20.
         /// </summary>
         internal static void PublishAndResetFrame()
         {
-            if (RangerBridge.Present)
-            {
-                global::Ranger.TelemetryBus.Event("asyncDrain.drainedThisFrame", Drained);
-            }
+            RangerBridge.RunIfPresent(() =>
+                global::Ranger.TelemetryBus.Event("asyncDrain.drainedThisFrame", Drained));
 
             ResetFrame();
         }
