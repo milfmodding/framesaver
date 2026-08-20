@@ -64,7 +64,14 @@ namespace Framesaver.Patches
         [PatchPostfix]
         private static void Postfix()
         {
-            RangerBridge.AddAsyncWorkerUpdateDrainMs(TickMath.ToMs(Stopwatch.GetTimestamp() - _start));
+            // Present-gated at the call site (2026-08-20 fix, live Ranger-absent raid test) -
+            // see BotStandByInitPointsPatch.cs's comment for the full story. This patch is
+            // currently dead code (never .Enable()'d in Plugin.cs), so this fix has no live
+            // effect today, but it needs to be correct before this class is ever wired up.
+            if (RangerBridge.Present)
+            {
+                RangerBridge.AddAsyncWorkerUpdateDrainMs(TickMath.ToMs(Stopwatch.GetTimestamp() - _start));
+            }
         }
     }
 
@@ -96,7 +103,13 @@ namespace Framesaver.Patches
             _skipped = Plugin.DrainInUpdateOnly.Value;
             if (_skipped)
             {
-                RangerBridge.IncrementAsyncWorkerFixedSkips();
+                // Present-gated at the call site - see AsyncWorkerUpdatePatch.Postfix's
+                // comment above for why.
+                if (RangerBridge.Present)
+                {
+                    RangerBridge.IncrementAsyncWorkerFixedSkips();
+                }
+
                 return false;
             }
 
@@ -113,7 +126,12 @@ namespace Framesaver.Patches
                 return;
             }
 
-            RangerBridge.AddAsyncWorkerFixedDrainMs(TickMath.ToMs(Stopwatch.GetTimestamp() - _start));
+            // Present-gated at the call site - see AsyncWorkerUpdatePatch.Postfix's comment
+            // above for why.
+            if (RangerBridge.Present)
+            {
+                RangerBridge.AddAsyncWorkerFixedDrainMs(TickMath.ToMs(Stopwatch.GetTimestamp() - _start));
+            }
         }
     }
 }

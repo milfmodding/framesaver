@@ -34,7 +34,23 @@ namespace Framesaver.Patches
                 // NotifyBotLogStandByAssigned's own doc comment for why a direct call here
                 // was a real Ranger-absent crash risk, this Postfix being unconditionally
                 // enabled and firing on every bot activation.
-                RangerBridge.NotifyBotLogStandByAssigned(__instance, __instance._owner);
+                //
+                // SECOND FIX (2026-08-20, live Ranger-absent raid test): the first fix's
+                // Present gate lived only INSIDE NotifyBotLogStandByAssigned - which is not
+                // enough. NoInlining stops the JIT pulling Ranger.* into THIS method's own
+                // compile, but the first CALL to NotifyBotLogStandByAssigned still triggers
+                // Mono JIT-compiling THAT method's body, and that throws with Ranger absent
+                // regardless of the internal `if (!Present) return;` never being reached.
+                // Confirmed live: AsyncDrainPatch.cs had the identical shape and crashed on
+                // the very first async task completion, before the main menu loaded. The
+                // correct fix (same one the 2026-08-17 incident settled on,
+                // reg-dec-2026-08-17T043214) is gating AT THE CALL SITE, not only inside the
+                // bridge method.
+                if (RangerBridge.Present)
+                {
+                    RangerBridge.NotifyBotLogStandByAssigned(__instance, __instance._owner);
+                }
+
                 return;
             }
 
@@ -56,7 +72,12 @@ namespace Framesaver.Patches
             // Last, so the line records what this bot was actually granted
             // rather than what it was about to be. The grant never changes
             // afterwards - it is decided here, once, for the bot's whole life.
-            RangerBridge.NotifyBotLogStandByAssigned(__instance, __instance._owner);
+            //
+            // Present-gated at the call site - see the other call site's comment above for why.
+            if (RangerBridge.Present)
+            {
+                RangerBridge.NotifyBotLogStandByAssigned(__instance, __instance._owner);
+            }
         }
 
         /// <summary>

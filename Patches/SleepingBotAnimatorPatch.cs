@@ -546,13 +546,25 @@ namespace Framesaver.Patches
             // not wakes - active to goToSave and back - leave a running span
             // alone.
             BotOwner owner = __instance != null ? __instance._owner : null;
-            if (paused)
+
+            // Present-gated at the call site (2026-08-20 fix, live Ranger-absent raid test):
+            // NotifyAwakeAgeEnded/NotifyAwakeAgeWoke's own internal Present check is not
+            // enough to keep this Postfix (unconditionally enabled, fires on every stand-by
+            // transition) safe with Ranger absent - the first CALL to either bridge method
+            // still triggers Mono JIT-compiling it, which throws TypeLoadException regardless
+            // of whether the internal check would have short-circuited. See
+            // BotStandByInitPointsPatch.cs's own comment for the fuller story (same shape of
+            // bug, found live via AsyncDrainPatch.cs's identical crash).
+            if (RangerBridge.Present)
             {
-                RangerBridge.NotifyAwakeAgeEnded(owner);
-            }
-            else
-            {
-                RangerBridge.NotifyAwakeAgeWoke(owner);
+                if (paused)
+                {
+                    RangerBridge.NotifyAwakeAgeEnded(owner);
+                }
+                else
+                {
+                    RangerBridge.NotifyAwakeAgeWoke(owner);
+                }
             }
         }
     }

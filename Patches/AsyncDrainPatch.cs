@@ -594,8 +594,26 @@ namespace Framesaver.Patches
                     // patches (see RangerBridge.ReadDrainAttribution's own doc comment for the full
                     // story). Routed through the bridge rather than a direct cross-assembly reference,
                     // same JIT-safety reasoning every other Ranger-touching call in this assembly uses.
-                    double profile0, bundle0, raidInit0;
-                    RangerBridge.ReadDrainAttribution(out profile0, out bundle0, out raidInit0);
+                    //
+                    // Ranger-absent crash fix (2026-08-19, post-deploy live raid test): this call was
+                    // unconditional here, unlike every other RangerBridge call site in the codebase
+                    // (AICoreControllerUpdatePatch, BossGroupWake, SleepingBotAnimatorPatch, etc. all
+                    // gate on RangerBridge.Present BEFORE calling). ReadDrainAttribution's own body is
+                    // NoInlining-isolated so it does not drag global::Ranger.* types into THIS method's
+                    // JIT compile - but the first CALL to it still triggers Mono JIT-compiling
+                    // ReadDrainAttribution itself, and that throws TypeLoadException with Ranger.dll
+                    // absent, surfacing at this call site. AsyncDrainDiagnostics defaults to true, so
+                    // this fired on the very first async task completion - before the main menu even
+                    // loaded. Found via an actual Ranger-absent boot test (Sophia's, 2026-08-20 03:25Z)
+                    // after the code-level sweep for bare Ranger.* references had already (wrongly)
+                    // concluded every call site was safe - it missed this one because the reference
+                    // itself IS already isolated behind the bridge, just not gated at the call site.
+                    double profile0 = 0d, bundle0 = 0d, raidInit0 = 0d;
+                    if (RangerBridge.Present)
+                    {
+                        RangerBridge.ReadDrainAttribution(out profile0, out bundle0, out raidInit0);
+                    }
+
                     int gen0 = GC.CollectionCount(0);
 
                     // The bot/generate callback that completes the last preset batch resumes the tail of
@@ -606,8 +624,11 @@ namespace Framesaver.Patches
                     AsyncDrain.RunCallback(action);
                     double ms = TickMath.ToMs(Stopwatch.GetTimestamp() - t0);
 
-                    double profile1, bundle1, raidInit1;
-                    RangerBridge.ReadDrainAttribution(out profile1, out bundle1, out raidInit1);
+                    double profile1 = 0d, bundle1 = 0d, raidInit1 = 0d;
+                    if (RangerBridge.Present)
+                    {
+                        RangerBridge.ReadDrainAttribution(out profile1, out bundle1, out raidInit1);
+                    }
 
                     AsyncDrain.Record(ms, action, GC.GetTotalMemory(false) - heap0,
                         profile1 - profile0,
