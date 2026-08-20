@@ -528,6 +528,26 @@ namespace Framesaver
             new SkipSleepingWorldTickPatch().Enable();
             new AsyncDrainPatch().Enable();
 
+            // Second regression found and fixed (2026-08-20, post-deploy Ranger-absent test
+            // session): AsyncWorkerUpdatePatch/AsyncWorkerFixedUpdatePatch's .Enable() calls were
+            // removed here by the wiring-gap commit (6d767ab) alongside the ~26 classes it deleted
+            // wholesale - correct AT THE TIME, since AsyncWorkerTimingPatches.cs (the source file
+            // for both) was believed measurement-only and slated for deletion in the same commit.
+            // The VERY NEXT commit (4b96af7) restored that file, having found it was actually MIXED
+            // (its FixedUpdate Prefix also implements the shipping "Drain completions in Update
+            // only" lever) - but never re-added these two .Enable() calls. Left unnoticed because
+            // nothing throws: with neither patch enabled, AsyncWorker.Update/.FixedUpdate simply run
+            // unpatched, Plugin.DrainInUpdateOnly stays bound and visible in the BepInEx config, and
+            // toggling it silently does nothing - the EXACT regression 4b96af7's own commit message
+            // describes fixing, still live in every build since. Found by re-auditing every
+            // RangerBridge call site after the Ranger-absent crash test surfaced a related but
+            // separate bug in AsyncDrainPatch.cs, not by any test - tests/unwrap has no coverage for
+            // whether a ModulePatch subclass got enabled (only for whether ITS OWN reflection shape
+            // is correct once it exists), same gap that let the first version of this regression
+            // through.
+            new AsyncWorkerUpdatePatch().Enable();
+            new AsyncWorkerFixedUpdatePatch().Enable();
+
             // Wiring-gap fix (2026-08-19, editing pass): the ~26 .Enable() calls that used to be
             // here - BotsControllerTickPatch, UpdateManualTimingPatch, BossWaveSettingsPatch,
             // BotControllerSettingsPatch, AsyncWorkerUpdatePatch, AsyncWorkerFixedUpdatePatch,
