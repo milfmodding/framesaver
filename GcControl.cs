@@ -1,7 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Globalization;
-using System.Text;
 using Framesaver.Patches;
 using UnityEngine.Scripting;
 
@@ -182,23 +180,10 @@ namespace Framesaver
         /// happened between the previous collection and this one; `msSinceSuspend` is how long before it the
         /// last one ended, or -1 if there has never been one. If suspension manufactures pauses, expensive
         /// collections cluster at low `msSinceSuspend` and high `suspendsBefore`.
-        /// </summary>
-        internal static void AppendSpike(StringBuilder sb)
-        {
-            if (_suspendsBeforeLastGc < 0)
-            {
-                return;
-            }
-
-            sb.Append(",\"gcSuspendsBefore\":").Append(_suspendsBeforeLastGc)
-              .Append(",\"gcMsSinceSuspend\":").Append(Fmt(_msSinceSuspendAtLastGc));
-        }
-
-        /// <summary>
-        /// JObject-shaped sibling of AppendSpike, for TelemetryBus.RegisterSpikeCallback (capstone,
-        /// 2026-08-18) - same fields, same gate (nothing written when no collection is on record),
-        /// just object-graph instead of characters. AppendSpike itself is unused once the capstone
-        /// lands, kept only so this stays additive.
+        ///
+        /// Written as a JObject for TelemetryBus.RegisterSpikeCallback rather than appended to a
+        /// StringBuilder - Ranger owns the sampler post-capstone, and its callback shape takes
+        /// Action&lt;JObject&gt;.
         /// </summary>
         internal static void AppendSpikeTo(Newtonsoft.Json.Linq.JObject obj)
         {
@@ -211,27 +196,11 @@ namespace Framesaver
             obj["gcMsSinceSuspend"] = _msSinceSuspendAtLastGc;
         }
 
-        internal static void AppendWindow(StringBuilder sb)
-        {
-            sb.Append(",\"gcDrive\":{\"calls\":").Append(_driveCalls)
-              // Fraction of calls that still had work outstanding. High and sustained means the collector
-              // never catches up, which is what candidate 1 predicts.
-              .Append(",\"pending\":").Append(_drivePending)
-              .Append(",\"msTotal\":").Append(Fmt(_driveMsTotal))
-              .Append(",\"msMax\":").Append(Fmt(_driveMsMax))
-              .Append(",\"sliceNs\":").Append(SliceNs())
-              .Append('}');
-        }
-
         /// <summary>
-        /// JObject-shaped sibling of AppendWindow, for the capstone window callback body
-        /// (Ranger's TelemetryBus.RegisterWindowCallback expects Action&lt;JObject&gt;, not
-        /// Action&lt;StringBuilder&gt; - Sophia's 2026-08-18 ruling). Same fields, same values,
-        /// just written into an object graph instead of appended as characters. AppendWindow
-        /// itself is UNCHANGED and still used nowhere once the capstone lands (nothing else
-        /// calls it directly anymore - Telemetry.cs's window line is built entirely through
-        /// the callback now), kept only so this diff stays additive rather than rewriting a
-        /// working method.
+        /// Called once per window from the capstone window callback body (Ranger's
+        /// TelemetryBus.RegisterWindowCallback, Action&lt;JObject&gt;). `pending` is the
+        /// fraction of Drive() calls that still had work outstanding - high and sustained
+        /// means the collector never catches up.
         /// </summary>
         internal static void AppendWindowTo(Newtonsoft.Json.Linq.JObject obj)
         {
@@ -244,14 +213,7 @@ namespace Framesaver
             obj["gcDrive"] = gcDrive;
         }
 
-        internal static void AppendCfg(StringBuilder sb)
-        {
-            sb.Append(",\"gcTimeSliceMs\":").Append(Fmt(Plugin.GcTimeSliceMs.Value))
-              .Append(",\"gcDriveMs\":").Append(Fmt(Plugin.GcDriveMs.Value))
-              .Append(",\"gcSliceApplied\":").Append(_sliceApplied ? "true" : "false");
-        }
-
-        /// <summary>JObject-shaped sibling of AppendCfg - see AppendWindowTo's doc comment for why this pairs with it.</summary>
+        /// <summary>Called once per window from the capstone window callback body, alongside the rest of the cfg block.</summary>
         internal static void AppendCfgTo(Newtonsoft.Json.Linq.JObject cfg)
         {
             cfg["gcTimeSliceMs"] = Plugin.GcTimeSliceMs.Value;
@@ -279,14 +241,5 @@ namespace Framesaver
             _driveMsMax = 0d;
         }
 
-        private static string Fmt(double value)
-        {
-            if (double.IsNaN(value) || double.IsInfinity(value))
-            {
-                return "null";
-            }
-
-            return value.ToString("0.###", CultureInfo.InvariantCulture);
-        }
     }
 }
